@@ -4,7 +4,7 @@
 module Massaraksh.Lens where
 
 import Control.Lens
-import Massaraksh.UI
+import Massaraksh
 
 focusN
   :: forall w m s t a b p

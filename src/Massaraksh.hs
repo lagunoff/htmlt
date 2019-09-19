@@ -3,7 +3,7 @@
 {-# LANGUAGE NamedFieldPuns        #-}
 {-# LANGUAGE RankNTypes            #-}
 {-# LANGUAGE RecordWildCards       #-}
-module Massaraksh.UI where
+module Massaraksh where
 
 import Control.Monad.IO.Class
 import Data.IORef
@@ -29,9 +29,9 @@ data UIMsg widget msg input output
 -- | Represents a piece of user interface
 newtype UI widget msg input output = UI
   { unUI
-    :: Store input
-    -> Sink (UIMsg widget msg input output)
-    -> JSM (UIHandle widget)
+      :: Store input
+      -> Sink (UIMsg widget msg input output)
+      -> JSM (UIHandle widget)
   }
 
 -- | Result of running @UI@

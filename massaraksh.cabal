@@ -15,7 +15,7 @@ extra-source-files:  README.md
 
 library
   exposed-modules:
-        Massaraksh.UI
+        Massaraksh
         Massaraksh.Event
         Massaraksh.Html
         Massaraksh.Lens

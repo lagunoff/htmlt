@@ -244,7 +244,7 @@ import Language.Javascript.JSaddle (setProp)
 import Language.Javascript.JSaddle ((!))
 import Language.Javascript.JSaddle.Native (valueToString)
 import Massaraksh.Event
-import Massaraksh.UI
+import Massaraksh
 import Unsafe.Coerce (unsafeCoerce)
 
 type Decoder a = JSVal -> JSM (Either T.Text a)
