@@ -1,0 +1,14 @@
+**/tags
+**/TAGS
+**/.#*
+/dist-newstyle
+**/*~
+**/*.kate-swp
+**/.directory
+/.dir-locals.el
+/dist
+/tmp
+**/.stack-work
+**/.cabal-sandbox
+**/*.db
+**/.ghc.environment*
