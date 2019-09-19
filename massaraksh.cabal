@@ -29,7 +29,6 @@ library
                      , jsaddle
                      , containers
                      , lens
-                     , aeson
   if impl(ghsjs)
     build-depends:  ghcjs-base
     ghc-options:   -dedupe

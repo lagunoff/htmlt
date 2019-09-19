@@ -1,5 +1,6 @@
 {-# LANGUAGE ImpredicativeTypes  #-}
 {-# LANGUAGE NamedFieldPuns      #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE RankNTypes          #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Massaraksh.Html
@@ -221,29 +222,30 @@ module Massaraksh.Html
     -- * Events
   , targetValue
   , onInput
+  , Attribute (..)
   )
 where
 
 import Control.Lens (Const (..), Lens, getConst, over)
 import Control.Monad.IO.Class (liftIO)
+import Control.Monad.Reader.Class (ask)
 import Data.Foldable (for_)
 import Data.IORef (newIORef, readIORef, writeIORef)
+import qualified Data.Text as T
 import Data.Traversable (for)
 import GHCJS.DOM (currentDocumentUnchecked)
 import GHCJS.DOM.Document (createElement, createTextNode)
 import GHCJS.DOM.EventM (EventName)
 import qualified GHCJS.DOM.EventM as EventM
+import qualified GHCJS.DOM.GlobalEventHandlers as Ev
 import GHCJS.DOM.Node (appendChild_, setTextContent, toNode)
 import GHCJS.DOM.Types
 import Language.Javascript.JSaddle (setProp)
+import Language.Javascript.JSaddle ((!))
+import Language.Javascript.JSaddle.Native (valueToString)
 import Massaraksh.Event
 import Massaraksh.UI
 import Unsafe.Coerce (unsafeCoerce)
-import qualified GHCJS.DOM.GlobalEventHandlers as Ev
-import qualified Data.Text as T
-import Control.Monad.Reader.Class (ask)
-import Language.Javascript.JSaddle ((!))
-import Language.Javascript.JSaddle.Native (valueToString)
 
 type Decoder a = JSVal -> JSM (Either T.Text a)
 
@@ -251,12 +253,14 @@ type Html msg input output = UI Node msg input output
 type Html' msg model = UI Node msg model model
 
 newtype Attribute msg i o = Attribute
-   ( Store i
-  -> Sink (Either msg (i -> o))
-  -> HTMLElement
-  -> JSM (JSM ()) )
+  { runAttr
+      :: Store i
+      -> Sink (Either msg (i -> o))
+      -> HTMLElement
+      -> JSM (JSM ())
+  }
 
-text :: ToJSString str => (i -> str) -> Html msg i o
+text :: (i -> JSString) -> Html msg i o
 text f = UI $ \model _ -> do
   doc <- currentDocumentUnchecked
   content <- f <$> readLatest model
@@ -265,13 +269,13 @@ text f = UI $ \model _ -> do
     setTextContent ui (Just (f new))
   pure $ UIHandle ui unsubscribe
 
-text_ :: ToJSString str => str -> Html msg i o
+text_ :: JSString -> Html msg i o
 text_ content = UI $ \_ _ -> do
   doc <- currentDocumentUnchecked
   ui <- toNode <$> createTextNode doc content
   pure $ UIHandle ui $ pure ()
 
-element :: ToJSString str => str -> [Attribute msg i o] -> [Html msg i o] -> Html msg i o
+element :: JSString -> [Attribute msg i o] -> [Html msg i o] -> Html msg i o
 element tag attrs childs = UI $ \model sink -> do
   doc <- currentDocumentUnchecked
   el <- uncheckedCastTo HTMLElement <$> createElement doc tag
@@ -285,10 +289,9 @@ element tag attrs childs = UI $ \model sink -> do
   pure $ UIHandle (toNode el) (sequence_ attrFinalizers *> sequence_ childFinalizers)
 
 list
-  :: forall s t a msg str
-   . ToJSString str
-  => Lens s t [a] [a]
-  -> str
+  :: forall s t a msg
+   . Lens s t [a] [a]
+  -> JSString
   -> [Attribute msg s t]
   -> Html (Int -> msg) (Nested s a) a
   -> Html msg s t
@@ -334,54 +337,54 @@ list lens tag attrs child = UI $ \model sink -> do
   liftIO $ writeIORef childHandles childHandlesVal
   pure $ UIHandle (toNode el) (childFinalizer *> sequence_ attrFinalizers *> unsubscribe)
 
-prop :: (ToJSVal val, ToJSString name) => name -> (i -> val) -> Attribute msg i o
+prop :: (ToJSVal val) => JSString -> (i -> val) -> Attribute msg i o
 prop name f = Attribute $ \model _ el -> do
   readLatest model >>= toJSVal . f >>= \val -> setProp (toJSString name) val (unsafeCoerce el)
   finalizer <- updates model `subscribe1` \Updates {new} ->
     toJSVal (f new) >>= \val -> setProp (toJSString name) val (unsafeCoerce el)
   pure finalizer
 
-prop_ :: (ToJSVal val, ToJSString name) => name -> val -> Attribute msg i o
+prop_ :: (ToJSVal val) => JSString -> val -> Attribute msg i o
 prop_ name val = Attribute $ \_ _ el -> do
   toJSVal val >>= \v -> setProp (toJSString name) v (unsafeCoerce el)
   pure $ pure ()
 
 -- | Set field to `Bool` value
-boolProp :: (ToJSString name) => name -> (i -> Bool) -> Attribute msg i o
+boolProp :: JSString -> (i -> Bool) -> Attribute msg i o
 boolProp = prop
 
 -- | Set field to `Bool` value
-boolProp_ :: (ToJSString name) => name -> Bool -> Attribute msg i o
+boolProp_ :: JSString -> Bool -> Attribute msg i o
 boolProp_ = prop_
 
 -- | Set field to `String` value
-stringProp :: (ToJSString name, ToJSString val) => name -> (i -> val) -> Attribute action i o
+stringProp :: JSString -> (i -> JSString) -> Attribute action i o
 stringProp = prop
 
 -- | Set field to `Text` value
-textProp :: (ToJSString name, ToJSString val) => name -> (i -> val) -> Attribute action i o
+textProp :: JSString -> (i -> JSString) -> Attribute action i o
 textProp = prop
 
 -- | Set field to `Int` value
-intProp :: (ToJSString name) => name -> (i -> Int) -> Attribute action i o
+intProp :: JSString -> (i -> Int) -> Attribute action i o
 intProp = prop
 -- | Set field to `Double` value
-doubleProp ::  (ToJSString name) => name -> (i -> Double) -> Attribute action i o
+doubleProp ::  JSString -> (i -> Double) -> Attribute action i o
 doubleProp = prop
 
 -- | Set field to `String` value
-stringProp_ :: (ToJSString name, ToJSString val) => name -> val -> Attribute action i o
+stringProp_ :: JSString -> JSString -> Attribute action i o
 stringProp_ = prop_
 
 -- | Set field to `Text` value
-textProp_ :: (ToJSString name, ToJSString val) => name -> val -> Attribute action i o
+textProp_ :: JSString -> JSString -> Attribute action i o
 textProp_ = prop_
 
 -- | Set field to `Int` value
-intProp_ :: (ToJSString name) => name -> Int -> Attribute action i o
+intProp_ :: JSString -> Int -> Attribute action i o
 intProp_ = prop_
 -- | Set field to `Double` value
-doubleProp_ ::  (ToJSString name) => name -> Double -> Attribute action i o
+doubleProp_ ::  JSString -> Double -> Attribute action i o
 doubleProp_ = prop_
 
 -- | Define multiple classes conditionally
@@ -392,7 +395,7 @@ doubleProp_ = prop_
 -- classList_ xs =
 --   textPrreplop "class" $ intercalate (" " :: MisoString) [ t | (t, True) <- xs ]
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/title>
-title_ ::  (ToJSString val) => val -> Attribute msg i o
+title_ ::  JSString -> Attribute msg i o
 title_ = textProp_ "title"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/selected>
 selected_ ::  Bool -> Attribute msg i o
@@ -401,46 +404,46 @@ selected_ = boolProp_ "selected"
 hidden_ ::  Bool -> Attribute msg i o
 hidden_             = boolProp_ "hidden"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/value>
-value_ ::  (ToJSString val) => val -> Attribute msg i o
+value_ ::  JSString -> Attribute msg i o
 value_             = textProp_ "value"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/defaultValue>
-defaultValue_ ::  (ToJSString val) => val -> Attribute msg i o
+defaultValue_ ::  JSString -> Attribute msg i o
 defaultValue_      = textProp_ "defaultValue"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/accept>
-accept_ ::  (ToJSString val) => val -> Attribute msg i o
+accept_ ::  JSString -> Attribute msg i o
 accept_            = textProp_ "accept"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/acceptCharset>
-acceptCharset_ ::  (ToJSString val) => val -> Attribute msg i o
+acceptCharset_ ::  JSString -> Attribute msg i o
 acceptCharset_     = textProp_ "acceptCharset"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/action>
-action_ ::  (ToJSString val) => val -> Attribute msg i o
+action_ ::  JSString -> Attribute msg i o
 action_            = textProp_ "action"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/autocomplete>
 autocomplete_ ::  Bool -> Attribute msg i o
 autocomplete_ b = textProp_ "autocomplete" (if b then "on" else "off")
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/autosave>
-autosave_ ::  (ToJSString val) => val -> Attribute msg i o
+autosave_ ::  JSString -> Attribute msg i o
 autosave_          = textProp_ "autosave"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/disabled>
 disabled_ ::  Bool -> Attribute msg i o
 disabled_          = boolProp_ "disabled"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/enctype>
-enctype_ ::  (ToJSString val) => val -> Attribute msg i o
+enctype_ ::  JSString -> Attribute msg i o
 enctype_           = textProp_ "enctype"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/formation>
-formation_ ::  (ToJSString val) => val -> Attribute msg i o
+formation_ ::  JSString -> Attribute msg i o
 formation_         = textProp_ "formation"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/list>
-list_ ::  (ToJSString val) => val -> Attribute msg i o
+list_ ::  JSString -> Attribute msg i o
 list_              = textProp_ "list"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/maxlength>
-maxlength_ ::  (ToJSString val) => val -> Attribute msg i o
+maxlength_ ::  JSString -> Attribute msg i o
 maxlength_         = textProp_ "maxlength"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/minlength>
-minlength_ ::  (ToJSString val) => val -> Attribute msg i o
+minlength_ ::  JSString -> Attribute msg i o
 minlength_         = textProp_ "minlength"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/method>
-method_ ::  (ToJSString val) => val -> Attribute msg i o
+method_ ::  JSString -> Attribute msg i o
 method_            = textProp_ "method"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/multiple>
 multiple_ ::  Bool -> Attribute msg i o
@@ -449,7 +452,7 @@ multiple_          = boolProp_ "multiple"
 novalidate_ ::  Bool -> Attribute msg i o
 novalidate_        = boolProp_ "noValidate"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/pattern>
-pattern_ ::  (ToJSString val) => val -> Attribute msg i o
+pattern_ ::  JSString -> Attribute msg i o
 pattern_           = textProp_ "pattern"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/readonly>
 readonly_ ::  Bool -> Attribute msg i o
@@ -458,76 +461,76 @@ readonly_          = boolProp_ "readOnly"
 required_ ::  Bool -> Attribute msg i o
 required_          = boolProp_ "required"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/size>
-size_ ::  (ToJSString val) => val -> Attribute msg i o
+size_ ::  JSString -> Attribute msg i o
 size_              = textProp_ "size"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/for>
--- for_ ::  (ToJSString val) => val -> Attribute msg i o
+-- for_ ::  JSString -> Attribute msg i o
 -- for_               = textProp_ "for"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/form>
--- form_ ::  (ToJSString val) => val -> Attribute msg i o
+-- form_ ::  JSString -> Attribute msg i o
 -- form_               = textProp_ "form"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/max>
-max_ ::  (ToJSString val) => val -> Attribute msg i o
+max_ ::  JSString -> Attribute msg i o
 max_               = textProp_ "max"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/min>
-min_ ::  (ToJSString val) => val -> Attribute msg i o
+min_ ::  JSString -> Attribute msg i o
 min_               = textProp_ "min"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/step>
-step_ ::  (ToJSString val) => val -> Attribute msg i o
+step_ ::  JSString -> Attribute msg i o
 step_              = textProp_ "step"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/cols>
-cols_ ::  (ToJSString val) => val -> Attribute msg i o
+cols_ ::  JSString -> Attribute msg i o
 cols_              = textProp_ "cols"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/rows>
-rows_ ::  (ToJSString val) => val -> Attribute msg i o
+rows_ ::  JSString -> Attribute msg i o
 rows_              = textProp_ "rows"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/wrap>
-wrap_ ::  (ToJSString val) => val -> Attribute msg i o
+wrap_ ::  JSString -> Attribute msg i o
 wrap_              = textProp_ "wrap"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/target>
-target_ ::  (ToJSString val) => val -> Attribute msg i o
+target_ ::  JSString -> Attribute msg i o
 target_            = textProp_ "target"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/download>
-download_ ::  (ToJSString val) => val -> Attribute msg i o
+download_ ::  JSString -> Attribute msg i o
 download_          = textProp_ "download"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/downloadAs>
-downloadAs_ ::  (ToJSString val) => val -> Attribute msg i o
+downloadAs_ ::  JSString -> Attribute msg i o
 downloadAs_        = textProp_ "downloadAs"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/hreflang>
-hreflang_ ::  (ToJSString val) => val -> Attribute msg i o
+hreflang_ ::  JSString -> Attribute msg i o
 hreflang_          = textProp_ "hreflang"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/media>
-media_ ::  (ToJSString val) => val -> Attribute msg i o
+media_ ::  JSString -> Attribute msg i o
 media_             = textProp_ "media"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/ping>
-ping_ ::  (ToJSString val) => val -> Attribute msg i o
+ping_ ::  JSString -> Attribute msg i o
 ping_              = textProp_ "ping"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/rel>
-rel_ ::  (ToJSString val) => val -> Attribute msg i o
+rel_ ::  JSString -> Attribute msg i o
 rel_               = textProp_ "rel"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/ismap>
-ismap_ ::  (ToJSString val) => val -> Attribute msg i o
+ismap_ ::  JSString -> Attribute msg i o
 ismap_             = textProp_ "ismap"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/usemap>
-usemap_ ::  (ToJSString val) => val -> Attribute msg i o
+usemap_ ::  JSString -> Attribute msg i o
 usemap_            = textProp_ "usemap"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/shape>
-shape_ ::  (ToJSString val) => val -> Attribute msg i o
+shape_ ::  JSString -> Attribute msg i o
 shape_             = textProp_ "shape"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/coords>
-coords_ ::  (ToJSString val) => val -> Attribute msg i o
+coords_ ::  JSString -> Attribute msg i o
 coords_            = textProp_ "coords"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/src>
-src_ ::  (ToJSString val) => val -> Attribute msg i o
+src_ ::  JSString -> Attribute msg i o
 src_               = textProp_ "src"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/height>
-height_ ::  (ToJSString val) => val -> Attribute msg i o
+height_ ::  JSString -> Attribute msg i o
 height_            = textProp_ "height"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/width>
-width_ ::  (ToJSString val) => val -> Attribute msg i o
+width_ ::  JSString -> Attribute msg i o
 width_             = textProp_ "width"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/alt>
-alt_ ::  (ToJSString val) => val -> Attribute msg i o
+alt_ ::  JSString -> Attribute msg i o
 alt_               = textProp_ "alt"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/autoplay>
 autoplay_ ::  Bool -> Attribute msg i o
@@ -539,85 +542,85 @@ controls_          = boolProp_ "controls"
 loop_ ::  Bool -> Attribute msg i o
 loop_              = boolProp_ "loop"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/preload>
-preload_ ::  (ToJSString val) => val -> Attribute msg i o
+preload_ ::  JSString -> Attribute msg i o
 preload_           = textProp_ "preload"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/poster>
-poster_ ::  (ToJSString val) => val -> Attribute msg i o
+poster_ ::  JSString -> Attribute msg i o
 poster_            = textProp_ "poster"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/default>
 default_ ::  Bool -> Attribute msg i o
 default_           = boolProp_ "default"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/kind>
-kind_ ::  (ToJSString val) => val -> Attribute msg i o
+kind_ ::  JSString -> Attribute msg i o
 kind_              = textProp_ "kind"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/srclang>
-srclang_ ::  (ToJSString val) => val -> Attribute msg i o
+srclang_ ::  JSString -> Attribute msg i o
 srclang_           = textProp_ "srclang"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/sandbox>
-sandbox_ ::  (ToJSString val) => val -> Attribute msg i o
+sandbox_ ::  JSString -> Attribute msg i o
 sandbox_           = textProp_ "sandbox"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/seamless>
-seamless_ ::  (ToJSString val) => val -> Attribute msg i o
+seamless_ ::  JSString -> Attribute msg i o
 seamless_          = textProp_ "seamless"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/srcdoc>
-srcdoc_ ::  (ToJSString val) => val -> Attribute msg i o
+srcdoc_ ::  JSString -> Attribute msg i o
 srcdoc_            = textProp_ "srcdoc"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/reversed>
-reversed_ ::  (ToJSString val) => val -> Attribute msg i o
+reversed_ ::  JSString -> Attribute msg i o
 reversed_          = textProp_ "reversed"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/start>
-start_ ::  (ToJSString val) => val -> Attribute msg i o
+start_ ::  JSString -> Attribute msg i o
 start_             = textProp_ "start"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/align>
-align_ ::  (ToJSString val) => val -> Attribute msg i o
+align_ ::  JSString -> Attribute msg i o
 align_             = textProp_ "align"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/colspan>
-colspan_ ::  (ToJSString val) => val -> Attribute msg i o
+colspan_ ::  JSString -> Attribute msg i o
 colspan_           = textProp_ "colspan"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/rowspan>
-rowspan_ ::  (ToJSString val) => val -> Attribute msg i o
+rowspan_ ::  JSString -> Attribute msg i o
 rowspan_           = textProp_ "rowspan"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/headers>
-headers_ ::  (ToJSString val) => val -> Attribute msg i o
+headers_ ::  JSString -> Attribute msg i o
 headers_           = textProp_ "headers"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/scope>
-scope_ ::  (ToJSString val) => val -> Attribute msg i o
+scope_ ::  JSString -> Attribute msg i o
 scope_             = textProp_ "scope"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/async>
-async_ ::  (ToJSString val) => val -> Attribute msg i o
+async_ ::  JSString -> Attribute msg i o
 async_             = textProp_ "async"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/charset>
-charset_ ::  (ToJSString val) => val -> Attribute msg i o
+charset_ ::  JSString -> Attribute msg i o
 charset_           = textProp_ "charset"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/content>
-content_ ::  (ToJSString val) => val -> Attribute msg i o
+content_ ::  JSString -> Attribute msg i o
 content_           = textProp_ "content"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/defer>
-defer_ ::  (ToJSString val) => val -> Attribute msg i o
+defer_ ::  JSString -> Attribute msg i o
 defer_             = textProp_ "defer"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/httpEquiv>
-httpEquiv_ ::  (ToJSString val) => val -> Attribute msg i o
+httpEquiv_ ::  JSString -> Attribute msg i o
 httpEquiv_         = textProp_ "httpEquiv"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/language>
-language_ ::  (ToJSString val) => val -> Attribute msg i o
+language_ ::  JSString -> Attribute msg i o
 language_          = textProp_ "language"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/scoped>
-scoped_ ::  (ToJSString val) => val -> Attribute msg i o
+scoped_ ::  JSString -> Attribute msg i o
 scoped_            = textProp_ "scoped"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/type>
-type_ ::  (ToJSString val) => val -> Attribute msg i o
+type_ ::  JSString -> Attribute msg i o
 type_ = textProp_ "type"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/name>
-name_ ::  (ToJSString val) => val -> Attribute msg i o
+name_ ::  JSString -> Attribute msg i o
 name_ = textProp_ "name"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/href>
-href_ ::  (ToJSString val) => val -> Attribute msg i o
+href_ ::  JSString -> Attribute msg i o
 href_ = textProp_ "href"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/id>
-id_ ::  (ToJSString val) => val -> Attribute msg i o
+id_ ::  JSString -> Attribute msg i o
 id_ = textProp_ "id"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/placeholder>
-placeholder_ ::  (ToJSString val) => val -> Attribute msg i o
+placeholder_ ::  JSString -> Attribute msg i o
 placeholder_ = textProp_ "placeholder"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/checked>
 checked_ ::  Bool -> Attribute msg i o
@@ -628,12 +631,12 @@ autofocus_ ::  Bool -> Attribute msg i o
 autofocus_ = boolProp_ "autofocus"
 -- | Set "className" property
 -- <https://developer.mozilla.org/en-US/docs/Web/API/Element/className>
-class_ ::  (ToJSString val) => val -> Attribute msg i o
+class_ ::  JSString -> Attribute msg i o
 class_ = textProp_ "className"
 -- | Set "data-*" property
 -- https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/data-*
-data_ ::  (ToJSString name, ToJSString val) => name -> val -> Attribute msg i o
-data_ k v = textProp_ (toJSString "data-" <> toJSString k) v
+data_ ::  JSString -> JSString -> Attribute msg i o
+data_ k v = textProp_ ("data-" <> toJSString k) v
 
 on :: (IsEvent e) => EventName HTMLElement e -> (i -> Either msg (i -> o)) -> Attribute msg i o
 on evName makeMsg = Attribute setupEvent where
@@ -649,12 +652,12 @@ onWithOptions evName decoder makeMsg = Attribute $ \store sink el -> EventM.on e
   model <- readLatest store
   v <- decoder =<< toJSVal event
   case v of
-    Left _ -> pure ()
+    Left _  -> pure ()
     Right a -> sink $ makeMsg model a
 
 targetValue :: Decoder JSString
 targetValue v = do
-  val <- v ! "target" ! "value" >>= valueToString
+  val <- v ! ("target" :: JSString) ! ("value" :: JSString) >>= valueToString
   pure $ Right val
 
 onInput :: (i -> JSString -> Either msg (i -> o)) -> Attribute msg i o
