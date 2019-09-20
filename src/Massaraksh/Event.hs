@@ -1,52 +1,50 @@
-module Massaraksh.Event
-  ( Event(..)
-  , subscribe1
-  , createEvent
-  , EventHandle(..)
-  , mapMaybe
-  ) where
+module Massaraksh.Event where
 
-import Data.IORef
-import Data.List
 import Control.Monad ((>=>))
-import Data.Foldable (traverse_)
-import Control.Monad.IO.Class
-import GHCJS.DOM.Types (JSM)
+import Control.Monad.IO.Class (MonadIO, liftIO)
+import Data.Foldable (traverse_, for_)
+import Data.IORef (modifyIORef, newIORef, readIORef, writeIORef)
+import Data.List (delete)
 
--- | Basic subscribe/unsubscribe libary
-newtype Event a = Event
-  { subscribe :: (a -> JSM ()) -> JSM () -> JSM (JSM ())
+-- | @Event m a@ is a stream of event occurences of type @a@
+newtype Event m a = Event { subscribe :: (a -> m ()) -> m (m ()) }
+
+-- | Result of 'createEvent'
+data EventHandle m a = EventHandle
+  { ehEvent :: Event m a
+  , ehPush  :: a -> m ()
   }
 
-instance Functor Event where
-  fmap f (Event e) = Event $ \k -> e (k . f)
-
--- | Same as subscribe but without finalizer
-subscribe1 :: Event a -> (a -> JSM ()) -> JSM (JSM ())
-subscribe1 (Event e) k = e k $ pure ()
-
--- | Result for `createEvent`
-data EventHandle a = EventHandle
-  { getEvent :: Event a
-  , pushEvent :: a -> JSM ()
-  , finalizeEvent :: JSM ()
-  }
-
--- | Create new `Event a`
-createEvent :: JSM (EventHandle a)
+-- | Create new event and a function to supply values to that event
+createEvent :: MonadIO m => m (EventHandle m a)
 createEvent = do
   subscribers <- liftIO $ newIORef []
-  let event = Event $ \next complete -> do
-        kRef <- liftIO $ newIORef (next, complete)
+  let event = Event $ \k -> do
+        kRef <- liftIO $ newIORef k -- Need 'IORef' for an 'Eq' instance
         liftIO $ modifyIORef subscribers ((:) kRef)
         pure $ liftIO $ modifyIORef subscribers (delete kRef)
-      push = \a -> liftIO (readIORef subscribers) >>= traverse_ (liftIO . readIORef >=> \(k, _) -> (k a))
-      finish = do
-        finalizers <- liftIO $ readIORef subscribers >>= traverse (readIORef >=> pure . snd)
-        sequence_ finalizers
-        liftIO $ writeIORef subscribers []
-  pure $ EventHandle event push finish  
+  let push a = do
+        callbacks <- liftIO $ readIORef subscribers
+        for_ callbacks $ liftIO . readIORef >=> ($ a)
+  pure (EventHandle event push)
 
--- | Apply filter
-mapMaybe :: (a -> Maybe b) -> Event a -> Event b
-mapMaybe f event = Event $ \next finish -> flip (subscribe event) finish $ \a -> maybe (pure ()) next (f a)
+-- | Filter and map occurences
+mapMaybe :: Applicative m => (a -> Maybe b) -> Event m a -> Event m b
+mapMaybe f (Event susbcribeA) = Event subscribeB where
+  subscribeB k = susbcribeA $ maybe (pure ()) k . f
+
+instance Functor (Event m) where
+  fmap f (Event s) = Event $ s . (. f)
+
+instance MonadIO eff => Applicative (Event eff) where
+  pure a = Event $ \k -> k a *> pure (pure ())
+  (<*>) e1 e2 = Event $ \k -> do
+    latestA <- liftIO $ newIORef Nothing
+    latestB <- liftIO $ newIORef Nothing
+    c1 <- e1 `subscribe` \a -> do
+      liftIO $ writeIORef latestA (Just a)
+      liftIO (readIORef latestB) >>= traverse_ (k . a)
+    c2 <- e2 `subscribe` \b -> do
+      liftIO $ writeIORef latestB (Just b)
+      liftIO (readIORef latestA) >>= traverse_ (k . ($ b))
+    pure (c1 *> c2)

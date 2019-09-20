@@ -7,10 +7,11 @@ import Control.Lens
 import Massaraksh
 
 focusN
-  :: forall w m s t a b p
-   . Lens s t a b
-  -> UI w m (Nested p a) (Nested p b)
-  -> UI w m (Nested p s) (Nested p t)
+  :: forall e w m s t a b p
+   . Functor e
+  => Lens s t a b
+  -> UI e w m (Nested p a) (Nested p b)
+  -> UI e w m (Nested p s) (Nested p t)
 focusN stab (UI setup) = UI $ \store sink ->
   let store' = fmap (\s -> getConst ((inHere stab) Const s)) store
       sink' (Ref     c) = sink $ Ref c
@@ -19,10 +20,11 @@ focusN stab (UI setup) = UI $ \store sink ->
   in setup store' sink'
 
 focus
-  :: forall w m s t a b
-   . Lens s t a b
-  -> UI w m a b
-  -> UI w m s t
+  :: forall e w m s t a b
+   . Functor e
+  => Lens s t a b
+  -> UI e w m a b
+  -> UI e w m s t
 focus stab (UI setup) = UI $ \store sink ->
   let store' = fmap (\s -> getConst (stab Const s)) store
       sink' (Ref     c) = sink $ Ref c

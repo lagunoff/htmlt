@@ -249,13 +249,13 @@ import Unsafe.Coerce (unsafeCoerce)
 
 type Decoder a = JSVal -> JSM (Either T.Text a)
 
-type Html msg input output = UI Node msg input output
-type Html' msg model = UI Node msg model model
+type Html msg input output = UI JSM Node msg input output
+type Html' msg model = UI JSM Node msg model model
 
 newtype Attribute msg i o = Attribute
   { runAttr
-      :: Store i
-      -> Sink (Either msg (i -> o))
+      :: Store JSM  i
+      -> Sink JSM (Either msg (i -> o))
       -> HTMLElement
       -> JSM (JSM ())
   }
@@ -265,7 +265,7 @@ text f = UI $ \model _ -> do
   doc <- currentDocumentUnchecked
   content <- f <$> readLatest model
   ui <- toNode <$> createTextNode doc content
-  unsubscribe <- updates model `subscribe1` \Updates {new} ->
+  unsubscribe <- updates model `subscribe` \Updates {new} ->
     setTextContent ui (Just (f new))
   pure $ UIHandle ui unsubscribe
 
@@ -302,7 +302,7 @@ list lens tag attrs child = UI $ \model sink -> do
   let alist = getConst (lens Const s)
   childHandles <- liftIO $ newIORef []
 
-  let sinkAttr :: Sink (Either msg (s -> t))
+  let sinkAttr :: Sink JSM (Either msg (s -> t))
       sinkAttr = either (sink . Yield) (sink . Step)
 
       applyAttr :: Attribute msg s t -> JSM (JSM ())
@@ -324,14 +324,14 @@ list lens tag attrs child = UI $ \model sink -> do
 
       childFinalizer = do
         handles <- liftIO $ readIORef childHandles
-        for_ handles $ \(storeHandle, finalizer) -> finalizeStore storeHandle *> finalizer
+        for_ handles $ \(storeHandle, finalizer) -> finalizer
         liftIO $ writeIORef childHandles []
-  unsubscribe <- updates model `subscribe1` \Updates {} -> do
+  unsubscribe <- updates model `subscribe` \Updates {} -> do
     pure ()
   attrFinalizers <- for attrs applyAttr
   childHandlesVal <- for (zip [0..] alist) $ \(idx, itemVal) -> do
     storeHandle <- createStore (Nested s itemVal)
-    UIHandle node finalizer <- unUI child (getStore storeHandle) $ sink . itemMsg idx
+    UIHandle node finalizer <- unUI child (shStore storeHandle) $ sink . itemMsg idx
     appendChild_ el node
     pure (storeHandle, finalizer)
   liftIO $ writeIORef childHandles childHandlesVal
@@ -340,7 +340,7 @@ list lens tag attrs child = UI $ \model sink -> do
 prop :: (ToJSVal val) => JSString -> (i -> val) -> Attribute msg i o
 prop name f = Attribute $ \model _ el -> do
   readLatest model >>= toJSVal . f >>= \val -> setProp (toJSString name) val (unsafeCoerce el)
-  finalizer <- updates model `subscribe1` \Updates {new} ->
+  finalizer <- updates model `subscribe` \Updates {new} ->
     toJSVal (f new) >>= \val -> setProp (toJSString name) val (unsafeCoerce el)
   pure finalizer
 
