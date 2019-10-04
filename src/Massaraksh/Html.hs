@@ -220,9 +220,10 @@ module Massaraksh.Html
   , menuitem_
   , menu_
     -- * Events
-  , targetValue
   , onInput
   , Attribute (..)
+    -- * Event decoders
+  , module Massaraksh.Decoder
   )
 where
 
@@ -231,7 +232,6 @@ import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader.Class (ask)
 import Data.Foldable (for_)
 import Data.IORef (newIORef, readIORef, writeIORef)
-import qualified Data.Text as T
 import Data.Traversable (for)
 import GHCJS.DOM (currentDocumentUnchecked)
 import GHCJS.DOM.Document (createElement, createTextNode)
@@ -241,13 +241,10 @@ import qualified GHCJS.DOM.GlobalEventHandlers as Ev
 import GHCJS.DOM.Node (appendChild_, setTextContent, toNode)
 import GHCJS.DOM.Types
 import Language.Javascript.JSaddle (setProp)
-import Language.Javascript.JSaddle ((!))
-import Language.Javascript.JSaddle.Native (valueToString)
 import Massaraksh.Event
+import Massaraksh.Decoder (valueDecoder, Decoder(..), runDecoder)
 import Massaraksh
 import Unsafe.Coerce (unsafeCoerce)
-
-type Decoder a = JSVal -> JSM (Either T.Text a)
 
 type Html msg input output = UI JSM Node msg input output
 type Html' msg model = UI JSM Node msg model model
@@ -326,6 +323,7 @@ list lens tag attrs child = UI $ \model sink -> do
         handles <- liftIO $ readIORef childHandles
         for_ handles $ \(storeHandle, finalizer) -> finalizer
         liftIO $ writeIORef childHandles []
+        
   unsubscribe <- updates model `subscribe` \Updates {} -> do
     pure ()
   attrFinalizers <- for attrs applyAttr
@@ -648,20 +646,18 @@ onWithOptions
   -> Decoder a
   -> (i -> a -> Either msg (i -> o))
   -> Attribute msg i o
-onWithOptions evName decoder makeMsg = Attribute $ \store sink el -> EventM.on el evName $ ask >>= \event -> liftJSM $ do
-  model <- readLatest store
-  v <- decoder =<< toJSVal event
-  case v of
-    Left _  -> pure ()
-    Right a -> sink $ makeMsg model a
-
-targetValue :: Decoder JSString
-targetValue v = do
-  val <- v ! ("target" :: JSString) ! ("value" :: JSString) >>= valueToString
-  pure $ Right val
+onWithOptions evName decoder makeMsg = Attribute setup where
+  setup store sink el =
+    EventM.on el evName $ do
+      event <- ask >>= liftJSM . toJSVal
+      model <- liftJSM $ readLatest store
+      result <- liftJSM (runDecoder decoder event)
+      case result of
+        Right a -> liftJSM $ sink $ makeMsg model a
+        Left  _ -> pure ()
 
 onInput :: (i -> JSString -> Either msg (i -> o)) -> Attribute msg i o
-onInput = onWithOptions Ev.input targetValue
+onInput = onWithOptions Ev.input valueDecoder
 
 -- https://github.com/dmjio/miso/blob/0576696323652ec17a921a0be8c41e82685da374/src/Miso/Html/Element.hs
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/div
