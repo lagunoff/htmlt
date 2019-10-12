@@ -1,8 +1,3 @@
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE LambdaCase            #-}
-{-# LANGUAGE NamedFieldPuns        #-}
-{-# LANGUAGE RankNTypes            #-}
-{-# LANGUAGE RecordWildCards       #-}
 module Massaraksh where
 
 import Control.Monad.IO.Class
@@ -15,17 +10,17 @@ data Updates a = Updates { old :: a, new :: a }
 data Nested parent model = Nested { parent :: parent, here :: model }
 
 data Store eff a = Store
-  { readLatest :: eff a
-  , updates    :: Event eff (Updates a)
+  { readStore :: eff a
+  , updates   :: Event eff (Updates a)
   }
 
--- | Predefined messages with
+-- |Datatype for messages emitted by 'UI' components
 data UIMsg widget msg input output
   = Ref widget
   | Step (input -> output)
   | Yield msg
 
--- | Represents a chunk of user interface
+-- |Represents a chunk of user interface
 newtype UI eff widget msg input output = UI
   { unUI
       :: Store eff input
@@ -33,7 +28,7 @@ newtype UI eff widget msg input output = UI
       -> eff (UIHandle eff widget)
   }
 
--- | Result of running 'UI'
+-- |Result of running 'unUI'
 data UIHandle eff widget = UIHandle
   { uiWidget    :: widget
   , uiFinalizer :: eff ()
@@ -41,13 +36,13 @@ data UIHandle eff widget = UIHandle
 
 -- | Map @msg@ inside @UIMsg ui msg i o@
 mapMessage :: (a -> b) -> UIMsg ui a i o -> UIMsg ui b i o
-mapMessage f (Ref   ui)  = Ref ui
-mapMessage f (Step  io)  = Step io
+mapMessage f (Ref ui)    = Ref ui
+mapMessage f (Step io)   = Step io
 mapMessage f (Yield msg) = Yield (f msg)
 
 -- | Map @msg@ inside @UI w m i o@
 mapUI :: (a -> b) -> UI e w a i o -> UI e w b i o
-mapUI f (UI setup) = UI $ \store sink -> setup store (sink . mapMessage f)
+mapUI f (UI setup) = UI \store sink -> setup store (sink . mapMessage f)
 
 -- | Result of 'createStore'
 data StoreHandle eff a = StoreHandle
@@ -73,21 +68,24 @@ instance Functor Updates where
   fmap f (Updates old new) = Updates (f old) (f new)
 
 instance Functor eff => Functor (Store eff) where
-  fmap f (Store rl u) = Store rl' u' where
-    rl' = f <$> rl
-    u' = (fmap $ fmap f) u
+  fmap f (Store latest updates) = Store latest' updates'
+    where
+      latest' = f <$> latest
+      updates' = fmap (fmap f) updates
 
 -- | Filter updates from another store
 mapMaybe :: MonadIO eff => b -> (a -> Maybe b) -> Store eff a -> Store eff b
-mapMaybe def f (Store readA updatesA) = Store {..} where
-  readLatest = f <$> readA >>= \case
-    Just b -> pure b
-    Nothing -> pure def
-  updates = flip Ev.mapMaybe updatesA $ \Updates { old, new } -> case (f old, f new) of
-    (Just old', Just new') -> Just (Updates old' new')
-    (_, _)                 -> Nothing
+mapMaybe def f (Store latest updates) = Store latest' updates'
+  where
+    latest' = f <$> latest >>= \case
+      Just b -> pure b
+      Nothing -> pure def
+    updates' = flip Ev.mapMaybe updates \Updates { old, new } ->
+      case (f old, f new) of
+        (Just old', Just new') -> Just (Updates old' new')
+        (_, _)                 -> Nothing
 
 askModel :: Monad e => (i -> UI e w m i o) -> UI e w m i o
-askModel f = UI $ \store sink -> do
-  setup <- unUI . f <$> readLatest store
+askModel f = UI \store sink -> do
+  setup <- unUI . f <$> readStore store
   setup store sink

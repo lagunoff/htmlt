@@ -19,7 +19,7 @@ data EventHandle m a = EventHandle
 createEvent :: MonadIO m => m (EventHandle m a)
 createEvent = do
   subscribers <- liftIO $ newIORef []
-  let event = Event $ \k -> do
+  let event = Event \k -> do
         kRef <- liftIO $ newIORef k -- Need 'IORef' for an 'Eq' instance
         liftIO $ modifyIORef subscribers ((:) kRef)
         pure $ liftIO $ modifyIORef subscribers (delete kRef)
@@ -30,15 +30,16 @@ createEvent = do
 
 -- | Filter and map occurences
 mapMaybe :: Applicative m => (a -> Maybe b) -> Event m a -> Event m b
-mapMaybe f (Event susbcribeA) = Event subscribeB where
-  subscribeB k = susbcribeA $ maybe (pure ()) k . f
+mapMaybe f (Event susbcribe) = Event subscribe'
+  where
+    subscribe' k = susbcribe $ maybe (pure ()) k . f
 
 instance Functor (Event m) where
   fmap f (Event s) = Event $ s . (. f)
 
 instance MonadIO eff => Applicative (Event eff) where
-  pure a = Event $ \k -> k a *> pure (pure ())
-  (<*>) e1 e2 = Event $ \k -> do
+  pure a = Event \k -> k a *> pure (pure ())
+  (<*>) e1 e2 = Event \k -> do
     latestA <- liftIO $ newIORef Nothing
     latestB <- liftIO $ newIORef Nothing
     c1 <- e1 `subscribe` \a -> do

@@ -1,0 +1,64 @@
+name:                massaraksh
+version:             0.1.0.0
+#synopsis:
+#description:
+homepage:            https://github.com/lagunoff/massaraksh
+license:             BSD3
+author:              Vladislav Lagunov
+maintainer:          vlad.lagunov@gmail.com
+copyright:           2019 Vladislav Lagunov
+category:            Web
+extra-source-files:
+- README.md
+
+dependencies:
+  - base >= 4.7 && < 5
+  - aeson >= 1.4.0.0 && < 1.5.0.0
+  - bytestring
+  - text
+  - lens
+  - mtl
+  - jsaddle
+  - ghcjs-dom-jsaddle
+
+when:
+  - condition: impl(ghcjs)
+    then:
+      ghc-options: -dedupe
+      source-dirs: src-ghcjs
+      dependencies:
+        - ghcjs-base
+    else:
+      source-dirs: src-ghc  
+
+ghc-options: -Wall -Wno-missing-signatures -O2
+
+source-dirs:
+  - src
+
+executables:
+  todomvc:
+    source-dirs: examples
+    main: TodoMVC/Main.hs
+    dependencies:
+      - jsaddle-warp
+      - generic-lens
+      - raw-strings-qq
+      - polysemy >= 1.2.0.0 && < 1.3.0.0
+      
+default-extensions:
+  - DataKinds
+  - FlexibleContexts
+  - GADTs
+  - LambdaCase
+  - PolyKinds
+  - RankNTypes
+  - ScopedTypeVariables
+  - TypeApplications
+  - TypeOperators
+  - TypeFamilies
+  - BlockArguments
+  - NamedFieldPuns
+  - DuplicateRecordFields
+  - DeriveGeneric
+  - DeriveAnyClass

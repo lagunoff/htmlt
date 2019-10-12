@@ -1,36 +1,63 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.31.2.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: 6adc7ebebb4d57fee19e13c1cafd96961f6edbae032303d6870f1871df8b3a36
+
 name:                massaraksh
 version:             0.1.0.0
--- synopsis:
--- description:
-homepage:            https://github.com/githubuser/massaraksh#readme
+homepage:            https://github.com/lagunoff/massaraksh
 license:             BSD3
 license-file:        LICENSE
-author:              Author name here
-maintainer:          example@example.com
-copyright:           2019 Author name here
+author:              Vladislav Lagunov
+maintainer:          vlad.lagunov@gmail.com
+copyright:           2019 Vladislav Lagunov
 category:            Web
 build-type:          Simple
-cabal-version:       >=1.10
-extra-source-files:  README.md
+extra-source-files:
+    README.md
 
-library
-  exposed-modules:
-        Massaraksh
-        Massaraksh.Event
-        Massaraksh.Html
-        Massaraksh.Lens
-        Massaraksh.Decoder
-  hs-source-dirs:      src
-  default-language:    Haskell2010
-  ghc-options:         -Wall -Wno-unused-matches
-  build-depends:       base
-                     , ghcjs-dom-jsaddle
-                     , mtl
-                     , text
-                     , jsaddle
-                     , containers
-                     , lens
-                     , aeson
+executable todomvc
+  main-is: TodoMVC/Main.hs
+  other-modules:
+      Massaraksh
+      Massaraksh.Event
+      Massaraksh.Html
+      Massaraksh.Html.Attrs
+      Massaraksh.Html.Attrs.Dynamic
+      Massaraksh.Html.Decoder
+      Massaraksh.Html.Element
+      Massaraksh.Lens
+      TodoMVC.Item
+      TodoMVC.Todos
+      Paths_massaraksh
+  hs-source-dirs:
+      src
+      examples
+  default-extensions: DataKinds FlexibleContexts GADTs LambdaCase PolyKinds RankNTypes ScopedTypeVariables TypeApplications TypeOperators TypeFamilies BlockArguments NamedFieldPuns DuplicateRecordFields DeriveGeneric DeriveAnyClass
+  ghc-options: -Wall -Wno-missing-signatures -O2
+  build-depends:
+      aeson >=1.4.0.0 && <1.5.0.0
+    , base >=4.7 && <5
+    , bytestring
+    , generic-lens
+    , ghcjs-dom-jsaddle
+    , jsaddle
+    , jsaddle-warp
+    , lens
+    , mtl
+    , polysemy >=1.2.0.0 && <1.3.0.0
+    , raw-strings-qq
+    , text
   if impl(ghcjs)
-    build-depends:  ghcjs-base
-    ghc-options:   -dedupe
+    hs-source-dirs:
+        src-ghcjs
+    ghc-options: -dedupe
+    build-depends:
+        ghcjs-base
+  else
+    hs-source-dirs:
+        src-ghc
+  default-language: Haskell2010

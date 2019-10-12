@@ -1,28 +1,12 @@
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE LambdaCase   #-}
-
 -- | Poprted from Miso
 -- https://github.com/dmjio/miso/blob/acae5300c8b74398ff5333d38c36ae5cf64d01d3/src/Miso/Event/Decoder.hs
-module Massaraksh.Decoder
-  ( -- * Decoder
-    Decoder (..)
-  , DecodeTarget (..)
-  , at
-  -- * Decoders
-  , emptyDecoder
-  , keycodeDecoder
-  , checkedDecoder
-  , valueDecoder
-  , runDecoder
-  )
-  where
+module Massaraksh.Html.Decoder where
 
-import Data.Aeson.Types (withText, Value, Parser, withObject, (.:), parseEither)
+import Data.Aeson.Types (withBool, withScientific, withText, Value, Parser, withObject, (.:), parseEither)
+import qualified Data.JSString as JSS
 import qualified Data.JSString.Text as JSS
-import Control.Applicative
 import Control.Monad (foldM)
 import GHCJS.Types (JSVal)
 import Data.JSString (JSString)
@@ -49,15 +33,15 @@ at decodeAt decoder = Decoder {decodeAt = DecodeTarget decodeAt, ..}
 emptyDecoder :: Decoder ()
 emptyDecoder = mempty `at` go
   where
-    go = withObject "emptyDecoder" $ \_ -> pure ()
+    go = withObject "emptyDecoder" \_ -> pure ()
 
 -- | Retrieves either "keyCode", "which" or "charCode" field in `Decoder`
 keycodeDecoder :: Decoder Int
 keycodeDecoder = Decoder {..}
   where
-    decodeAt = DecodeTarget mempty
-    decoder = withObject "event" $ \o ->
-       (o .: "keyCode" <|> o .: "which" <|> o .: "charCode")
+    decodeAt = DecodeTarget ["keyCode"]
+    decoder = withScientific "keyCode" (pure . floor)
+       
 
 -- | Retrieves "value" field in `Decoder`
 valueDecoder :: Decoder JSString
@@ -70,19 +54,18 @@ valueDecoder = Decoder {..}
 checkedDecoder :: Decoder Bool
 checkedDecoder = Decoder {..}
   where
-    decodeAt = DecodeTarget ["target"]
-    decoder = withObject "target" $ \o ->
-       (o .: "checked")
+    decodeAt = DecodeTarget ["target", "checked"]
+    decoder = withBool "target" pure
 
 -- | Check JS values against decoder
 runDecoder :: forall a. Decoder a -> JSVal -> JSM (Either String a)
 runDecoder (Decoder parse (DecodeTarget target)) val =
   foldM go (Right val) target >>= checkValue where
-    go (Left err)    key = pure $ Left err
+    go (Left err) key = pure $ Left err
     go (Right jsval) key = do
-      jsval' <- val ^. js key
+      jsval' <- jsval ^. js key
       isUndefined <- valIsUndefined jsval'
-      pure $ if isUndefined then (Left "Undefined property ") else Right jsval'
+      pure $ if isUndefined then (Left $ "Undefined property " <> JSS.unpack key) else Right jsval'
 
     checkValue :: Either String JSVal -> JSM (Either String a)
     checkValue (Left err)    = pure $ Left err
