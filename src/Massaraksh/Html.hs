@@ -51,13 +51,15 @@ import qualified GHCJS.DOM.EventM as EventM
 import qualified GHCJS.DOM.GlobalEventHandlers as E
 import GHCJS.DOM.Node (appendChild_, setTextContent, toNode, removeChild_, getLastChild)
 import GHCJS.DOM.Element (setAttribute)
-import GHCJS.DOM.Types
+import GHCJS.DOM.Types (Node, JSM, Element(..), HTMLElement(..), ToJSVal(..), IsEvent(..), uncheckedCastTo, ToJSString(..), liftJSM)
 import Language.Javascript.JSaddle (setProp)
 import Massaraksh.Event hiding (mapMaybe)
 import Massaraksh.Html.Decoder
 import Massaraksh
 import Unsafe.Coerce (unsafeCoerce)
 import Data.Semigroup
+import Data.Text (Text)
+import qualified Data.JSString.Text as JSS
 
 type Html msg input output = UI JSM Node msg input output
 type Html' msg model = UI JSM Node msg model model
@@ -73,23 +75,23 @@ newtype Attribute msg i o = Attribute
 noopAttr :: Attribute msg i o
 noopAttr = Attribute \_ _ _ -> pure $ pure ()
 
-textDyn :: (i -> JSString) -> Html msg i o
+textDyn :: (i -> Text) -> Html msg i o
 textDyn f = UI \model _ -> do
   doc <- currentDocumentUnchecked
   content <- f <$> readStore model
-  ui <- toNode <$> createTextNode doc content
+  ui <- toNode <$> createTextNode doc (JSS.textToJSString content)
   unsubscribe <- updates model `subscribe` \Updates {new} ->
     setTextContent ui (Just (f new))
   pure (UIHandle ui unsubscribe)
 
-text :: JSString -> Html msg i o
+text :: Text -> Html msg i o
 text content = UI \_ _ -> do
   doc <- currentDocumentUnchecked
   ui <- toNode <$> createTextNode doc content
   pure $ UIHandle ui $ pure ()
 
 el
-  :: JSString
+  :: Text
   -> [Attribute msg i o]
   -> [Html msg i o]
   -> Html msg i o
@@ -108,7 +110,7 @@ el tag attrs childs = UI \model sink -> do
 list
   :: forall msg s t a b
    . Lens s t [b] [b]
-  -> JSString
+  -> Text
   -> [Attribute msg s t]
   -> Html (Int -> msg) a b
   -> (s -> b -> a)
@@ -183,29 +185,29 @@ list stbb tag attrs child props = UI \store sink -> do
 
 -- ** Element properties
 
-propDyn :: ToJSVal val => JSString -> (i -> val) -> Attribute msg i o
+propDyn :: ToJSVal val => Text -> (i -> val) -> Attribute msg i o
 propDyn name f = Attribute \store _ el -> do
   model <- readStore store
   jsprop <- toJSVal (f model)
   setProp (toJSString name) jsprop (unsafeCoerce el)
   finalizer <- updates store `subscribe` \Updates {new} -> do
     newProp <- toJSVal (f new)
-    setProp name newProp (unsafeCoerce el)
+    setProp (toJSString name) newProp (unsafeCoerce el)
   pure finalizer
 
-prop :: ToJSVal val => JSString -> val -> Attribute msg i o
+prop :: ToJSVal val => Text -> val -> Attribute msg i o
 prop name val = Attribute \_ _ el -> do
   jsval <- toJSVal val
-  setProp name jsval (unsafeCoerce el)
+  setProp (toJSString name) jsval (unsafeCoerce el)
   pure $ pure ()
 
-attr :: JSString -> JSString -> Attribute msg i o
+attr :: Text -> Text -> Attribute msg i o
 attr name val = Attribute \_ _ el -> do
   let self = uncheckedCastTo HTMLElement el
   setAttribute self name val
   pure $ pure ()
   
-attrDyn :: JSString -> (i -> JSString) -> Attribute msg i o
+attrDyn :: Text -> (i -> Text) -> Attribute msg i o
 attrDyn name f = Attribute \store _ el -> do
   let self = uncheckedCastTo HTMLElement el
   model <- readStore store 
@@ -258,40 +260,40 @@ onWithOptions_
 onWithOptions_ eventName decoder makeMsg
   = onWithOptions eventName decoder (\_ -> Left . makeMsg)
 
-onInput :: (i -> JSString -> Either msg (i -> o)) -> Attribute msg i o
+onInput :: (i -> Text -> Either msg (i -> o)) -> Attribute msg i o
 onInput = onWithOptions E.input valueDecoder
 
-onInput_ :: (JSString -> msg) -> Attribute msg i o
+onInput_ :: (Text -> msg) -> Attribute msg i o
 onInput_ makeMsg = onWithOptions E.input valueDecoder \_ -> Left . makeMsg
 
 -- ** Some synomyms for 'prop' and 'propDyn'
 
-boolPropDyn :: JSString -> (i -> Bool) -> Attribute msg i o
+boolPropDyn :: Text -> (i -> Bool) -> Attribute msg i o
 boolPropDyn = propDyn
 
-boolProp :: JSString -> Bool -> Attribute msg i o
+boolProp :: Text -> Bool -> Attribute msg i o
 boolProp = prop
 
-stringPropDyn :: JSString -> (i -> JSString) -> Attribute msg i o
+stringPropDyn :: Text -> (i -> Text) -> Attribute msg i o
 stringPropDyn = propDyn
 
-stringProp :: JSString -> JSString -> Attribute msg i o
+stringProp :: Text -> Text -> Attribute msg i o
 stringProp = prop
 
-textPropDyn :: JSString -> (i -> JSString) -> Attribute msg i o
+textPropDyn :: Text -> (i -> Text) -> Attribute msg i o
 textPropDyn = propDyn
 
-textProp :: JSString -> JSString -> Attribute msg i o
+textProp :: Text -> Text -> Attribute msg i o
 textProp = prop
 
-intProp :: JSString -> Int -> Attribute msg i o
+intProp :: Text -> Int -> Attribute msg i o
 intProp = prop
 
-intPropDyn :: JSString -> (i -> Int) -> Attribute msg i o
+intPropDyn :: Text -> (i -> Int) -> Attribute msg i o
 intPropDyn = propDyn
 
-doublePropDyn ::  JSString -> (i -> Double) -> Attribute msg i o
+doublePropDyn ::  Text -> (i -> Double) -> Attribute msg i o
 doublePropDyn = propDyn
 
-doubleProp ::  JSString -> Double -> Attribute msg i o
+doubleProp ::  Text -> Double -> Attribute msg i o
 doubleProp = prop

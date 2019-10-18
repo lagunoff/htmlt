@@ -5,6 +5,7 @@
 
   shells = {
     ghcjs = ["massaraksh"];
+    ghc = ["massaraksh"];
   };
   
   overrides = self: super:

@@ -7,7 +7,7 @@ module TodoMVC.Item where
 
 import GHC.Generics
 import GHCJS.Types (JSVal)
-import Data.JSString.Internal.Type (JSString(..))
+import Data.Text (Text)
 import Data.Maybe (isJust)
 import Data.Aeson
 import Control.Lens
@@ -27,9 +27,9 @@ data Props = Props
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 data Model = Model
-  { title     :: JSString
+  { title     :: Text
   , completed :: Bool
-  , editing   :: Maybe JSString
+  , editing   :: Maybe Text
   } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 data Msg a where
@@ -37,12 +37,12 @@ data Msg a where
   Destroy :: Msg ()
   Blur :: Msg ()
   EditingOn :: JSVal -> Msg ()
-  EditInput :: JSString -> Msg ()
+  EditInput :: Text -> Msg ()
   KeyPress :: Int -> Msg ()
   EditingCancel :: Msg ()
   EditingCommit :: Msg ()
   
-init :: JSString -> Model
+init :: Text -> Model
 init title =
   Model title False Nothing
   
@@ -101,12 +101,3 @@ view =
     , onWithOptions1_ E.keyDown keycodeDecoder KeyPress
     ]
   ]
-
--- TODO: Find these instances
-#ifdef ghcjs_HOST_OS
-instance ToJSON JSString where
-  toJSON = undefined
-
-instance FromJSON JSString where
-  parseJSON = undefined
-#endif

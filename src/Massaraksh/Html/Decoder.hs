@@ -5,6 +5,7 @@
 module Massaraksh.Html.Decoder where
 
 import Data.Aeson.Types (withBool, withScientific, withText, Value, Parser, withObject, (.:), parseEither)
+import Data.Text (Text)
 import qualified Data.JSString as JSS
 import qualified Data.JSString.Text as JSS
 import Control.Monad (foldM)
@@ -44,11 +45,11 @@ keycodeDecoder = Decoder {..}
        
 
 -- | Retrieves "value" field in `Decoder`
-valueDecoder :: Decoder JSString
+valueDecoder :: Decoder Text
 valueDecoder = Decoder {..}
   where
     decodeAt = DecodeTarget ["target", "value"]
-    decoder = withText "target.value" $ pure . JSS.textToJSString
+    decoder = withText "target.value" $ pure
 
 -- | Retrieves "checked" field in Decoder
 checkedDecoder :: Decoder Bool

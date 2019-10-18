@@ -9,14 +9,13 @@ module TodoMVC.Todos where
 import GHC.Generics
 import Data.Aeson
 import Data.String (fromString)
-import Data.JSString (JSString)
-import Language.Javascript.JSaddle (JSVal, JSM)
+import Data.Text (Text)
+import Language.Javascript.JSaddle (JSM)
 import qualified GHCJS.DOM as DOM
 import qualified GHCJS.DOM.Window as DOM
 import qualified GHCJS.DOM.Storage as DOM
 import qualified GHCJS.DOM.Location as DOM
-import qualified Data.JSString as JSS
-import qualified Data.JSString.Text as JSS
+import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified TodoMVC.Item as Item
 import Massaraksh.Html.Exists
@@ -32,18 +31,18 @@ import Polysemy.State
 import Massaraksh.Component
 
 data Model = Model
-  { title  :: JSString
+  { title  :: Text
   , todos  :: [Item.Model]
   , filter :: Filter
   } deriving (Show, Eq, Generic, FromJSON, ToJSON)
   
 data Msg a where
-  Edit :: JSString -> Msg ()
+  Edit :: Text -> Msg ()
   SetFilter :: Filter -> Msg ()
   ToggleAll :: Bool -> Msg ()
   ClearCompleted :: Msg ()
   KeyPress :: Int -> Msg ()
-  HashChange :: JSString -> Msg ()
+  HashChange :: Text -> Msg ()
   BeforeUnload :: Msg ()
   EditingCommit :: Msg ()
   Blur :: Msg ()
@@ -60,10 +59,10 @@ init = do
   hash <- DOM.getHash location
   let filter = filterFromUrl hash & maybe All id
   let emptyModel = Model "" [] filter
-  maybeItem <- DOM.getItem localStorage ("todomvc-massaraksh" :: JSString)
+  maybeItem <- DOM.getItem localStorage ("todomvc-massaraksh" :: Text)
   case maybeItem of
     Nothing -> pure emptyModel
-    Just str -> case decodeStrict' $ T.encodeUtf8 $ JSS.textFromJSString str of
+    Just str -> case decodeStrict' $ T.encodeUtf8 $ str of
       Nothing -> pure emptyModel
       Just items -> pure $ Model "" items filter
   
@@ -79,7 +78,7 @@ eval = \case
     modify @Model $ field @"todos" %~ Prelude.filter (not . Item.completed)
   EditingCommit -> do
     model <- get
-    case JSS.strip (title model) of
+    case T.strip (title model) of
       "" -> pure ()
       trimmed -> do
         modify @Model $ field @"todos" %~ (<> [Item.init trimmed])
@@ -191,18 +190,18 @@ view =
         (Completed, False) -> True
         _                  -> False
   
-    pluralize :: JSString -> JSString -> Int -> JSString
+    pluralize :: Text -> Text -> Int -> Text
     pluralize singular plural 0 = singular
     pluralize singular plural _ = plural  
   
-filterFromUrl :: JSString -> Maybe Filter
+filterFromUrl :: Text -> Maybe Filter
 filterFromUrl = \case
   "#/"          -> Just All
   "#/active"    -> Just Active
   "#/completed" -> Just Completed
   _             -> Nothing
 
-filterToUrl :: Filter -> JSString
+filterToUrl :: Filter -> Text
 filterToUrl = \case
   All       -> "#/"
   Active    -> "#/active"
