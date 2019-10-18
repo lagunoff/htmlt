@@ -11,14 +11,13 @@ import Data.Text (Text)
 import Data.Maybe (isJust)
 import Data.Aeson
 import Control.Lens
-import Massaraksh.Html.Exists
+import Massaraksh.Component
 import Massaraksh.Html.Element
 import Massaraksh.Html.Attrs
 import qualified Massaraksh.Html.Attrs.Dynamic as Dyn
 import qualified GHCJS.DOM.GlobalEventHandlers as E
 import Polysemy
 import Polysemy.State
-import Massaraksh.Component
 import Data.Generics.Product (field)
 
 data Props = Props

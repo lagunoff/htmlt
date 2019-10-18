@@ -47,17 +47,16 @@ import Data.Traversable (for)
 import GHCJS.DOM (currentDocumentUnchecked)
 import GHCJS.DOM.Document (createElement, createTextNode)
 import GHCJS.DOM.EventM (EventName)
-import qualified GHCJS.DOM.EventM as EventM
+import qualified GHCJS.DOM.EventM as E
 import qualified GHCJS.DOM.GlobalEventHandlers as E
 import GHCJS.DOM.Node (appendChild_, setTextContent, toNode, removeChild_, getLastChild)
 import GHCJS.DOM.Element (setAttribute)
-import GHCJS.DOM.Types (Node, JSM, Element(..), HTMLElement(..), ToJSVal(..), IsEvent(..), uncheckedCastTo, ToJSString(..), liftJSM)
+import GHCJS.DOM.Types (Node, JSM, Element(..), HTMLElement(..), ToJSVal(..), IsEvent, uncheckedCastTo, ToJSString(..), liftJSM)
 import Language.Javascript.JSaddle (setProp)
 import Massaraksh.Event hiding (mapMaybe)
 import Massaraksh.Html.Decoder
 import Massaraksh
 import Unsafe.Coerce (unsafeCoerce)
-import Data.Semigroup
 import Data.Text (Text)
 import qualified Data.JSString.Text as JSS
 
@@ -225,7 +224,7 @@ on
   -> Attribute msg i o
 on eventName makeMsg = Attribute setup
   where
-    setup model sink el = EventM.on el eventName $ liftJSM $ readStore model >>= sink . makeMsg
+    setup model sink el = E.on el eventName $ liftJSM $ readStore model >>= sink . makeMsg
 
 on_
   :: IsEvent e
@@ -242,14 +241,13 @@ onWithOptions
   -> Attribute msg i o
 onWithOptions eventName decoder makeMsg = Attribute setup
   where
-    setup store sink el = 
-      EventM.on el eventName do
-        event <- ask >>= liftJSM . toJSVal
-        model <- liftJSM $ readStore store
-        result <- liftJSM (runDecoder decoder event)
-        case result of
-          Right a -> liftJSM $ sink $ makeMsg model a
-          Left err -> liftIO $ putStrLn err
+    setup store sink el = E.on el eventName do
+      event <- ask >>= liftJSM . toJSVal
+      model <- liftJSM $ readStore store
+      result <- liftJSM (runDecoder decoder event)
+      case result of
+        Right a -> liftJSM $ sink $ makeMsg model a
+        Left err -> liftIO $ putStrLn err
 
 onWithOptions_
   :: (IsEvent e, ToJSVal e)

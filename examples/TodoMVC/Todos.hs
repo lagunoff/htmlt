@@ -18,7 +18,7 @@ import qualified GHCJS.DOM.Location as DOM
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified TodoMVC.Item as Item
-import Massaraksh.Html.Exists
+import Massaraksh.Component
 import Massaraksh.Html.Element
 import Massaraksh.Html.Attrs
 import Data.Generics.Product (field)
@@ -28,7 +28,6 @@ import qualified GHCJS.DOM.GlobalEventHandlers as E
 import Text.RawString.QQ (r)
 import Polysemy
 import Polysemy.State
-import Massaraksh.Component
 
 data Model = Model
   { title  :: Text
