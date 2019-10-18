@@ -1,12 +1,13 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE OverloadedStrings, MultiWayIf #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE MultiWayIf, CPP #-}
 module TodoMVC.Item where
 
 import GHC.Generics
 import GHCJS.Types (JSVal)
-import Data.JSString (JSString)
+import Data.JSString.Internal.Type (JSString(..))
 import Data.Maybe (isJust)
 import Data.Aeson
 import Control.Lens
@@ -19,7 +20,6 @@ import Polysemy
 import Polysemy.State
 import Massaraksh.Component
 import Data.Generics.Product (field)
-
 
 data Props = Props
   { hidden :: Bool
@@ -101,3 +101,12 @@ view =
     , onWithOptions1_ E.keyDown keycodeDecoder KeyPress
     ]
   ]
+
+-- TODO: Find these instances
+#ifdef ghcjs_HOST_OS
+instance ToJSON JSString where
+  toJSON = undefined
+
+instance FromJSON JSString where
+  parseJSON = undefined
+#endif

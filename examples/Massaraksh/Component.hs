@@ -5,7 +5,7 @@ module Massaraksh.Component where
 import Language.Javascript.JSaddle (JSM)
 import GHCJS.DOM
 import GHCJS.DOM.Document
-import GHCJS.DOM.Node hiding (Node)
+import GHCJS.DOM.Node
 import Massaraksh.Html.Exists
 import Data.Aeson
 import Polysemy
@@ -18,6 +18,18 @@ import qualified Language.Javascript.JSaddle.Warp as Warp
 import System.Environment
 import Control.Exception
 #endif
+
+data Component init eval msg i o = Component
+  { init :: init o
+  , eval :: forall a. msg a -> eval a
+  , view :: Html1 msg i o
+  }
+
+data ComponentHandle eff msg i o = ComponentHandle
+  { send     :: Either msg (i -> o) -> eff ()
+  , widget   :: Node
+  , finalize :: eff ()
+  }
 
 data Emit msg m a where
   Emit :: msg a -> Emit msg m a
@@ -54,10 +66,10 @@ io2jsm = interpret $ embed @JSM . liftIO . unEmbed
 defaultMain
   :: forall r model msg
    . (Member (Embed JSM) r, ToJSON model)
-  => JSM model                     -- ^ Init model
+  => JSM model                    -- ^ Init model
   -> (forall a. msg a -> Sem (Emit msg ': State model ': r) a)  -- ^ Components' eval function
-  -> Html1' msg model              -- ^ Components' view
-  -> (forall a. Sem r a -> JSM a)  -- ^ Evaluate the rest of effects
+  -> Html1' msg model             -- ^ Components' view
+  -> (forall a. Sem r a -> JSM a) -- ^ Evaluate the rest of effects
   -> IO ()
 defaultMain init eval view runSem = do
   let mainClient = do

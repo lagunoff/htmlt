@@ -1,3 +1,4 @@
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE IncoherentInstances #-}
 {-# LANGUAGE Unsafe #-}
@@ -9,7 +10,7 @@ import GHC.Generics
 import Data.Aeson
 import Data.String (fromString)
 import Data.JSString (JSString)
-import Language.Javascript.JSaddle (JSM)
+import Language.Javascript.JSaddle (JSVal, JSM)
 import qualified GHCJS.DOM as DOM
 import qualified GHCJS.DOM.Window as DOM
 import qualified GHCJS.DOM.Storage as DOM
