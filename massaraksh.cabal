@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 3c44a42e13ae381dc337029964212714ec35aca0ae0337e96eaf70d5d1599ea7
+-- hash: f865ab27c9ad281e5c0ec97a2a35c11b3c837e44354b2a10eec04ddaaa87501e
 
 name:                massaraksh
 version:             0.1.0.0
@@ -19,6 +19,11 @@ build-type:          Simple
 extra-source-files:
     README.md
 
+flag examples
+  description: Build examples
+  manual: True
+  default: False
+
 library
   exposed-modules:
       Massaraksh
@@ -26,7 +31,9 @@ library
       Massaraksh.Html
       Massaraksh.Html.Attrs
       Massaraksh.Html.Attrs.Dynamic
+      Massaraksh.Html.Core
       Massaraksh.Html.Decoder
+      Massaraksh.Html.Dynamic
       Massaraksh.Html.Element
       Massaraksh.Lens
   other-modules:
@@ -53,6 +60,8 @@ library
   else
     hs-source-dirs:
         src-ghc
+    build-depends:
+        jsaddle-warp
   default-language: Haskell2010
 
 executable todomvc
@@ -63,7 +72,9 @@ executable todomvc
       Massaraksh.Html
       Massaraksh.Html.Attrs
       Massaraksh.Html.Attrs.Dynamic
+      Massaraksh.Html.Core
       Massaraksh.Html.Decoder
+      Massaraksh.Html.Dynamic
       Massaraksh.Html.Element
       Massaraksh.Lens
       Massaraksh.Component
@@ -96,7 +107,11 @@ executable todomvc
   else
     hs-source-dirs:
         src-ghc
+    build-depends:
+        jsaddle-warp
   if !impl(ghcjs)
     build-depends:
         jsaddle-warp
+  if !flag(examples)
+    buildable: False
   default-language: Haskell2010

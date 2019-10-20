@@ -50,8 +50,8 @@ data Msg a where
 data Filter = All | Active | Completed
   deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
-init :: JSM Model
-init = do
+init :: Eff '[Embed JSM] Model
+init = embed @JSM do
   window <- DOM.currentWindowUnchecked
   localStorage <- DOM.getLocalStorage window
   location <- DOM.getLocation window
@@ -60,12 +60,12 @@ init = do
   let emptyModel = Model "" [] filter
   maybeItem <- DOM.getItem localStorage ("todomvc-massaraksh" :: Text)
   case maybeItem of
-    Nothing -> pure emptyModel
-    Just str -> case decodeStrict' $ T.encodeUtf8 $ str of
-      Nothing -> pure emptyModel
+    Nothing  -> pure emptyModel
+    Just str -> case decodeStrict' (T.encodeUtf8 str) of
+      Nothing    -> pure emptyModel
       Just items -> pure $ Model "" items filter
   
-eval :: forall r a. Members '[State Model, Emit Msg, Embed IO] r => Msg a -> Sem r a
+eval :: Msg a -> Eff '[State Model, Emit Msg, Embed JSM] a
 eval = \case
   Edit x ->
     modify @Model $ field @"title" .~ x
@@ -100,13 +100,12 @@ eval = \case
     pure ()
   TodoMsg Item.Destroy idx ->
     modify @Model $ field @"todos" %~ deleteNth idx
-  TodoMsg msg idx -> do
-    a <- Item.eval msg
+  TodoMsg msg idx ->
+    Item.eval msg
       & liftMsg (flip TodoMsg idx)
       & runStateLens @Model (field @"todos" . element idx)
-    pure a
     
-view :: Html1' Msg Model
+view :: Html1 Msg Model Model
 view =
   div_ []
   [ section_ [ class_ "todoapp" ]
@@ -162,8 +161,8 @@ view =
       ]
       [ span_
         [ class_ "todo-count" ]
-        [ strong_ [] [ textDyn (fromString . show . itemsLeft) ]
-        , textDyn $ pluralize " item left" " items left" . itemsLeft
+        [ strong_ [] [ Dyn.text (fromString . show . itemsLeft) ]
+        , Dyn.text $ pluralize " item left" " items left" . itemsLeft
         ]
       , ul_ [ class_ "filters" ] $
         [ All, Active, Completed ] & fmap viewFilter

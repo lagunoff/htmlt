@@ -3,14 +3,24 @@ module Massaraksh.Html.Attrs.Dynamic where
 
 import Data.Text (Text)
 import qualified Data.Text as JSS
-import Massaraksh.Html
+import Massaraksh.Html.Core
 import Data.Foldable (foldl')
+
+-- |This module is supposed to be used within a qualified namespace,
+-- so it makes sense here to reexport 'textDyn'
+--
+-- >>> import qualified Massaraksh.Html.Attrs.Dynamic as Dyn
+-- >>> h1_ [] [ Dyn.text \i -> "Hello, " <> username i ]
+text = textDyn
 
 -- | Define multiple classes conditionally
 --
 -- > div_ [ classList_ [ ("empty", null . _items) ] [ ]
 classList_ :: [(Text, i -> Bool)] -> Attribute msg i o
 classList_ classes = class_ \i -> JSS.unwords $ foldl' (\acc (cs, f) -> if f i then cs:acc else acc) [] classes
+-- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/style>
+style_ :: (i -> Text) -> Attribute msg i o
+style_ = textPropDyn "style"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/title>
 title_ ::  (i -> Text) -> Attribute msg i o
 title_ = textPropDyn "title"
@@ -255,3 +265,5 @@ class_ = textPropDyn "className"
 data_ ::  Text -> (i -> Text) -> Attribute msg i o
 data_ k v = textPropDyn ("data-" <> k) v
 
+unsafeInnerHTML :: (i -> Text) -> Attribute msg i o
+unsafeInnerHTML = textPropDyn "innerHTML"

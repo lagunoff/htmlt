@@ -6,16 +6,16 @@ import Data.Foldable (traverse_, for_)
 import Data.IORef (modifyIORef, newIORef, readIORef, writeIORef)
 import Data.List (delete)
 
--- | @Event m a@ is a stream of event occurences of type @a@
+-- |@Event m a@ is a stream of event occurences of type @a@
 newtype Event m a = Event { subscribe :: (a -> m ()) -> m (m ()) }
 
--- | Result of 'createEvent'
+-- |The result of 'createEvent'
 data EventHandle m a = EventHandle
-  { ehEvent :: Event m a
-  , ehPush  :: a -> m ()
+  { getEvent  :: Event m a
+  , pushEvent :: a -> m ()
   }
 
--- | Create new event and a function to supply values to that event
+-- |Create new event and a function to supply values to that event
 createEvent :: MonadIO m => m (EventHandle m a)
 createEvent = do
   subscribers <- liftIO $ newIORef []
@@ -28,7 +28,7 @@ createEvent = do
         for_ callbacks $ liftIO . readIORef >=> ($ a)
   pure (EventHandle event push)
 
--- | Filter and map occurences
+-- |Filter and map occurences
 mapMaybe :: Applicative m => (a -> Maybe b) -> Event m a -> Event m b
 mapMaybe f (Event susbcribe) = Event subscribe'
   where

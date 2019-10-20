@@ -16,6 +16,7 @@ import Massaraksh.Html.Element
 import Massaraksh.Html.Attrs
 import qualified Massaraksh.Html.Attrs.Dynamic as Dyn
 import qualified GHCJS.DOM.GlobalEventHandlers as E
+import Language.Javascript.JSaddle (JSM)
 import Polysemy
 import Polysemy.State
 import Data.Generics.Product (field)
@@ -45,7 +46,7 @@ init :: Text -> Model
 init title =
   Model title False Nothing
   
-eval :: Members '[State Model, Emit Msg, Embed IO] r => Msg a -> Sem r a
+eval :: Msg a -> Eff '[State Model, Emit Msg, Embed JSM] a
 eval = \case
   Completed x ->
     modify @Model $ field @"completed" .~ x
@@ -55,7 +56,7 @@ eval = \case
   KeyPress code -> do
     if | code == 13 -> emit EditingCommit -- Enter
        | code == 27 -> emit EditingCancel -- Escape
-       | otherwise -> pure ()
+       | otherwise  -> pure ()
   EditingOn _ -> do
     model <- get
     modify @Model $ field @"editing" .~ Just (title model)
@@ -89,7 +90,7 @@ view =
       , onWithOptions1_ E.change checkedDecoder Completed
       , Dyn.checked_ (completed . model)
       ]
-    , label_ [] [ textDyn (title . model) ]
+    , label_ [] [ Dyn.text (title . model) ]
     , button_ [ class_ "destroy", on1_ E.click Destroy ] []
     ]
   , input_

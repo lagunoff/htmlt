@@ -46,8 +46,8 @@ mapUI f (UI setup) = UI \store sink -> setup store (sink . mapMessage f)
 
 -- | Result of 'createStore'
 data StoreHandle eff a = StoreHandle
-  { shStore       :: Store eff a
-  , shModifyStore :: (a -> a) -> eff ()
+  { getStore    :: Store eff a
+  , modifyStore :: (a -> a) -> eff ()
   }
 
 -- | Create new 'Store'

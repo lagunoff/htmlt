@@ -2,13 +2,16 @@
 module Massaraksh.Html.Attrs where
 
 import Data.Text (Text)
-import Massaraksh.Html
+import Massaraksh.Html.Core
 
 -- | Define multiple classes conditionally
 --
 -- > div_ [ classList_ [ ("empty", null . _items) ] [ ]
 classList_ :: [(Text, Bool)] -> Attribute msg i o
 classList_ _ = noopAttr
+-- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/style>
+style_ ::  Text -> Attribute msg i o
+style_ = textProp "style"
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/title>
 title_ ::  Text -> Attribute msg i o
 title_ = textProp "title"
@@ -253,3 +256,5 @@ class_ = textProp "className"
 data_ ::  Text -> Text -> Attribute msg i o
 data_ k v = textProp ("data-" <> k) v
 
+unsafeInnerHTML :: Text -> Attribute msg i o
+unsafeInnerHTML = textProp "innerHTML"

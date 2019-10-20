@@ -11,6 +11,12 @@ category:            Web
 extra-source-files:
 - README.md
 
+flags:
+  examples:
+    description: Build examples
+    manual: True
+    default: False
+
 dependencies:
   - base >= 4.7 && < 5
   - aeson >= 1.4.0.0 && < 1.5.0.0
@@ -30,6 +36,8 @@ when:
         - ghcjs-base
     else:
       source-dirs: src-ghc  
+      dependencies:
+        - jsaddle-warp
 
 ghc-options: -Wall -Wno-missing-signatures -O2
 
@@ -50,6 +58,8 @@ executables:
       - condition: "!impl(ghcjs)"
         dependencies:
           - jsaddle-warp
+      - condition: "!flag(examples)"
+        buildable: false
       
 default-extensions:
   - DataKinds

@@ -3,7 +3,8 @@
 module Massaraksh.Component
   ( module Massaraksh.Html
   , Exists(..)
-  , Html1, Html1'
+  , Html1
+  , Eff
   , on1
   , on1_
   , onWithOptions1
@@ -13,25 +14,27 @@ module Massaraksh.Component
   , Emit(..), emit
   , liftMsg
   , interpMsg
-  , runStoreState
+  , runStateStore
   , runStateLens
   , io2jsm
   , defaultMain
   ) where
 
-import Language.Javascript.JSaddle (JSM)
+import Control.Lens
+import Control.Monad (void)
+import Control.Monad.IO.Class (liftIO)
+import Data.Aeson
+import Data.Bifunctor (first)
 import GHCJS.DOM
 import GHCJS.DOM.Document
+import GHCJS.DOM.EventM (EventName)
 import GHCJS.DOM.Node
-import Data.Aeson
+import GHCJS.DOM.Types
+import Language.Javascript.JSaddle (JSM)
+import Massaraksh.Html
 import Polysemy
 import Polysemy.State
-import Control.Monad.IO.Class (liftIO)
-import Control.Lens
-import Massaraksh.Html
-import GHCJS.DOM.Types
-import GHCJS.DOM.EventM (EventName)
-import Data.Bifunctor (first)
+import GHC.IORef
 
 #ifndef ghcjs_HOST_OS
 import qualified Language.Javascript.JSaddle.Warp as Warp
@@ -39,10 +42,14 @@ import System.Environment
 import Control.Exception
 #endif
 
-data Exists f = forall a. Exists { runExist :: f a }
+-- |Wrapper for messages of kind * -> *
+data Exists (f :: * -> *) = forall a. Exists { runExist :: f a }
 
-type Html1 msg input output = UI JSM Node (Exists msg) input output
-type Html1' msg model = UI JSM Node (Exists msg) model model
+-- |'Html' with messages of kind * -> *
+type Html1 (msg :: * -> *) input output = UI JSM Node (Exists msg) input output
+
+-- |More readable alias for 'Polysemy.Sem'
+type Eff e a = forall r. Members e r => Sem r a
 
 on1
   :: IsEvent e
@@ -107,12 +114,22 @@ interpMsg
   -> Sem r a
 interpMsg eval = interpret \(Emit msg) -> interpMsg eval (eval msg)
 
-runStoreState :: forall m s r a. Member (Embed m) r => StoreHandle m s -> Sem (State s ': r) a -> Sem r a
-runStoreState sh = interpret \case
-  Get   -> embed @m $ readStore (shStore sh)
-  Put s -> embed @m $ shModifyStore sh (const s)
+runStateStore
+  :: forall m s r a
+   . Member (Embed m) r
+  => StoreHandle m s
+  -> Sem (State s ': r) a
+  -> Sem r a
+runStateStore handle = interpret \case
+  Get   -> embed @m $ readStore (getStore handle)
+  Put s -> embed @m $ modifyStore handle (const s)
 
-runStateLens :: forall s r a x. Member (State s) r => Traversal' s a  -> Sem (State a ': r) x -> Sem r x
+runStateLens
+  :: forall s r a x
+   . Member (State s) r
+  => Traversal' s a
+  -> Sem (State a ': r) x
+  -> Sem r x
 runStateLens lens = interpret \case
   Get   -> gets ((!! 0) . (^..lens))
   Put s -> modify (lens .~ s)
@@ -125,7 +142,7 @@ defaultMain
    . (Member (Embed JSM) r, ToJSON model)
   => JSM model                    -- ^ Init model
   -> (forall a. msg a -> Sem (Emit msg ': State model ': r) a)  -- ^ Components' eval function
-  -> Html1' msg model             -- ^ Components' view
+  -> Html1 msg model model        -- ^ Components' view
   -> (forall a. Sem r a -> JSM a) -- ^ Evaluate the rest of effects
   -> IO ()
 defaultMain init eval view runSem = do
@@ -133,15 +150,20 @@ defaultMain init eval view runSem = do
         doc <- currentDocumentUnchecked
         body <- getBodyUnchecked doc
         storeHandle <- createStore =<< init
+        nodeRef <- liftIO $ newIORef Nothing
         let sink (Yield (Exists msg)) = do
-              _ <- eval msg
+              void $ eval msg
                 & interpMsg eval
-                & runStoreState storeHandle
+                & runStateStore storeHandle
                 & runSem
-              pure ()
-            sink (Step io) = shModifyStore storeHandle io
-            sink (Ref _) = pure ()
-        UIHandle node _ <- unUI view (shStore storeHandle) sink
+            sink (Step io) = modifyStore storeHandle io
+            sink (Ref newNode) = liftIO (readIORef nodeRef) >>= \case
+              Just oldNode -> do
+                liftIO $ writeIORef nodeRef (Just newNode)
+                replaceChild_ body newNode oldNode
+              Nothing      -> pure ()
+        UIHandle node _ <- unUI view (getStore storeHandle) sink
+        liftIO $ writeIORef nodeRef (Just node)
         appendChild_ body node
 #ifdef ghcjs_HOST_OS
   mainClient
