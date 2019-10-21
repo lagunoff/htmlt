@@ -2,7 +2,7 @@
 module Massaraksh.Html.Attrs.Dynamic where
 
 import Data.Text (Text)
-import qualified Data.Text as JSS
+import qualified Data.Text as T
 import Massaraksh.Html.Core
 import Data.Foldable (foldl')
 
@@ -17,7 +17,7 @@ text = textDyn
 --
 -- > div_ [ classList_ [ ("empty", null . _items) ] [ ]
 classList_ :: [(Text, i -> Bool)] -> Attribute msg i o
-classList_ classes = class_ \i -> JSS.unwords $ foldl' (\acc (cs, f) -> if f i then cs:acc else acc) [] classes
+classList_ classes = class_ \i -> T.unwords $ foldl' (\acc (cs, f) -> if f i then cs:acc else acc) [] classes
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/style>
 style_ :: (i -> Text) -> Attribute msg i o
 style_ = textPropDyn "style"

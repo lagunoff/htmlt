@@ -1,10 +1,21 @@
+{-# LANGUAGE RecordWildCards #-}
 module Main where
 
 import qualified TodoMVC.Todos as Todos
+import qualified TodoMVC.Utils as Utils
 import Polysemy
 import Massaraksh.Component
+import Control.Monad (void)
 
 main :: IO ()
-main = defaultMain Todos.init Todos.eval Todos.view runSem
+main = defaultMainWith $ Config {..}
   where
-    runSem = runM . io2jsm
+    configInit = runM Todos.init
+    configView = Todos.view
+    configSetup = Utils.setup (Exists . Todos.HashChange) (Exists Todos.BeforeUnload)
+    configPort = Nothing
+    configEval handle (Exists msg) = void
+       $ runM
+       $ runStateAppHandle handle
+       $ interpMsg Todos.eval
+       $ Todos.eval msg

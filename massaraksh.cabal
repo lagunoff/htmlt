@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: f865ab27c9ad281e5c0ec97a2a35c11b3c837e44354b2a10eec04ddaaa87501e
+-- hash: 0592689cd66b273545032f63151c2a6b1a6226e9d47ed784addb4905778157e2
 
 name:                massaraksh
 version:             0.1.0.0
@@ -27,6 +27,7 @@ flag examples
 library
   exposed-modules:
       Massaraksh
+      Massaraksh.Core
       Massaraksh.Event
       Massaraksh.Html
       Massaraksh.Html.Attrs
@@ -35,13 +36,13 @@ library
       Massaraksh.Html.Decoder
       Massaraksh.Html.Dynamic
       Massaraksh.Html.Element
-      Massaraksh.Lens
+      Massaraksh.Store
   other-modules:
       Paths_massaraksh
   hs-source-dirs:
       src
   default-extensions: DataKinds FlexibleContexts GADTs LambdaCase PolyKinds RankNTypes ScopedTypeVariables TypeApplications TypeOperators TypeFamilies BlockArguments NamedFieldPuns DuplicateRecordFields DeriveGeneric DeriveAnyClass
-  ghc-options: -Wall -Wno-missing-signatures -O2
+  ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -O2
   build-depends:
       aeson >=1.4.0.0 && <1.5.0.0
     , base >=4.7 && <5
@@ -51,6 +52,7 @@ library
     , lens
     , mtl
     , text
+    , transformers
   if impl(ghcjs)
     hs-source-dirs:
         src-ghcjs
@@ -68,6 +70,7 @@ executable todomvc
   main-is: TodoMVC/Main.hs
   other-modules:
       Massaraksh
+      Massaraksh.Core
       Massaraksh.Event
       Massaraksh.Html
       Massaraksh.Html.Attrs
@@ -76,16 +79,17 @@ executable todomvc
       Massaraksh.Html.Decoder
       Massaraksh.Html.Dynamic
       Massaraksh.Html.Element
-      Massaraksh.Lens
+      Massaraksh.Store
       Massaraksh.Component
       TodoMVC.Item
       TodoMVC.Todos
+      TodoMVC.Utils
       Paths_massaraksh
   hs-source-dirs:
       src
       examples
   default-extensions: DataKinds FlexibleContexts GADTs LambdaCase PolyKinds RankNTypes ScopedTypeVariables TypeApplications TypeOperators TypeFamilies BlockArguments NamedFieldPuns DuplicateRecordFields DeriveGeneric DeriveAnyClass
-  ghc-options: -Wall -Wno-missing-signatures -O2
+  ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -O2
   build-depends:
       aeson >=1.4.0.0 && <1.5.0.0
     , base >=4.7 && <5
@@ -98,6 +102,7 @@ executable todomvc
     , polysemy >=1.2.0.0 && <1.3.0.0
     , raw-strings-qq
     , text
+    , transformers
   if impl(ghcjs)
     hs-source-dirs:
         src-ghcjs

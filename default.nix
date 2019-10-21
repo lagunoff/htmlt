@@ -3,6 +3,8 @@
     massaraksh = ./.;
   };
 
+  withHoogle = false;
+
   shells = {
     ghcjs = ["massaraksh"];
     ghc = ["massaraksh"];

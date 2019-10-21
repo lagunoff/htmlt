@@ -2,13 +2,15 @@
 module Massaraksh.Html.Attrs where
 
 import Data.Text (Text)
+import qualified Data.Text as T
 import Massaraksh.Html.Core
+import Data.Foldable (foldl')
 
 -- | Define multiple classes conditionally
 --
 -- > div_ [ classList_ [ ("empty", null . _items) ] [ ]
 classList_ :: [(Text, Bool)] -> Attribute msg i o
-classList_ _ = noopAttr
+classList_ classes = class_ $ T.unwords $ foldl' (\acc (cs, cond) -> if cond then cs:acc else acc) [] classes
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/style>
 style_ ::  Text -> Attribute msg i o
 style_ = textProp "style"

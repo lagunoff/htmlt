@@ -1,3 +1,4 @@
+{-# LANGUAGE RecordWildCards        #-}
 {-# LANGUAGE CPP                    #-}
 {-# LANGUAGE MultiWayIf             #-}
 {-# LANGUAGE PartialTypeSignatures  #-}
@@ -5,7 +6,6 @@
 {-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE OverloadedStrings      #-}
-{-# OPTIONS_GHC -Wno-name-shadowing #-}
 module Massaraksh.Html.Core where
 
 import Control.Lens ((&), Const(..), Lens, (%~))
@@ -25,6 +25,7 @@ import Massaraksh
 import Massaraksh.Event hiding (mapMaybe)
 import Massaraksh.Html.Decoder
 import Unsafe.Coerce (unsafeCoerce)
+import Control.Applicative ((<|>))
 import qualified Data.JSString.Text as JSS
 import qualified GHCJS.DOM as DOM
 import qualified GHCJS.DOM.Document as DOM
@@ -282,31 +283,85 @@ doublePropDyn = propDyn
 doubleProp ::  Text -> Double -> Attribute msg i o
 doubleProp = prop
 
-defaultMain :: Html msg model model -> model -> IO ()
+-- ** Bootstrapping utilities
+
+data AppHandle msg model = AppHandle
+  { appHandleReadModel :: JSM model
+  , appHandleStep      :: (model -> model) -> JSM ()
+  , appHandleSend      :: msg -> JSM ()
+  , appHandleDetach    :: JSM ()
+  }
+
+data Config msg model = Config
+  { configInit  :: JSM model
+  , configView  :: Html msg model model
+  , configEval  :: AppHandle msg model -> msg -> JSM ()
+  , configSetup :: AppHandle msg model -> JSM ()
+  , configPort  :: Maybe Int
+  }
+
+defaultConfig
+  :: Html msg model model
+  -> model
+  -> Config msg model
+defaultConfig configView model = Config {..}
+  where
+    configInit = pure model
+    configEval = ignoreMessages
+    configSetup = ignoreSetup
+    configPort = Nothing
+
+attachToNode
+  :: Node
+  -> Config msg model
+  -> JSM ()
+attachToNode parent (Config init view eval setup _) = do
+  model <- init
+  storeHandle <- createStore model
+  appHandleRef <- liftIO $ newIORef Nothing
+  nodeRef <- liftIO $ newIORef Nothing
+  let sink (Yield msg) = liftIO (readIORef appHandleRef) >>= \case
+        Just appHandle -> eval appHandle msg
+        Nothing        -> pure ()
+      sink (Step io) = modifyStore storeHandle io
+      sink (Ref newNode) = liftIO (readIORef nodeRef) >>= \case
+        Just oldNode -> do
+          liftIO $ writeIORef nodeRef (Just newNode)
+          DOM.replaceChild_ parent newNode oldNode
+        Nothing      -> pure ()
+  UIHandle node finalizer <- unUI view (getStore storeHandle) sink
+  let appHandle = AppHandle (readStore $ getStore storeHandle) (sink . Step) (sink . Yield) finalizer
+  liftIO $ writeIORef appHandleRef (Just appHandle)
+  liftIO $ writeIORef nodeRef (Just node)
+  DOM.appendChild_ parent node
+  setup appHandle
+  
+attachToBody config = do
+  doc <- DOM.currentDocumentUnchecked
+  body <- DOM.getBodyUnchecked doc
+  attachToNode (DOM.toNode body) config
+
+ignoreMessages = const . const . pure $ ()
+ignoreSetup = const . pure $ ()
+
+defaultMain
+  :: Html msg model model
+  -> model
+  -> IO ()
+defaultMain view model = defaultMainWith (defaultConfig view model)
+
+defaultMainWith :: Config msg model -> IO ()
+defaultMainWith config = withJSM (configPort config) (attachToBody config)
+
+withJSM :: Maybe Int -> JSM () -> IO ()
 #ifdef ghcjs_HOST_OS
-defaultMain = mainClient
+withJSM _ = id
 #else
-defaultMain view model = do
-  portOrEx <- try @SomeException (read <$> getEnv "PORT")
+withJSM explicitPort jsm = do
+  envPort <- either (const Nothing) Just <$> try @SomeException (read <$> getEnv "PORT")
   progName <- getProgName
-  let port = either (const 8080) id portOrEx
+  let Just port = explicitPort <|> envPort <|> Just 8080
   let runWarp = if progName == "<interactive>" then Warp.debug else Warp.run
   putStrLn $ "Running jsaddle-warp application on http://localhost:" <> show port <> "/"
-  runWarp port (mainClient view model)
+  runWarp port jsm
 #endif
-  where
-    mainClient view model = do
-      doc <- DOM.currentDocumentUnchecked
-      body <- DOM.getBodyUnchecked doc
-      storeHandle <- createStore model
-      nodeRef <- liftIO $ newIORef Nothing
-      let sink (Yield _) = pure () -- Don't know how to interpret messages
-          sink (Step io) = modifyStore storeHandle io
-          sink (Ref newNode) = liftIO (readIORef nodeRef) >>= \case
-            Just oldNode -> do
-              liftIO $ writeIORef nodeRef (Just newNode)
-              DOM.replaceChild_ body newNode oldNode
-            Nothing      -> pure ()
-      UIHandle node _ <- unUI view (getStore storeHandle) sink
-      liftIO $ writeIORef nodeRef (Just node)
-      DOM.appendChild_ body node

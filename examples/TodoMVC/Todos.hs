@@ -3,31 +3,24 @@
 {-# LANGUAGE IncoherentInstances #-}
 {-# LANGUAGE Unsafe #-}
 {-# LANGUAGE OverloadedStrings, QuasiQuotes #-}
-{-# OPTIONS_GHC -Wno-name-shadowing #-}
 module TodoMVC.Todos where
 
-import GHC.Generics
-import Data.Aeson
+import Control.Lens hiding ((#))
+import Data.Aeson (FromJSON, ToJSON)
+import Data.Generics.Product (field)
 import Data.String (fromString)
 import Data.Text (Text)
+import GHC.Generics
 import Language.Javascript.JSaddle (JSM)
-import qualified GHCJS.DOM as DOM
-import qualified GHCJS.DOM.Window as DOM
-import qualified GHCJS.DOM.Storage as DOM
-import qualified GHCJS.DOM.Location as DOM
-import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
-import qualified TodoMVC.Item as Item
 import Massaraksh.Component
-import Massaraksh.Html.Element
-import Massaraksh.Html.Attrs
-import Data.Generics.Product (field)
-import Control.Lens
-import qualified Massaraksh.Html.Attrs.Dynamic as Dyn
-import qualified GHCJS.DOM.GlobalEventHandlers as E
-import Text.RawString.QQ (r)
 import Polysemy
 import Polysemy.State
+import Text.RawString.QQ (r)
+import TodoMVC.Utils (readTodos, writeTodos, readHash, writeHash)
+import qualified Data.Text as T
+import qualified GHCJS.DOM.GlobalEventHandlers as E
+import qualified Massaraksh.Html.Attrs.Dynamic as Dyn
+import qualified TodoMVC.Item as Item
 
 data Model = Model
   { title  :: Text
@@ -51,19 +44,11 @@ data Filter = All | Active | Completed
   deriving (Show, Eq, Generic, FromJSON, ToJSON)
 
 init :: Eff '[Embed JSM] Model
-init = embed @JSM do
-  window <- DOM.currentWindowUnchecked
-  localStorage <- DOM.getLocalStorage window
-  location <- DOM.getLocation window
-  hash <- DOM.getHash location
+init = embed do
+  hash <- readHash
   let filter = filterFromUrl hash & maybe All id
-  let emptyModel = Model "" [] filter
-  maybeItem <- DOM.getItem localStorage ("todomvc-massaraksh" :: Text)
-  case maybeItem of
-    Nothing  -> pure emptyModel
-    Just str -> case decodeStrict' (T.encodeUtf8 str) of
-      Nothing    -> pure emptyModel
-      Just items -> pure $ Model "" items filter
+  todos <- readTodos
+  pure $ Model "" todos filter
   
 eval :: Msg a -> Eff '[State Model, Emit Msg, Embed JSM] a
 eval = \case
@@ -92,12 +77,11 @@ eval = \case
     case filterFromUrl hash of
       Just x -> modify @Model $ field @"filter" .~ x
       Nothing -> do
---        lift $ fixHash (toUrl All)
         modify @Model $ field @"filter" .~ All
+        embed $ writeHash (filterToUrl All)
   BeforeUnload -> do
     model <- get @Model
-    --lift $ localStorageSetItem "todomvc-idris-elm" $ encodeTodos (todos model)
-    pure ()
+    embed $ writeTodos (todos model)
   TodoMsg Item.Destroy idx ->
     modify @Model $ field @"todos" %~ deleteNth idx
   TodoMsg msg idx ->
@@ -191,7 +175,7 @@ view =
     pluralize :: Text -> Text -> Int -> Text
     pluralize singular plural 0 = singular
     pluralize singular plural _ = plural  
-  
+      
 filterFromUrl :: Text -> Maybe Filter
 filterFromUrl = \case
   "#/"          -> Just All

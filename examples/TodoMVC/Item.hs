@@ -12,8 +12,6 @@ import Data.Maybe (isJust)
 import Data.Aeson
 import Control.Lens
 import Massaraksh.Component
-import Massaraksh.Html.Element
-import Massaraksh.Html.Attrs
 import qualified Massaraksh.Html.Attrs.Dynamic as Dyn
 import qualified GHCJS.DOM.GlobalEventHandlers as E
 import Language.Javascript.JSaddle (JSM)
@@ -52,7 +50,8 @@ eval = \case
     modify @Model $ field @"completed" .~ x
   Destroy ->
     pure ()
-  Blur -> emit EditingCommit
+  Blur ->
+    emit EditingCommit
   KeyPress code -> do
     if | code == 13 -> emit EditingCommit -- Enter
        | code == 27 -> emit EditingCancel -- Escape
@@ -60,16 +59,15 @@ eval = \case
   EditingOn _ -> do
     model <- get
     modify @Model $ field @"editing" .~ Just (title model)
+    -- FIXME: Set focus to the editing input
   EditInput x ->
     modify @Model $ field @"editing" %~ fmap (const x)
   EditingCancel -> do
     modify @Model $ field @"editing" .~ Nothing
-  EditingCommit -> do
-    model <- get
-    case editing model of
-      Just ""  -> emit Destroy
-      Just str -> modify @Model $ (field @"editing" .~ Nothing) . (field @"title" .~ str)
-      Nothing  -> pure ()
+  EditingCommit -> gets editing >>= \case
+    Just "" -> emit Destroy
+    Just x  -> modify @Model $ (field @"editing" .~ Nothing) . (field @"title" .~ x)
+    Nothing -> pure ()
 
 view :: Html1 Msg Props Model
 view =
@@ -82,6 +80,8 @@ view =
   ]
   [ div_
     [ class_ "view"
+     -- FIXME: Need different implementation for decoders in order to
+     -- capture event targets
     , on1_ E.dblClick (EditingOn undefined)
     ]
     [ input_

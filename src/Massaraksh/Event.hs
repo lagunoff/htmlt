@@ -37,7 +37,7 @@ mapMaybe f (Event susbcribe) = Event subscribe'
 instance Functor (Event m) where
   fmap f (Event s) = Event $ s . (. f)
 
-instance MonadIO eff => Applicative (Event eff) where
+instance MonadIO m => Applicative (Event m) where
   pure a = Event \k -> k a *> pure (pure ())
   (<*>) e1 e2 = Event \k -> do
     latestA <- liftIO $ newIORef Nothing

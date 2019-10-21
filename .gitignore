@@ -12,3 +12,5 @@
 **/.cabal-sandbox
 **/*.db
 **/.ghc.environment*
+ghcjs-result
+ghc-result

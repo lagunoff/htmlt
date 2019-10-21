@@ -26,6 +26,7 @@ dependencies:
   - mtl
   - jsaddle
   - ghcjs-dom-jsaddle
+  - transformers
 
 when:
   - condition: impl(ghcjs)
@@ -39,7 +40,7 @@ when:
       dependencies:
         - jsaddle-warp
 
-ghc-options: -Wall -Wno-missing-signatures -O2
+ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -O2
 
 source-dirs:
   - src
