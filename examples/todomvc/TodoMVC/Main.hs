@@ -1,11 +1,11 @@
 {-# LANGUAGE RecordWildCards #-}
 module Main where
 
+import Control.Monad (void)
+import Massaraksh.Component
+import Polysemy
 import qualified TodoMVC.Todos as Todos
 import qualified TodoMVC.Utils as Utils
-import Polysemy
-import Massaraksh.Component
-import Control.Monad (void)
 
 main :: IO ()
 main = defaultMainWith $ Config {..}

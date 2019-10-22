@@ -1,16 +1,16 @@
 module TodoMVC.Utils where
 
-import Control.Monad (void)
-import Language.Javascript.JSaddle (maybeNullOrUndefined, jsg, js, jss, fun, (#), (<#), JSM, fromJSVal, toJSVal)
 import Control.Lens hiding ((#))
-import Massaraksh.Component
-import qualified TodoMVC.Item as Item
-import Data.Text (Text)
-import Control.Monad.Trans.Maybe (MaybeT(..), runMaybeT)
+import Control.Monad (void)
 import Control.Monad.Trans.Class (lift)
-import qualified Data.Text as T
+import Control.Monad.Trans.Maybe (MaybeT(..), runMaybeT)
 import Data.Aeson (toJSON, decodeStrict')
+import Data.Text (Text)
+import Language.Javascript.JSaddle (maybeNullOrUndefined, jsg, js, jss, fun, (#), (<#), JSM, fromJSVal, toJSVal)
+import Massaraksh.Component
+import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import qualified TodoMVC.Item as Item
 
 setup
   :: (Text -> msg)

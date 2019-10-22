@@ -1,9 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
+-- |Borrowed from @Miso.Html.Element@
+-- https://github.com/dmjio/miso/blob/0576696323652ec17a921a0be8c41e82685da374/src/Miso/Html/Element.hs
 module Massaraksh.Html.Element where
 
 import Massaraksh.Html.Core
 
--- https://github.com/dmjio/miso/blob/0576696323652ec17a921a0be8c41e82685da374/src/Miso/Html/Element.hs
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/div
 div_ :: [Attribute msg i o] -> [Html msg i o] -> Html msg i o
 div_  = el "div"

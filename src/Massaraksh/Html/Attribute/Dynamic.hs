@@ -1,5 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Massaraksh.Html.Attrs.Dynamic where
+-- |Borrowed from @Miso.Html.Property@
+-- https://github.com/dmjio/miso/blob/f99ccad2ef7c1d8d56ad848ac7284f35a8b2b19c/src/Miso/Html/Property.hs#L147
+module Massaraksh.Html.Attribute.Dynamic where
 
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -9,7 +11,7 @@ import Data.Foldable (foldl')
 -- |This module is supposed to be used within a qualified namespace,
 -- so it makes sense here to reexport 'textDyn'
 --
--- >>> import qualified Massaraksh.Html.Attrs.Dynamic as Dyn
+-- >>> import qualified Massaraksh.Html.Attribute.Dynamic as Dyn
 -- >>> h1_ [] [ Dyn.text \i -> "Hello, " <> username i ]
 text = textDyn
 

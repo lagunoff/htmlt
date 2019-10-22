@@ -36,8 +36,8 @@ mapMessage f (Yield msg) = Yield (f msg)
 mapUI :: (a -> b) -> UI e w a i o -> UI e w b i o
 mapUI f (UI setup) = UI \store sink -> setup store (sink . mapMessage f)
 
-askModel :: Monad e => (i -> UI e w m i o) -> UI e w m i o
-askModel f = UI \store sink -> do
+withInitialModel :: Monad e => (i -> UI e w m i o) -> UI e w m i o
+withInitialModel f = UI \store sink -> do
   setup <- unUI . f <$> readStore store
   setup store sink
 

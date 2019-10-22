@@ -8,13 +8,13 @@
 {-# LANGUAGE OverloadedStrings      #-}
 module Massaraksh.Html.Core where
 
+import Control.Applicative ((<|>))
 import Control.Lens ((&), Const(..), Lens, (%~))
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Reader.Class (ask)
 import Data.Foldable (for_)
 import Data.IORef (modifyIORef, newIORef, readIORef, writeIORef, atomicModifyIORef')
 import Data.Text (Text)
-import qualified Data.Text.Lazy as LT
 import Data.Traversable (for)
 import GHCJS.DOM.Element (setAttribute)
 import GHCJS.DOM.EventM (EventName)
@@ -22,17 +22,17 @@ import GHCJS.DOM.Node (appendChild_, setTextContent, toNode, removeChild_, getLa
 import GHCJS.DOM.Types (Node, JSM, Element(..), HTMLElement(..), ToJSVal(..), IsEvent, uncheckedCastTo, ToJSString(..), liftJSM)
 import Language.Javascript.JSaddle (setProp)
 import Massaraksh
-import Massaraksh.Event hiding (mapMaybe)
 import Massaraksh.Html.Decoder
 import Unsafe.Coerce (unsafeCoerce)
-import Control.Applicative ((<|>))
 import qualified Data.JSString.Text as JSS
+import qualified Data.Text.Lazy as LT
 import qualified GHCJS.DOM as DOM
 import qualified GHCJS.DOM.Document as DOM
 import qualified GHCJS.DOM.EventM as E
 import qualified GHCJS.DOM.GlobalEventHandlers as E
 import qualified GHCJS.DOM.Node as DOM
 import qualified GHCJS.DOM.Types as DOM
+import qualified Massaraksh.Store as Store
 
 #ifndef ghcjs_HOST_OS
 import qualified Language.Javascript.JSaddle.Warp as Warp
@@ -152,7 +152,7 @@ list stbb tag attrs child props = UI \store sink -> do
                  s <- readStore store
                  let defaultA = props s $ new !! (length old + idx)
                  let projMaybeA s = props s <$> nth idx (getConst (stbb Const s))
-                 let itemStore = mapMaybe defaultA projMaybeA store
+                 let itemStore = Store.mapMaybe defaultA projMaybeA store
                  UIHandle node finalizer <- unUI child itemStore $ sink . itemMsg idx
                  appendChild_ el node
                  liftIO $ modifyIORef itemFinalizers (finalizer :)

@@ -19,7 +19,7 @@ import Text.RawString.QQ (r)
 import TodoMVC.Utils (readTodos, writeTodos, readHash, writeHash)
 import qualified Data.Text as T
 import qualified GHCJS.DOM.GlobalEventHandlers as E
-import qualified Massaraksh.Html.Attrs.Dynamic as Dyn
+import qualified Massaraksh.Html.Dynamic as Dyn
 import qualified TodoMVC.Item as Item
 
 data Model = Model

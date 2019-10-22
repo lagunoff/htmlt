@@ -30,9 +30,9 @@ createEvent = do
 
 -- |Filter and map occurences
 mapMaybe :: Applicative m => (a -> Maybe b) -> Event m a -> Event m b
-mapMaybe f (Event susbcribe) = Event subscribe'
+mapMaybe f (Event subscribe) = Event subscribe'
   where
-    subscribe' k = susbcribe $ maybe (pure ()) k . f
+    subscribe' k = subscribe $ maybe (pure ()) k . f
 
 instance Functor (Event m) where
   fmap f (Event s) = Event $ s . (. f)

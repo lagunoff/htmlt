@@ -5,19 +5,19 @@
 {-# LANGUAGE MultiWayIf, CPP #-}
 module TodoMVC.Item where
 
+import Control.Lens
+import Data.Aeson
+import Data.Generics.Product (field)
+import Data.Maybe (isJust)
+import Data.Text (Text)
 import GHC.Generics
 import GHCJS.Types (JSVal)
-import Data.Text (Text)
-import Data.Maybe (isJust)
-import Data.Aeson
-import Control.Lens
-import Massaraksh.Component
-import qualified Massaraksh.Html.Attrs.Dynamic as Dyn
-import qualified GHCJS.DOM.GlobalEventHandlers as E
 import Language.Javascript.JSaddle (JSM)
+import Massaraksh.Component
 import Polysemy
 import Polysemy.State
-import Data.Generics.Product (field)
+import qualified GHCJS.DOM.GlobalEventHandlers as E
+import qualified Massaraksh.Html.Dynamic as Dyn
 
 data Props = Props
   { hidden :: Bool

@@ -1,5 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Massaraksh.Html.Attrs where
+-- |Borrowed from @Miso.Html.Property@
+-- https://github.com/dmjio/miso/blob/f99ccad2ef7c1d8d56ad848ac7284f35a8b2b19c/src/Miso/Html/Property.hs#L147
+module Massaraksh.Html.Attribute where
 
 import Data.Text (Text)
 import qualified Data.Text as T

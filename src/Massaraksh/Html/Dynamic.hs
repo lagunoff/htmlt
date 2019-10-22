@@ -1,5 +1,5 @@
 module Massaraksh.Html.Dynamic
-  ( module Massaraksh.Html.Attrs.Dynamic
+  ( module Massaraksh.Html.Attribute.Dynamic
   ) where
 
-import Massaraksh.Html.Attrs.Dynamic
+import Massaraksh.Html.Attribute.Dynamic

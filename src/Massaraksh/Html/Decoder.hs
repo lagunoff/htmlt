@@ -4,14 +4,14 @@
 -- https://github.com/dmjio/miso/blob/acae5300c8b74398ff5333d38c36ae5cf64d01d3/src/Miso/Event/Decoder.hs
 module Massaraksh.Html.Decoder where
 
-import Data.Aeson.Types (withBool, withScientific, withText, Value, Parser, withObject, parseEither)
-import Data.Text (Text)
-import qualified Data.JSString as JSS
-import Control.Monad (foldM)
-import GHCJS.Types (JSVal)
-import Data.JSString (JSString)
-import Language.Javascript.JSaddle (valIsUndefined, js, fromJSVal, JSM)
 import Control.Lens ((^.))
+import Control.Monad (foldM)
+import Data.Aeson.Types (withBool, withScientific, withText, Value, Parser, withObject, parseEither)
+import Data.JSString (JSString)
+import Data.Text (Text)
+import GHCJS.Types (JSVal)
+import Language.Javascript.JSaddle (valIsUndefined, js, fromJSVal, JSM)
+import qualified Data.JSString as JSS
 
 -- | Data type for storing the target when parsing events
 data DecodeTarget

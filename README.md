@@ -1,8 +1,12 @@
-# Massaraksh
+**:fire:API is unstable and incomplete, do not use in production:fire:**
 
-## Examples
+## Explanation
+Experimental GUI library in haskell based on Phil Freeman's
+[idea](https://blog.functorial.com/posts/2018-03-12-You-Might-Not-Need-The-Virtual-DOM.html)
+and [implementation](https://github.com/paf31/purescript-sdom)
 
-Hello World [ [examples/simple/Main.hs](./examples/simple/Main.hs) | [demo](https://lagunoff.github.io/massaraksh-simple) ]
+## Minimal complete app
+
 ```hs
 module Main where
 
@@ -40,20 +44,32 @@ view = div_ [ class_ "root" ]
 main = defaultMain view 0
 ```
 
-#### Other examples
+## Other examples
 
 <table>
   <tbody>
     <tr>
+      <td>Hello World</td>
+      <td>
+	    <a href=./examples/hello-world/Main.hs target=_blank>source</a> |
+		<a href=https://lagunoff.github.io/massaraksh-hello-world/ target=_blank>demo<a>
+	  </td>
+    </tr>
+    <tr>
       <td>TodoMVC</td>
       <td>
-	    <a href=./examples/TodoMVC/Main.hs target=_blank>source</a> |
-		<a href=https://lagunoff.github.io/massaraksh-todomvc.jsexe/ target=_blank>demo<a>
+	    <a href=./examples/todomvc/TodoMVC/Main.hs target=_blank>source</a> |
+		<a href=https://lagunoff.github.io/massaraksh-todomvc target=_blank>demo<a>
 	  </td>
     </tr>
   </tbody>
 </table>
 
-
-
-
+## Todos
+ - [ ] API to display sum types
+ - [ ] Reduce compile time by getting rid of `ghcjs-dom` and
+       `jsaddle-dom` from dependency list
+ - [ ] Faster updates for large lists, using similar technique to
+       [diffarray](https://hackage.haskell.org/package/diffarray-0.1.1/docs/Data-Array-Diff.html)
+ - [ ] Bindings to non-web GUIs (e.g. GTK or ReactNative)
+ - [ ] Split library into multiple packages `massaraksh, massaraksh-html, massaraksh-*, etc`
