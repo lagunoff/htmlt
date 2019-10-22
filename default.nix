@@ -1,13 +1,14 @@
 (import ./reflex-platform {}).project ({ pkgs, ... }: {
   packages = {
     massaraksh = ./.;
+    massaraksh-examples = ./examples;
   };
 
   withHoogle = false;
 
   shells = {
-    ghcjs = ["massaraksh"];
-    ghc = ["massaraksh"];
+    ghcjs = ["massaraksh" "massaraksh-examples"];
+    ghc = ["massaraksh" "massaraksh-examples"];
   };
   
   overrides = self: super:

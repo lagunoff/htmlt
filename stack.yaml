@@ -6,6 +6,7 @@ flags:
 
 packages:
 - .
+- examples
 
 extra-deps:
  - jsaddle-0.9.6.0
