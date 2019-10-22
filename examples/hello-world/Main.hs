@@ -1,9 +1,4 @@
-# Massaraksh
-
-## Examples
-
-Hello World [ [examples/simple/Main.hs](./examples/simple/Main.hs) | [demo](https://lagunoff.github.io/massaraksh-simple) ]
-```hs
+{-# LANGUAGE OverloadedStrings #-}
 module Main where
 
 import Massaraksh.Html
@@ -38,22 +33,3 @@ view = div_ [ class_ "root" ]
       ]
 
 main = defaultMain view 0
-```
-
-#### Other examples
-
-<table>
-  <tbody>
-    <tr>
-      <td>TodoMVC</td>
-      <td>
-	    <a href=./examples/TodoMVC/Main.hs target=_blank>source</a> |
-		<a href=https://lagunoff.github.io/massaraksh-todomvc.jsexe/ target=_blank>demo<a>
-	  </td>
-    </tr>
-  </tbody>
-</table>
-
-
-
-

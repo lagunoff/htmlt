@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 9fc056c522d6ba3eb3832c9028e7a67ffdadcb963a56b75a63918a37e7eaedf8
+-- hash: 2f87d4c980f51d584dce55701b96b6eff442195f319a193772b2a190fae552a7
 
 name:           massaraksh-examples
 version:        0.1.0.0
@@ -18,13 +18,13 @@ build-type:     Simple
 extra-source-files:
     README.md
 
-executable massaraksh-simple
+executable massaraksh-hello-world
   main-is: Main.hs
   other-modules:
       Paths_massaraksh_examples
   hs-source-dirs:
-      simple
-  default-extensions: DataKinds FlexibleContexts GADTs LambdaCase PolyKinds RankNTypes ScopedTypeVariables TypeApplications TypeOperators TypeFamilies BlockArguments NamedFieldPuns DuplicateRecordFields DeriveGeneric DeriveAnyClass
+      hello-world
+  default-extensions: BlockArguments DataKinds DeriveAnyClass DeriveGeneric DuplicateRecordFields FlexibleContexts GADTs LambdaCase MultiWayIf NamedFieldPuns PolyKinds RankNTypes ScopedTypeVariables TypeApplications TypeFamilies TypeOperators
   ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -O2
   build-depends:
       aeson >=1.4.0.0 && <1.5.0.0
@@ -55,7 +55,7 @@ executable massaraksh-todomvc
       Paths_massaraksh_examples
   hs-source-dirs:
       todomvc
-  default-extensions: DataKinds FlexibleContexts GADTs LambdaCase PolyKinds RankNTypes ScopedTypeVariables TypeApplications TypeOperators TypeFamilies BlockArguments NamedFieldPuns DuplicateRecordFields DeriveGeneric DeriveAnyClass
+  default-extensions: BlockArguments DataKinds DeriveAnyClass DeriveGeneric DuplicateRecordFields FlexibleContexts GADTs LambdaCase MultiWayIf NamedFieldPuns PolyKinds RankNTypes ScopedTypeVariables TypeApplications TypeFamilies TypeOperators
   ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -O2
   build-depends:
       aeson >=1.4.0.0 && <1.5.0.0
