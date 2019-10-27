@@ -65,3 +65,6 @@ instance Profunctor (UIMsg w m) where
   dimap g f (Ref c)     = Ref c
   dimap g f (Step io)   = Step (f . io . g)
   dimap g f (Yield msg) = Yield msg
+
+instance Functor e => Profunctor (UI e w m) where
+  dimap g f (UI setup) = UI \store sink -> setup (fmap g store) (sink . dimap g f)

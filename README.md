@@ -66,7 +66,7 @@ main = defaultMain view 0
 </table>
 
 ## Todos
- - [ ] API to display sum types
+ - [x] API to display sum types
  - [ ] Reduce compile time by getting rid of `ghcjs-dom` and
        `jsaddle-dom` from dependency list
  - [ ] Faster updates for large lists, using similar technique to

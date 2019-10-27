@@ -30,6 +30,8 @@ when:
       dependencies:
         - ghcjs-base
     else:
+      dependencies:
+        - jsaddle-warp
       source-dirs: src-ghc  
 
 ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -O2

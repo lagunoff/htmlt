@@ -33,8 +33,8 @@ createStore initial = do
         push (Updates old new)
   pure (StoreHandle store modify)
 
--- |Filter updates from another store
-mapMaybe :: MonadIO eff => b -> (a -> Maybe b) -> Store eff a -> Store eff b
+-- |Filter and map 
+mapMaybe :: Monad m => b -> (a -> Maybe b) -> Store m a -> Store m b
 mapMaybe def f (Store latest updates) = Store latest' updates'
   where
     latest' = f <$> latest >>= \case
@@ -43,7 +43,7 @@ mapMaybe def f (Store latest updates) = Store latest' updates'
     updates' = flip Event.mapMaybe (fmap (fmap f) updates) \case
       Updates (Just old') (Just new') -> Just (Updates old' new')
       Updates _ _                     -> Nothing
-  
+      
 instance Functor Updates where
   fmap f (Updates old new) = Updates (f old) (f new)
 

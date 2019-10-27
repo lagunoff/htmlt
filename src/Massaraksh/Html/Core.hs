@@ -16,7 +16,6 @@ import Data.Foldable (for_)
 import Data.IORef (modifyIORef, newIORef, readIORef, writeIORef, atomicModifyIORef')
 import Data.Text (Text)
 import Data.Traversable (for)
-import GHCJS.DOM.Element (setAttribute)
 import GHCJS.DOM.EventM (EventName)
 import GHCJS.DOM.Node (appendChild_, setTextContent, toNode, removeChild_, getLastChild)
 import GHCJS.DOM.Types (Node, JSM, Element(..), HTMLElement(..), ToJSVal(..), IsEvent, uncheckedCastTo, ToJSString(..), liftJSM)
@@ -24,6 +23,7 @@ import Language.Javascript.JSaddle (setProp)
 import Massaraksh
 import Massaraksh.Html.Decoder
 import Unsafe.Coerce (unsafeCoerce)
+import Data.Bifunctor (first, second)
 import qualified Data.JSString.Text as JSS
 import qualified Data.Text.Lazy as LT
 import qualified GHCJS.DOM as DOM
@@ -32,7 +32,9 @@ import qualified GHCJS.DOM.EventM as E
 import qualified GHCJS.DOM.GlobalEventHandlers as E
 import qualified GHCJS.DOM.Node as DOM
 import qualified GHCJS.DOM.Types as DOM
+import qualified GHCJS.DOM.NodeList as DOM
 import qualified Massaraksh.Store as Store
+import qualified GHCJS.DOM.Element as DOM
 
 #ifndef ghcjs_HOST_OS
 import qualified Language.Javascript.JSaddle.Warp as Warp
@@ -52,15 +54,6 @@ newtype Attribute msg i o = Attribute
 
 noopAttr :: Attribute msg i o
 noopAttr = Attribute \_ _ _ -> pure $ pure ()
-
-textDyn :: (i -> Text) -> Html msg i o
-textDyn f = UI \model _ -> do
-  doc <- DOM.currentDocumentUnchecked
-  content <- f <$> readStore model
-  ui <- DOM.toNode <$> DOM.createTextNode doc (JSS.textToJSString content)
-  unsubscribe <- updates model `subscribe` \Updates {new} ->
-    setTextContent ui (Just (f new))
-  pure (UIHandle ui unsubscribe)
 
 text :: Text -> Html msg i o
 text content = UI \_ _ -> do
@@ -86,12 +79,23 @@ el tag attrs childs = UI \model sink -> do
   el <- DOM.uncheckedCastTo HTMLElement <$> DOM.createElement doc tag
   let sinkAttr = either (sink . Yield) (sink . Step)
       applyAttr (Attribute setup) = setup model sinkAttr el
+      childSink idx (Step io) = sink (Step io)
+      childSink idx (Yield msg) = sink (Yield msg)
+      childSink idx (Ref newNode) = do
+        nodeList <- DOM.getChildNodes el
+        oldNode <- DOM.itemUnsafe nodeList idx
+        DOM.replaceChild_ el newNode oldNode
+        
   attrFinalizers <- for attrs applyAttr
-  childFinalizers <- for childs \ch -> do
-    UIHandle ui finalizer <- unUI ch model sink
+  childFinalizers <- for (zip [0..] childs) \(idx, ch) -> do
+    UIHandle ui finalizer <- unUI ch model (childSink idx)
     appendChild_ el ui
     pure finalizer
   pure $ UIHandle (toNode el) (sequence_ attrFinalizers *> sequence_ childFinalizers)
+
+unsafeHtml :: Text -> [Attribute msg i o] -> Text -> Html msg i o
+unsafeHtml name other html =
+  el name (prop "innerHTML" html:other) []
 
 list
   :: forall msg s t a b
@@ -127,13 +131,12 @@ list stbb tag attrs child props = UI \store sink -> do
         | idx == 0 = f x : xs
         | otherwise = x : modifyAt (idx - 1) f xs
         
-      itemMsg
-        :: Int
-        -> UIMsg ui (Int -> msg) a b
-        -> UIMsg ui msg s t
-      itemMsg _  (Ref ui) = Ref ui
-      itemMsg idx (Step f) = Step \s -> s & stbb %~ modifyAt idx (f . props s)
-      itemMsg idx (Yield f) = Yield $ f idx
+      itemSink idx (Step f) = sink $ Step \s -> s & stbb %~ modifyAt idx (f . props s)
+      itemSink idx (Yield f) = sink $ Yield (f idx)
+      itemSink idx (Ref newNode) = do
+        nodeList <- DOM.getChildNodes el
+        oldNode <- DOM.itemUnsafe nodeList (fromIntegral idx)
+        DOM.replaceChild_ el newNode oldNode
 
       childFinalizer = do
         handles <- liftIO $ readIORef itemFinalizers
@@ -153,7 +156,7 @@ list stbb tag attrs child props = UI \store sink -> do
                  let defaultA = props s $ new !! (length old + idx)
                  let projMaybeA s = props s <$> nth idx (getConst (stbb Const s))
                  let itemStore = Store.mapMaybe defaultA projMaybeA store
-                 UIHandle node finalizer <- unUI child itemStore $ sink . itemMsg idx
+                 UIHandle node finalizer <- unUI child itemStore $ itemSink idx
                  appendChild_ el node
                  liftIO $ modifyIORef itemFinalizers (finalizer :)
            | length new < length old -> do
@@ -169,17 +172,65 @@ list stbb tag attrs child props = UI \store sink -> do
   setup [] alist
   pure $ UIHandle (toNode el) (childFinalizer *> sequence_ attrFinalizers *> unsubscribe)
 
--- ** Element properties
-
-propDyn :: ToJSVal val => Text -> (i -> val) -> Attribute msg i o
-propDyn name f = Attribute \store _ el -> do
+eitherHtml
+  :: Html msg i1 i1
+  -> Html msg i2 i2
+  -> Html msg (Either i1 i2) (Either i1 i2)
+eitherHtml left right = UI \store sink -> do
   model <- readStore store
-  jsprop <- toJSVal (f model)
-  setProp (toJSString name) jsprop (unsafeCoerce el)
-  finalizer <- updates store `subscribe` \Updates {new} -> do
-    newProp <- toJSVal (f new)
-    setProp (toJSString name) newProp (unsafeCoerce el)
-  pure finalizer
+  leftHandle <- liftIO $ newIORef Nothing
+  rightHandle <- liftIO $ newIORef Nothing
+  
+  unsubscribe <- updates store `subscribe` \case
+    Updates (Left old) (Right new) -> (liftIO (readIORef leftHandle)) >>= \case
+      Just (UIHandle _ leftFinalizer) -> do
+        leftFinalizer
+        liftIO $ writeIORef leftHandle Nothing
+        handle <- setupRight store sink new
+        sink $ Ref (uiWidget handle)
+        liftIO $ writeIORef rightHandle (Just handle)
+      Nothing -> pure () -- impossible
+    Updates (Right old) (Left new) -> (liftIO (readIORef rightHandle)) >>= \case
+      Just (UIHandle _ rightFinalizer) -> do
+        rightFinalizer
+        liftIO $ writeIORef rightHandle Nothing
+        handle <- setupLeft store sink new
+        sink $ Ref (uiWidget handle)
+        liftIO $ writeIORef leftHandle (Just handle)
+      Nothing -> pure () -- impossible
+    Updates _ _ -> pure ()
+  widget <- case model of
+    Right r -> do
+      handle <- setupRight store sink r
+      liftIO $ writeIORef rightHandle (Just handle)
+      pure (uiWidget handle)
+    Left l -> do
+      handle <- setupLeft store sink l
+      liftIO $ writeIORef leftHandle (Just handle)
+      pure (uiWidget handle)
+
+  let finalizer = unsubscribe
+        *> (liftIO (readIORef rightHandle) >>= unsubscribeMaybe)
+        *> (liftIO (readIORef leftHandle) >>= unsubscribeMaybe)
+
+  pure (UIHandle widget finalizer)
+  where
+    unsubscribeMaybe = maybe (pure ()) uiFinalizer
+    
+    setupLeft store sink model =
+      unUI left (Store.mapMaybe model (either Just (const Nothing)) store) sinkLeft
+        where
+          sinkLeft (Yield msg)  = sink (Yield msg)
+          sinkLeft (Step io)    = sink (Step (first io))
+          sinkLeft (Ref widget) = sink (Ref widget)
+    setupRight store sink model =
+      unUI right (Store.mapMaybe model (either (const Nothing) Just) store) sinkRight
+        where
+          sinkRight (Yield msg)  = sink (Yield msg)
+          sinkRight (Step io)    = sink (Step (second io))
+          sinkRight (Ref widget) = sink (Ref widget)
+  
+-- ** Element properties
 
 prop :: ToJSVal val => Text -> val -> Attribute msg i o
 prop name val = Attribute \_ _ el -> do
@@ -190,17 +241,8 @@ prop name val = Attribute \_ _ el -> do
 attr :: Text -> Text -> Attribute msg i o
 attr name val = Attribute \_ _ el -> do
   let self = uncheckedCastTo HTMLElement el
-  setAttribute self name val
+  DOM.setAttribute self name val
   pure $ pure ()
-  
-attrDyn :: Text -> (i -> Text) -> Attribute msg i o
-attrDyn name f = Attribute \store _ el -> do
-  let self = uncheckedCastTo HTMLElement el
-  model <- readStore store 
-  setAttribute self name (f model)
-  finalizer <- updates store `subscribe` \Updates {new} -> do
-    setAttribute self name (f new)
-  pure finalizer
 
 -- ** Attaching events to elements
 
@@ -251,34 +293,19 @@ onInput = onWithOptions E.input valueDecoder
 onInput_ :: (Text -> msg) -> Attribute msg i o
 onInput_ makeMsg = onWithOptions E.input valueDecoder \_ -> Left . makeMsg
 
--- ** Some synomyms for 'prop' and 'propDyn'
-
-boolPropDyn :: Text -> (i -> Bool) -> Attribute msg i o
-boolPropDyn = propDyn
+-- ** Some synomyms for 'prop'
 
 boolProp :: Text -> Bool -> Attribute msg i o
 boolProp = prop
 
-stringPropDyn :: Text -> (i -> Text) -> Attribute msg i o
-stringPropDyn = propDyn
-
 stringProp :: Text -> Text -> Attribute msg i o
 stringProp = prop
-
-textPropDyn :: Text -> (i -> Text) -> Attribute msg i o
-textPropDyn = propDyn
 
 textProp :: Text -> Text -> Attribute msg i o
 textProp = prop
 
 intProp :: Text -> Int -> Attribute msg i o
 intProp = prop
-
-intPropDyn :: Text -> (i -> Int) -> Attribute msg i o
-intPropDyn = propDyn
-
-doublePropDyn ::  Text -> (i -> Double) -> Attribute msg i o
-doublePropDyn = propDyn
 
 doubleProp ::  Text -> Double -> Attribute msg i o
 doubleProp = prop

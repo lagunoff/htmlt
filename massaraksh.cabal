@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 98b427017966cf625694b5b1db8727a304eacbab53308752d4e845af4e188f96
+-- hash: 7570f5b9dc4260e0249840ec92981d455de6e109f0078fb650f40b597ff4889e
 
 name:                massaraksh
 version:             0.1.0.0
@@ -28,6 +28,7 @@ library
       Massaraksh.Html.Attribute
       Massaraksh.Html.Attribute.Dynamic
       Massaraksh.Html.Core
+      Massaraksh.Html.Core.Dynamic
       Massaraksh.Html.Decoder
       Massaraksh.Html.Dynamic
       Massaraksh.Html.Element
@@ -57,4 +58,6 @@ library
   else
     hs-source-dirs:
         src-ghc
+    build-depends:
+        jsaddle-warp
   default-language: Haskell2010
