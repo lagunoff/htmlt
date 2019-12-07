@@ -5,7 +5,9 @@
 **/*~
 **/*.kate-swp
 **/.directory
-/.dir-locals.el
+**/.dir-locals.el
+**/.envrc
+**/.envrc.cache
 /dist
 /tmp
 **/.stack-work

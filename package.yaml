@@ -5,7 +5,7 @@ version:             0.1.0.0
 homepage:            https://github.com/lagunoff/massaraksh
 license:             BSD3
 author:              Vladislav Lagunov
-maintainer:          vlad.lagunov@gmail.com
+maintainer:          vlad.lagunoff@gmail.com
 copyright:           2019 Vladislav Lagunov
 category:            Web
 extra-source-files:
@@ -19,7 +19,6 @@ dependencies:
  - lens
  - mtl
  - jsaddle
- - ghcjs-dom-jsaddle
  - transformers
 
 when:
@@ -32,15 +31,13 @@ when:
     else:
       dependencies:
         - jsaddle-warp
-      source-dirs: src-ghc  
+      source-dirs: src-ghc
 
-ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -O2
+ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -Wno-unused-do-bind -O0
 
-source-dirs:
-  - src
+library:
+  source-dirs: src
 
-library: {}
-      
 default-extensions:
   - DataKinds
   - FlexibleContexts
@@ -57,3 +54,5 @@ default-extensions:
   - DuplicateRecordFields
   - DeriveGeneric
   - DeriveAnyClass
+  - MultiParamTypeClasses
+  - RecordWildCards

@@ -1,7 +1,3 @@
-module Massaraksh.Html.Dynamic
-  ( module Massaraksh.Html.Core.Dynamic
-  , module Massaraksh.Html.Attribute.Dynamic
-  ) where
+module Massaraksh.Html.Dynamic (module X) where
 
-import Massaraksh.Html.Core.Dynamic
-import Massaraksh.Html.Attribute.Dynamic
+import Massaraksh.Html.Attribute.Dynamic as X

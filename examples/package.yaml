@@ -8,8 +8,6 @@ author:              Vladislav Lagunov
 maintainer:          vlad.lagunov@gmail.com
 copyright:           2019 Vladislav Lagunov
 category:            Web
-extra-source-files:
-- README.md
 
 dependencies:
   - base >= 4.7 && < 5
@@ -19,7 +17,6 @@ dependencies:
   - lens
   - mtl
   - jsaddle
-  - ghcjs-dom-jsaddle
   - massaraksh
 
 when:
@@ -32,21 +29,12 @@ when:
       dependencies:
         - jsaddle-warp
 
-ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -O2
-  
+ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -Wno-unused-do-bind -O0
+
 executables:
   massaraksh-hello-world:
     source-dirs: hello-world
     main: Main.hs
-
-  massaraksh-todomvc:
-    source-dirs: todomvc
-    main: TodoMVC/Main.hs
-    dependencies:
-      - transformers
-      - generic-lens
-      - raw-strings-qq
-      - polysemy >= 1.2.0.0 && < 1.3.0.0
 
 default-extensions:
   - BlockArguments
@@ -57,10 +45,11 @@ default-extensions:
   - FlexibleContexts
   - GADTs
   - LambdaCase
-  - MultiWayIf
+  - MultiParamTypeClasses
   - NamedFieldPuns
   - PolyKinds
   - RankNTypes
+  - RecordWildCards
   - ScopedTypeVariables
   - TypeApplications
   - TypeFamilies

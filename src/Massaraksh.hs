@@ -1,9 +1,5 @@
-module Massaraksh
-  ( module Massaraksh.Core
-  , module Massaraksh.Store
-  , module Massaraksh.Event
-  ) where
+module Massaraksh (module X) where
 
-import Massaraksh.Core
-import Massaraksh.Store hiding (mapMaybe)
-import Massaraksh.Event
+import Massaraksh.Base as X
+import Massaraksh.Dynamic as X hiding (mapMaybe)
+import Massaraksh.Event as X

@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 7570f5b9dc4260e0249840ec92981d455de6e109f0078fb650f40b597ff4889e
+-- hash: 4373a15a95b0ae0dec3c0881c1043e106c9ff2bfcec2c126dc286f4abe833c5d
 
 name:                massaraksh
 version:             0.1.0.0
@@ -12,7 +12,7 @@ homepage:            https://github.com/lagunoff/massaraksh
 license:             BSD3
 license-file:        LICENSE
 author:              Vladislav Lagunov
-maintainer:          vlad.lagunov@gmail.com
+maintainer:          vlad.lagunoff@gmail.com
 copyright:           2019 Vladislav Lagunov
 category:            Web
 build-type:          Simple
@@ -22,28 +22,26 @@ extra-source-files:
 library
   exposed-modules:
       Massaraksh
-      Massaraksh.Core
+      Massaraksh.Base
+      Massaraksh.Dynamic
       Massaraksh.Event
       Massaraksh.Html
       Massaraksh.Html.Attribute
       Massaraksh.Html.Attribute.Dynamic
-      Massaraksh.Html.Core
-      Massaraksh.Html.Core.Dynamic
+      Massaraksh.Html.Base
       Massaraksh.Html.Decoder
       Massaraksh.Html.Dynamic
       Massaraksh.Html.Element
-      Massaraksh.Store
   other-modules:
       Paths_massaraksh
   hs-source-dirs:
       src
-  default-extensions: DataKinds FlexibleContexts GADTs LambdaCase PolyKinds RankNTypes ScopedTypeVariables TypeApplications TypeOperators TypeFamilies BlockArguments NamedFieldPuns DuplicateRecordFields DeriveGeneric DeriveAnyClass
-  ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -O2
+  default-extensions: DataKinds FlexibleContexts GADTs LambdaCase PolyKinds RankNTypes ScopedTypeVariables TypeApplications TypeOperators TypeFamilies BlockArguments NamedFieldPuns DuplicateRecordFields DeriveGeneric DeriveAnyClass MultiParamTypeClasses RecordWildCards
+  ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -Wno-unused-do-bind -O0
   build-depends:
       aeson >=1.4.0.0 && <1.5.0.0
     , base >=4.7 && <5
     , bytestring
-    , ghcjs-dom-jsaddle
     , jsaddle
     , lens
     , mtl
