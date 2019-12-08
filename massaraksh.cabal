@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 4373a15a95b0ae0dec3c0881c1043e106c9ff2bfcec2c126dc286f4abe833c5d
+-- hash: 76ee635bb64aca90bc7fa278afd4d55f02473708febc534c80bfaa02330cd2b8
 
 name:                massaraksh
 version:             0.1.0.0
@@ -36,7 +36,7 @@ library
       Paths_massaraksh
   hs-source-dirs:
       src
-  default-extensions: DataKinds FlexibleContexts GADTs LambdaCase PolyKinds RankNTypes ScopedTypeVariables TypeApplications TypeOperators TypeFamilies BlockArguments NamedFieldPuns DuplicateRecordFields DeriveGeneric DeriveAnyClass MultiParamTypeClasses RecordWildCards
+  default-extensions: BlockArguments DataKinds DeriveAnyClass DeriveGeneric DuplicateRecordFields FlexibleContexts GADTs LambdaCase MultiParamTypeClasses NamedFieldPuns PolyKinds RankNTypes RecordWildCards ScopedTypeVariables TypeApplications TypeFamilies TypeOperators
   ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -Wno-unused-do-bind -O0
   build-depends:
       aeson >=1.4.0.0 && <1.5.0.0
@@ -45,6 +45,7 @@ library
     , jsaddle
     , lens
     , mtl
+    , pipes
     , text
     , transformers
   if impl(ghcjs)

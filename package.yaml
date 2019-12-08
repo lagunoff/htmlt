@@ -20,6 +20,7 @@ dependencies:
  - mtl
  - jsaddle
  - transformers
+ - pipes
 
 when:
   - condition: impl(ghcjs)
@@ -39,20 +40,20 @@ library:
   source-dirs: src
 
 default-extensions:
+  - BlockArguments
   - DataKinds
+  - DeriveAnyClass
+  - DeriveGeneric
+  - DuplicateRecordFields
   - FlexibleContexts
   - GADTs
   - LambdaCase
+  - MultiParamTypeClasses
+  - NamedFieldPuns
   - PolyKinds
   - RankNTypes
+  - RecordWildCards
   - ScopedTypeVariables
   - TypeApplications
-  - TypeOperators
   - TypeFamilies
-  - BlockArguments
-  - NamedFieldPuns
-  - DuplicateRecordFields
-  - DeriveGeneric
-  - DeriveAnyClass
-  - MultiParamTypeClasses
-  - RecordWildCards
+  - TypeOperators

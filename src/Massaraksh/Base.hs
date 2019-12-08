@@ -1,68 +1,79 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE FunctionalDependencies #-}
 module Massaraksh.Base where
 
-import Control.Lens (over, Const(..), getConst, Lens, Profunctor(..))
-import Massaraksh.Dynamic (Dynamic(..))
+import Pipes as P
+import Language.Javascript.JSaddle hiding ((!))
+--import Control.Monad.State
 
--- |Messages emitted by components
-data UIMsg widget msg input output
-  = Ref { _refWidget :: widget }
-  | Step { _stModify :: input -> output }
-  | Yield { _yiMessage :: msg }
+type UI widget input output m
+  = m (UIResult widget input output m)
 
--- |Represents a chunk of user interface
-newtype UI m widget msg input output = UI
-  { runUI
-      :: Dynamic m input
-      -> Sink m (UIMsg widget msg input output)
-      -> m (UIHandle m widget) }
+data InputMsg props msg a where
+  IMUpdate :: { _impOld :: props, _impNew :: props } -> InputMsg props msg ()
+  IMCustom :: msg a -> InputMsg props msg a
 
--- |Result of running 'runUI'
-data UIHandle m widget = UIHandle
-  { _uihWidget   :: widget
-  , _uihFinalize :: m () }
+data OutputMsg widget props model msg a where
+  OMStep :: (props -> model) -> OutputMsg widget  props model msg ()
+  OMRef :: widget -> OutputMsg widget  props model msg a
+  OMCustom :: msg a -> OutputMsg widget props model msg a
 
--- |Callback to consume events of type @a@
-type Sink m a = a -> m ()
+data UIResult widget input output m = UIResult
+  { _uirWidget :: widget
+  , _uirInput  :: forall a. Proxy a (input a) () X m ()
+  , _uirOutput :: forall a. Proxy X () a (output a) m () }
 
--- |Map @msg@ inside @UIMsg ui msg i o@
-mapMessage :: (msg1 -> msg2) -> UIMsg ui msg1 i o -> UIMsg ui msg2 i o
-mapMessage f Ref{..}   = Ref{..}
-mapMessage f Step{..}  = Step{..}
-mapMessage f Yield{..} = Yield (f _yiMessage)
+newtype Html input output m = Html { runHtml :: UI JSVal input output m }
 
--- |Map @msg@ inside @UI w m i o@
-mapUI :: (a -> b) -> UI e w a i o -> UI e w b i o
-mapUI f UI{..} = UI \store sink -> runUI store (sink . mapMessage f)
+el :: MonadJSM m => String -> Html input output m -> Html input output m
+el tag child = Html do
+  el <- liftJSM $ jsg "document" # "createElement" $ tag
+  pure (UIResult el (pure ()) (pure ()))
 
-withInitialModel :: Monad e => (i -> UI e w m i o) -> UI e w m i o
-withInitialModel f = UI \store sink -> do
-  setup <- runUI . f <$> _dynRead store
-  setup store sink
+newtype Attr input output m = Attr { runAttr :: UIResult JSVal input output m -> Html input output m }
 
--- TODO: Replace @Lens s t a b@ with @Traversal s t a b@
-focus
-  :: forall e w m s t a b
-   . Functor e
-  => Lens s t a b
-  -> UI e w m a b
-  -> UI e w m s t
-focus stab (UI setup1) = UI (mkSetup setup1)
-  where
-    mkSetup setup store sink = setup (mkDynamic store) (mkSink sink)
-    mkDynamic store = fmap (getConst . stab Const) store
-    mkSink sink (Ref c)     = sink $ Ref c
-    mkSink sink (Step io)   = sink $ Step (over stab io)
-    mkSink sink (Yield msg) = sink $ Yield msg
+attr :: (MonadJSM m, ToJSVal val) => String -> val -> Attr input output m
+attr name val = Attr \UIResult{..} -> Html do
+  liftJSM $ _uirWidget # "setAttribute" $ (name, val)
+  pure UIResult{..}
 
-instance Functor (UIMsg w m i) where
-  fmap f (Ref c)     = Ref c
-  fmap f (Step io)   = Step (f . io)
-  fmap f (Yield msg) = Yield msg
+prop :: (MonadJSM m, ToJSVal val) => String -> val -> Attr input output m
+prop name val = Attr \UIResult{..} -> Html do
+  liftJSM $ _uirWidget <# name $ val
+  pure UIResult{..}
 
-instance Profunctor (UIMsg w m) where
-  dimap g f (Ref c)     = Ref c
-  dimap g f (Step io)   = Step (f . io . g)
-  dimap g f (Yield msg) = Yield msg
+-- dynProp :: (MonadJSM m, MonadState model m, ToJSVal val, HasUpdate model input) => String -> (model -> val) -> Attr input output m
+-- dynProp name mkVal = Attr \UIResult{..} -> Html do
+--   val <- gets mkVal
+--   liftJSM $ _uirWidget <# name $ val
+--   pure UIResult{..}
 
-instance Functor e => Profunctor (UI e w m) where
-  dimap g f (UI setup) = UI \store sink -> setup (fmap g store) (sink . dimap g f)
+data Update a = Update
+  { _updOld :: a
+  , _updNew :: a }
+
+class HasUpdate s a | a -> s where
+  isUpdate :: a -> Maybe (Update s)
+
+class HasOutput m a | a -> m where
+  emit :: m () -> a
+
+class Attributable input output m h | h -> input, h -> output, h -> m where
+  (!) :: Monad m => h -> Attr input output m -> h
+
+instance Attributable i o m (Html i o m) where
+  (!) (Html h) (Attr a) = Html $ h >>= runHtml . a
+
+instance Attributable i o m (Html i o m -> Html i o m) where
+  (!) f (Attr a) h = Html $ runHtml (f h) >>= runHtml . a
+
+view01
+  :: (MonadJSM m) => Html i o m
+view01 =
+  el "div"
+    ! prop "class" "dfsdfs"
+    ! prop "id" "sdfsdf"
+--    ! dynProp "2e24234e" (show @Int)
+    $ undefined

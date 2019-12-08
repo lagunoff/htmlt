@@ -12,7 +12,6 @@ import Data.IORef (modifyIORef, newIORef, readIORef, writeIORef, atomicModifyIOR
 import Data.Text (Text)
 import Data.Traversable (for)
 import Language.Javascript.JSaddle
-import Language.Javascript.JSaddle (setProp)
 import Massaraksh
 import Massaraksh.Html.Decoder
 import Prelude hiding ((!!))
@@ -21,6 +20,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Lazy as LT
 import qualified Massaraksh.Dynamic as Dynamic
 import qualified Prelude as Prelude
+import Pipes hiding (for)
 
 #ifndef ghcjs_HOST_OS
 import qualified Language.Javascript.JSaddle.Warp as Warp
@@ -29,6 +29,15 @@ import Control.Exception
 #endif
 
 type Html msg input output = UI JSM JSVal msg input output
+
+type Html2 input output m = UI' JSVal input output m
+newtype Html3 input output m = Html3 { runHTML3 :: MonadJSM m => UI' JSVal input output m }
+
+el2 :: MonadJSM m => Text -> [Html3 input output m] -> Html3 input output m
+el2 name ch = Html3 $ liftJSM do
+  pure (UIResult undefined undefined undefined)
+
+type Attr2 input output m = JSVal -> m (Pipe input  output m ())
 
 newtype Attr msg i o = Attr
   { _runAttr
