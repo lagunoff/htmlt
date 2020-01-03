@@ -1,11 +1,5 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.31.2.
---
--- see: https://github.com/sol/hpack
---
--- hash: 76ee635bb64aca90bc7fa278afd4d55f02473708febc534c80bfaa02330cd2b8
-
 name:                massaraksh
 version:             0.1.0.0
 homepage:            https://github.com/lagunoff/massaraksh
@@ -23,37 +17,59 @@ library
   exposed-modules:
       Massaraksh
       Massaraksh.Base
+      Massaraksh.Decode
       Massaraksh.Dynamic
+      Massaraksh.Element
       Massaraksh.Event
-      Massaraksh.Html
-      Massaraksh.Html.Attribute
-      Massaraksh.Html.Attribute.Dynamic
-      Massaraksh.Html.Base
-      Massaraksh.Html.Decoder
-      Massaraksh.Html.Dynamic
-      Massaraksh.Html.Element
+      Massaraksh.Main
   other-modules:
       Paths_massaraksh
   hs-source-dirs:
       src
-  default-extensions: BlockArguments DataKinds DeriveAnyClass DeriveGeneric DuplicateRecordFields FlexibleContexts GADTs LambdaCase MultiParamTypeClasses NamedFieldPuns PolyKinds RankNTypes RecordWildCards ScopedTypeVariables TypeApplications TypeFamilies TypeOperators
+  default-extensions:
+      BlockArguments
+    , ConstraintKinds
+    , DataKinds
+    , DeriveFunctor
+    , DeriveGeneric
+    , DuplicateRecordFields
+    , FlexibleContexts
+    , FlexibleInstances
+    , FunctionalDependencies
+    , GADTs
+    , GeneralizedNewtypeDeriving
+    , LambdaCase
+    , MultiParamTypeClasses
+    , NamedFieldPuns
+    , PolyKinds
+    , RankNTypes
+    , RecordWildCards
+    , ScopedTypeVariables
+    , TypeApplications
+    , TypeFamilies
+    , TypeOperators
+    , TypeSynonymInstances
+    , UndecidableInstances
+
   ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -Wno-unused-do-bind -O0
   build-depends:
-      aeson >=1.4.0.0 && <1.5.0.0
-    , base >=4.7 && <5
-    , bytestring
-    , jsaddle
-    , lens
-    , mtl
-    , pipes
-    , text
-    , transformers
+     base >=4.7 && <5
+   , bytestring
+   , jsaddle
+   , lens
+   , mtl
+   , pipes
+   , text
+   , transformers
+   , unliftio-core
+
   if impl(ghcjs)
     hs-source-dirs:
         src-ghcjs
     ghc-options: -dedupe
     build-depends:
         ghcjs-base
+      , ghcjs-prim
   else
     hs-source-dirs:
         src-ghc

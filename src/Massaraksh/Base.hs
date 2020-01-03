@@ -1,79 +1,219 @@
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE CPP #-}
 module Massaraksh.Base where
 
+import Control.Monad.Reader
+import Control.Monad.State
+import Control.Lens hiding ((#))
+import Data.String
+import Data.Text as T
+import Data.Maybe
+import GHC.IORef
+import Language.Javascript.JSaddle
 import Pipes as P
-import Language.Javascript.JSaddle hiding ((!))
---import Control.Monad.State
+import Pipes.Core as P
+import Massaraksh.Decode
+import Control.Monad.IO.Unlift
+import Massaraksh.Event
+import Massaraksh.Dynamic
+import Unsafe.Coerce
 
-type UI widget input output m
-  = m (UIResult widget input output m)
+newtype HtmlM e a = HtmlM { runHtmlM :: ReaderT e IO a }
+  deriving (Functor, Applicative, Monad, MonadReader e, MonadIO, MonadFix)
 
-data InputMsg props msg a where
-  IMUpdate :: { _impOld :: props, _impNew :: props } -> InputMsg props msg ()
-  IMCustom :: msg a -> InputMsg props msg a
+type Html e = HtmlM e ()
 
-data OutputMsg widget props model msg a where
-  OMStep :: (props -> model) -> OutputMsg widget  props model msg ()
-  OMRef :: widget -> OutputMsg widget  props model msg a
-  OMCustom :: msg a -> OutputMsg widget props model msg a
+data DomBuilder = DomBuilder
+  { dobAskRoot     :: IO JSVal
+  , dobReplaceRoot :: JSVal -> IO ()
+  }
 
-data UIResult widget input output m = UIResult
-  { _uirWidget :: widget
-  , _uirInput  :: forall a. Proxy a (input a) () X m ()
-  , _uirOutput :: forall a. Proxy X () a (output a) m () }
+data HtmlEnv d w = HtmlEnv
+  { hteTellEvent :: TellEvent w
+  , hteSubscribe :: Subscribe
+  , hteBuilder   :: DomBuilder
+  , hteDynamic   :: DynamicHandle d
+  , hteLiftJSM   :: LiftJSM }
 
-newtype Html input output m = Html { runHtml :: UI JSVal input output m }
+newtype Subscribe = Subscribe { fromSubscribe :: forall a. Event a -> (a -> IO ()) -> IO () }
+newtype TellEvent w = TellEvent { fromTellEvent :: Event w -> IO () }
+newtype LiftJSM = LiftJSM { fromLiftJSM :: forall x. JSM x -> IO x }
 
-el :: MonadJSM m => String -> Html input output m -> Html input output m
-el tag child = Html do
-  el <- liftJSM $ jsg "document" # "createElement" $ tag
-  pure (UIResult el (pure ()) (pure ()))
+type HasDom e =
+  ( HasDomBuilder e
+  , HasLiftJSM e )
 
-newtype Attr input output m = Attr { runAttr :: UIResult JSVal input output m -> Html input output m }
+type HasModel d e =
+  ( HasDom e
+  , HasDynamic d e
+  , HasSubscribe e )
 
-attr :: (MonadJSM m, ToJSVal val) => String -> val -> Attr input output m
-attr name val = Attr \UIResult{..} -> Html do
-  liftJSM $ _uirWidget # "setAttribute" $ (name, val)
-  pure UIResult{..}
+type HasMessage w e =
+  ( HasDom e
+  , HasTellEvent w e )
 
-prop :: (MonadJSM m, ToJSVal val) => String -> val -> Attr input output m
-prop name val = Attr \UIResult{..} -> Html do
-  liftJSM $ _uirWidget <# name $ val
-  pure UIResult{..}
+type HasInteractive p w e =
+  ( HasModel p e
+  , HasTellEvent w e )
 
--- dynProp :: (MonadJSM m, MonadState model m, ToJSVal val, HasUpdate model input) => String -> (model -> val) -> Attr input output m
--- dynProp name mkVal = Attr \UIResult{..} -> Html do
---   val <- gets mkVal
---   liftJSM $ _uirWidget <# name $ val
---   pure UIResult{..}
+newBuilder :: (MonadReader e m, HasDomBuilder e, MonadJSM m, MonadUnliftIO m) => m (DomBuilder)
+newBuilder = do
+  rootEl <- askRoot
+  elRef <- liftIO (newIORef Nothing)
+  UnliftIO{..} <- askUnliftIO
+  let
+    dobAskRoot           = fromMaybe (error "root element was accessed before it was initialized") <$> readIORef elRef
+    dobReplaceRoot newEl = do
+      readIORef elRef >>= \case
+        Nothing    -> unliftIO $ liftJSM $ rootEl # "appendChild" $ newEl
+        Just oldEl -> unliftIO $ liftJSM $ rootEl # "replaceChild" $ (newEl, oldEl)
+      liftIO $ writeIORef elRef (Just newEl)
+  pure DomBuilder{..}
 
-data Update a = Update
-  { _updOld :: a
-  , _updNew :: a }
+askRoot :: forall m e. (MonadReader e m, HasDomBuilder e, MonadIO m) => m JSVal
+askRoot = asks (view $ hasDomBuilder . to dobAskRoot) >>= liftIO
 
-class HasUpdate s a | a -> s where
-  isUpdate :: a -> Maybe (Update s)
+replaceRoot :: forall m e. (MonadReader e m, HasDomBuilder e, MonadIO m) => JSVal -> m ()
+replaceRoot el = do
+  DomBuilder{..} <- asks (view hasDomBuilder)
+  liftIO (dobReplaceRoot el)
 
-class HasOutput m a | a -> m where
-  emit :: m () -> a
+appendChild' :: forall m e a. (MonadReader e m, HasDomBuilder e, MonadJSM m, MonadUnliftIO m) => JSVal -> m a -> m a
+appendChild' el child = do
+  hteBuilder@DomBuilder{..} <- newBuilder
+  liftIO (dobReplaceRoot el)
+  local (set hasDomBuilder hteBuilder) child
 
-class Attributable input output m h | h -> input, h -> output, h -> m where
-  (!) :: Monad m => h -> Attr input output m -> h
+appendChild :: forall m e. (MonadReader e m, HasDomBuilder e, MonadJSM m, MonadUnliftIO m) => JSVal -> m ()
+appendChild el = do
+  DomBuilder{..} <- newBuilder
+  liftIO (dobReplaceRoot el)
 
-instance Attributable i o m (Html i o m) where
-  (!) (Html h) (Attr a) = Html $ h >>= runHtml . a
+instance (a ~ (), HasDom e) => IsString (HtmlM e a) where
+  fromString = text . T.pack
 
-instance Attributable i o m (Html i o m -> Html i o m) where
-  (!) f (Attr a) h = Html $ runHtml (f h) >>= runHtml . a
+instance Semigroup a => Semigroup (HtmlM e a) where
+  (<>) a b = liftM2 (<>) a b
 
-view01
-  :: (MonadJSM m) => Html i o m
-view01 =
-  el "div"
-    ! prop "class" "dfsdfs"
-    ! prop "id" "sdfsdf"
---    ! dynProp "2e24234e" (show @Int)
-    $ undefined
+type MonadWidget e m = (MonadReader e m, MonadJSM m, HasDom e, Applicative m, MonadIO m, MonadUnliftIO m)
+
+el :: MonadWidget e m => Text -> m a -> m a
+el tag child = do
+  elm <- liftJSM $ jsg "document" # "createElement" $ tag
+  appendChild' elm child
+
+prop
+  :: forall val key e m
+   . (MonadWidget e m, ToJSString key, ToJSVal val)
+  => key -> val -> m ()
+prop key val =
+  askRoot >>= \el -> liftJSM $ el <# key $ val
+
+dynProp
+  :: forall val key w e m
+   . (MonadWidget e m, HasModel w e, ToJSString key, ToJSVal val)
+  => key -> (w -> val) -> m ()
+dynProp key f = do
+  Dynamic{..} <- asks (view $ hasDynamic . to _dhDynamic)
+  txt <- f <$> liftIO _dynRead
+  el <- askRoot
+  liftJSM (el <# key $ txt)
+  _dynUpdates `subscribe` \Update{..} ->
+    liftJSM (el <# key $ f _updNew)
+
+subscribe :: (MonadReader e m, HasSubscribe e, MonadUnliftIO m) => Event w -> (w -> m ()) -> m ()
+subscribe e f = do
+  subscribe_ <- asks (view $ hasSubscribe . to fromSubscribe)
+  UnliftIO{..} <- askUnliftIO
+  liftIO $ e `subscribe_` (unliftIO . f)
+
+on :: (MonadWidget e m, HasMessage w e) => Text -> Decoder w -> m ()
+on name decoder = do
+  builder <- asks (view hasDomBuilder)
+  tellEvent <- asks (view $ hasTellEvent . to fromTellEvent)
+  el <- askRoot
+  liftJSM do
+    UnliftIO{..} <- askUnliftIO
+    let
+      event = Event \k -> do
+        cb <- unliftIO $ function \_ _ [event] -> do
+          runDecoder decoder event >>= \case
+            Left err  -> pure ()
+            Right val -> liftIO (k val)
+        unliftIO (el # "addEventListener" $ (name, cb))
+        pure $ unliftIO $ void $ el # "removeEventListener" $ (name, cb)
+    liftIO (tellEvent event)
+
+(=:) :: MonadWidget e m => Text -> Text -> m ()
+(=:) = prop
+
+(~:) :: (MonadWidget e m, HasModel w e) => Text -> (w -> Text) -> m ()
+(~:) = dynProp
+
+infixr 7 ~:, =:
+
+text :: MonadWidget e m => Text -> m ()
+text txt = do
+  el <- liftJSM $ jsg "document" # "createTextNode" $ txt
+  appendChild el
+
+dynText :: (MonadWidget e m, HasModel w e) => (w -> Text) -> m ()
+dynText f = do
+  Dynamic{..} <- asks (view $ hasDynamic . to _dhDynamic)
+  txt <- f <$> liftIO _dynRead
+  el <- liftJSM $ jsg "document" # "createTextNode" $ txt
+  _dynUpdates `subscribe` \Update{..} -> do
+    void $ liftJSM $ el <# "nodeValue" $ f _updNew
+  appendChild el
+
+type Producer1 w = Proxy X () (Existed w) (Exists w)
+
+data Exists (f :: * -> *) = forall x. Exists { unExists :: f x }
+data Existed (f :: * -> *) = forall x. Existed { existedF :: f x, existedX :: x }
+
+yield1 :: Monad m => w a -> Producer1 w m a
+yield1 w = (\(Existed _ x) -> unsafeCoerce x) <$> respond (Exists w)
+
+class HasDomBuilder a where
+  hasDomBuilder :: Lens' a DomBuilder
+
+class HasSubscribe a where
+  hasSubscribe :: Lens' a Subscribe
+
+class HasDynamic w a | a -> w where
+  hasDynamic :: Lens' a (DynamicHandle w)
+
+class HasTellEvent w a | a -> w where
+  hasTellEvent :: Lens' a (TellEvent w)
+
+class HasLiftJSM a where
+  hasLiftJSM :: Lens' a LiftJSM
+
+instance HasDomBuilder (HtmlEnv d w) where
+  hasDomBuilder = lens hteBuilder \s hteBuilder -> s { hteBuilder }
+
+instance HasDynamic d (HtmlEnv d w) where
+  hasDynamic = lens hteDynamic \s hteDynamic -> s { hteDynamic }
+
+instance HasTellEvent w (HtmlEnv d w) where
+  hasTellEvent = lens hteTellEvent \s hteTellEvent -> s { hteTellEvent }
+
+instance HasSubscribe (HtmlEnv d w) where
+  hasSubscribe = lens hteSubscribe \s hteSubscribe -> s { hteSubscribe }
+
+instance HasLiftJSM (HtmlEnv d w) where
+  hasLiftJSM = lens hteLiftJSM \s hteLiftJSM -> s { hteLiftJSM }
+
+#ifndef ghcjs_HOST_OS
+instance (HasLiftJSM e) => MonadJSM (HtmlM e) where
+  liftJSM' jsm = asks (view $ hasLiftJSM . to fromLiftJSM) >>= liftIO . ($ jsm)
+#endif
+
+instance (HasDynamic d e) => MonadState d (HtmlM e) where
+  get = liftIO =<< asks (view $ hasDynamic . to _dhDynamic . to _dynRead)
+  put v = liftIO =<< asks (view $ hasDynamic . to _dhModify . to ($ const v))
+
+instance MonadUnliftIO (HtmlM e) where
+  askUnliftIO = HtmlM do
+    UnliftIO{..} <- askUnliftIO
+    pure $ UnliftIO (unliftIO . runHtmlM)
+

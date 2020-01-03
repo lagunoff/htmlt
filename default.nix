@@ -1,35 +1,26 @@
+# Same arguments as for reflex-platform/default.nix
+# https://github.com/reflex-frp/reflex-platform/blob/develop/default.nix
+reflex-platform-args:
 let
-  fetchFromGitHub = { owner, repo, rev, sha256 }:
-    if (builtins ? "fetchTarball")
-    then builtins.fetchTarball {
-      inherit sha256;
-      url = "https://github.com/${owner}/${repo}/archive/${rev}.tar.gz";
-    }
-    else (import <nixpkgs> {}).fetchFromGitHub { inherit owner repo rev sha256; };
-  config = { allowBroken = true; };
-in {
-  nixpkgsFunc ? import (fetchFromGitHub {
-    owner = "nixos";
-    repo = "nixpkgs-channels";
-    rev = "9d55c1430af72ace3a479d5e0a90451108e774b4";
-    sha256 = "05625fwgsa15i2jlsf2ymv3jx68362nf3zqbpnrwq6d3sn89liny";
-  }),
-  reflex-platform ? import (fetchFromGitHub {
-    owner = "reflex-frp";
-    repo = "reflex-platform";
-    rev = "aa8a9d1ac3d41ad51fbe04e575d4350da65cf3db";
-    sha256 = "0hffy5rcfy6ay06ww3cxykqzp024jfcdg6w1yrmnf0h80sjfgdcm";
-  }) { nixpkgsFunc = c: nixpkgsFunc (c // { inherit config; }); }
-}:
-reflex-platform.project({ pkgs, ... }:
+  nixpkgsFunc = reflex-platform-args.nixpkgsFunc or import (builtins.fetchTarball {
+    url = "https://github.com/nixos/nixpkgs-channels/archive/9d55c1430af72ace3a479d5e0a90451108e774b4.tar.gz";
+  });
+
+  reflex-platform = import (builtins.fetchTarball {
+    url = "https://github.com/reflex-frp/reflex-platform/archive/1f04194d051c3a4fd54aa30d4c46a5659261a620.tar.gz";
+  }) reflex-platform-args;
+
+in reflex-platform.project({ pkgs, ... }:
   let
     customOverrides = hlib: self: super: with hlib; {
     };
+
 
     dontCheckOverrides = _: super: {
       mkDerivation = args: super.mkDerivation (args // {
         doCheck = false;
         doHaddock = false;
+        doHoogle = false;
       });
     };
   in {
@@ -49,6 +40,12 @@ reflex-platform.project({ pkgs, ... }:
 
     shellToolOverrides = ghc: super: {
       inherit (pkgs) pkgconfig zlib;
+      ghc-mod = null;
+      haskell-ide-engine = null;
     };
+
+    overrides = pkgs.lib.composeExtensions
+      (customOverrides pkgs.haskell.lib)
+      dontCheckOverrides;
   }
 )

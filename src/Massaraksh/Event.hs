@@ -1,52 +1,54 @@
 module Massaraksh.Event where
 
-import Control.Monad ((>=>))
-import Control.Monad.IO.Class (MonadIO, liftIO)
-import Data.Foldable (traverse_, for_)
-import Data.IORef (modifyIORef, newIORef, readIORef, writeIORef)
-import Data.List (delete)
+import Control.Monad
+import Data.Foldable
+import Data.IORef
+import Data.List
 
 -- |@Event m a@ is a stream of event occurences of type @a@
-newtype Event m a = Event
-  { _evSubscribe :: (a -> m ()) -> m (m ()) }
+newtype Event a = Event
+  { _evSubscribe :: (a -> IO ()) -> IO (IO ()) }
 
--- |The result of 'createEvent'
-data EventHandle m a = EventHandle
-  { _evhEvent     :: Event m a
-  , _evhPushEvent :: a -> m () }
+-- |The result of 'newEvent'
+data EventHandle a = EventHandle
+  { _evhEvent :: Event a
+  , _evhPush  :: a -> IO () }
 
 -- |Create new event and a function to supply values to that event
-createEvent :: MonadIO m => m (EventHandle m a)
-createEvent = do
-  subscribers <- liftIO $ newIORef []
+newEvent :: IO (EventHandle a)
+newEvent = do
+  subscribers <- newIORef []
   let
-    event = Event \k -> do
-      kRef <- liftIO $ newIORef k -- Need 'IORef' for an 'Eq' instance
-      liftIO $ modifyIORef subscribers ((:) kRef)
-      pure $ liftIO $ modifyIORef subscribers (delete kRef)
-    push a = do
-      callbacks <- liftIO $ readIORef subscribers
-      for_ callbacks $ liftIO . readIORef >=> ($ a)
-  pure (EventHandle event push)
+    _evhEvent = Event \k -> do
+      kRef <- newIORef k -- Need 'IORef' for an 'Eq' instance
+      modifyIORef subscribers ((:) kRef)
+      pure $ modifyIORef subscribers (delete kRef)
+    _evhPush a = do
+      callbacks <- readIORef subscribers
+      for_ callbacks $ readIORef >=> ($ a)
+  pure EventHandle{..}
+
+never :: Event a
+never = Event \_ -> mempty
 
 -- |Filter and map occurences
-mapMaybe :: Applicative m => (a -> Maybe b) -> Event m a -> Event m b
-mapMaybe f Event{..} = Event subscribe
+mapMaybeE :: (a -> Maybe b) -> Event a -> Event b
+mapMaybeE f Event{..} = Event subscribe
   where
-    subscribe k = _evSubscribe $ maybe (pure ()) k . f
+    subscribe k = _evSubscribe $ maybe mempty k . f
 
-instance Functor (Event m) where
+instance Functor Event where
   fmap f (Event s) = Event $ s . (. f)
 
-instance MonadIO m => Applicative (Event m) where
-  pure a = Event \k -> k a *> pure (pure ())
+instance Applicative Event where
+  pure a = Event \k -> k a *> mempty
   (<*>) e1 e2 = Event \k -> do
-    latestA <- liftIO $ newIORef Nothing
-    latestB <- liftIO $ newIORef Nothing
+    latestA <- newIORef Nothing
+    latestB <- newIORef Nothing
     c1 <- e1 `_evSubscribe` \a -> do
-      liftIO $ writeIORef latestA (Just a)
-      liftIO (readIORef latestB) >>= traverse_ (k . a)
+      writeIORef latestA (Just a)
+      readIORef latestB >>= traverse_ (k . a)
     c2 <- e2 `_evSubscribe` \b -> do
-      liftIO $ writeIORef latestB (Just b)
-      liftIO (readIORef latestA) >>= traverse_ (k . ($ b))
+      writeIORef latestB (Just b)
+      readIORef latestA >>= traverse_ (k . ($ b))
     pure (c1 *> c2)

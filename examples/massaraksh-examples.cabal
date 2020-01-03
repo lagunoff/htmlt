@@ -22,11 +22,27 @@ executable massaraksh-hello-world
       Paths_massaraksh_examples
   hs-source-dirs:
       hello-world
-  default-extensions: BlockArguments DataKinds DeriveAnyClass DeriveGeneric DuplicateRecordFields FlexibleContexts GADTs LambdaCase MultiParamTypeClasses NamedFieldPuns PolyKinds RankNTypes RecordWildCards ScopedTypeVariables TypeApplications TypeFamilies TypeOperators
+  default-extensions:
+      BlockArguments
+    , DataKinds
+    , DeriveAnyClass
+    , DeriveGeneric
+    , DuplicateRecordFields
+    , FlexibleContexts
+    , GADTs
+    , LambdaCase
+    , MultiParamTypeClasses
+    , NamedFieldPuns
+    , PolyKinds
+    , RankNTypes
+    , RecordWildCards
+    , ScopedTypeVariables
+    , TypeApplications
+    , TypeFamilies
+    , TypeOperators
   ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -Wno-unused-do-bind -O0
   build-depends:
-      aeson >=1.4.0.0 && <1.5.0.0
-    , base >=4.7 && <5
+      base >=4.7 && <5
     , bytestring
     , jsaddle
     , lens
