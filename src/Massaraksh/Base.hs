@@ -58,6 +58,14 @@ type HasInteractive p w e =
   ( HasModel p e
   , HasTellEvent w e )
 
+type HasDispatch o e =
+  ( HasMessage (Producer1 o (HtmlM e) ()) e )
+
+type HasModel1 s e m =
+  ( HasDynamicHandle s e
+  , HasSubscribe e
+  , MonadState s m )
+
 newBuilder :: (MonadReader e m, HasDomBuilder e, MonadJSM m, MonadUnliftIO m) => m (DomBuilder)
 newBuilder = do
   rootEl <- askRoot
@@ -97,7 +105,7 @@ instance (a ~ (), HasDom e) => IsString (HtmlM e a) where
 instance Semigroup a => Semigroup (HtmlM e a) where
   (<>) = liftM2 (<>)
 
-type MonadWidget e m = (MonadReader e m, MonadJSM m, HasDom e, Applicative m, MonadIO m, MonadUnliftIO m)
+type MonadWidget e m = (MonadReader e m, HasLiftJSM e, HasDom e, Applicative m, MonadIO m, MonadUnliftIO m)
 
 el :: HasDom e => Text -> HtmlM e a -> HtmlM e a
 el tag child = do
@@ -110,6 +118,10 @@ prop
   => key -> val -> Html e
 prop key val =
   askRoot >>= \el -> liftJSM $ el <# key $ val
+
+attr :: HasDom e => Text -> Text -> Html e
+attr key val =
+  askRoot >>= \el -> void $ liftJSM $ el # "setAttribute" $ (key, val)
 
 dynProp
   :: forall val key w e
@@ -149,10 +161,18 @@ on name decoder = do
 on1 :: (HasDom e, HasMessage w e) => Text -> w -> Html e
 on1 name w = on name (pure w)
 
+on1_ :: (HasDom e, HasMessage (Producer1 w (HtmlM e) ()) e) => Text -> (Producer1 w (HtmlM e) ()) -> Html e
+on1_ name w = on name (pure w)
+
+on_ :: (HasDom e, HasMessage (Producer1 w (HtmlM e) ()) e) => Text -> Decoder (Producer1 w (HtmlM e) ()) -> Html e
+on_ = on
+
 (=:) :: HasDom e => Text -> Text -> Html e
 (=:) = prop
 
-(~:) :: (HasDom e, HasModel w e) => Text -> (w -> Text) -> Html e
+(~:) :: forall val w e
+   . (HasDom e, HasModel w e, ToJSVal val)
+  => Text -> (w -> val) -> Html e
 (~:) = dynProp
 
 infixr 7 ~:, =:
@@ -196,6 +216,12 @@ class HasLiftJSM e where
 #ifndef ghcjs_HOST_OS
 instance (HasLiftJSM e) => MonadJSM (HtmlM e) where
   liftJSM' jsm = asks (^. liftJSML . to fromLiftJSM) >>= liftIO . ($ jsm)
+
+instance MonadJSM m => MonadJSM (Proxy a' a b' b m) where
+  liftJSM' = lift . liftJSM'
+
+-- instance (HasLiftJSM e) => MonadJSM (Proxy a' a b' b (HtmlM e)) where
+--   liftJSM' = lift . liftJSM'
 #endif
 
 instance (HasDynamicHandle d e) => MonadState d (HtmlM e) where

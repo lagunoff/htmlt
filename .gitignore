@@ -2,6 +2,7 @@
 **/TAGS
 **/.#*
 /dist-newstyle
+/examples/dist-newstyle
 **/*~
 **/*.kate-swp
 **/.directory

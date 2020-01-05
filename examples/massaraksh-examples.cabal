@@ -16,12 +16,12 @@ copyright:      2019 Vladislav Lagunov
 license:        BSD3
 build-type:     Simple
 
-executable massaraksh-hello-world
+executable massaraksh-todomvc
   main-is: Main.hs
   other-modules:
       Paths_massaraksh_examples
   hs-source-dirs:
-      hello-world
+      todomvc
   default-extensions:
       BlockArguments
     , DataKinds
@@ -49,6 +49,8 @@ executable massaraksh-hello-world
     , massaraksh
     , mtl
     , text
+    , transformers
+    , raw-strings-qq
   if impl(ghcjs)
     ghc-options: -dedupe
     build-depends:

@@ -99,6 +99,9 @@ instance DecodeJs Bool where
 instance DecodeJs Double where
   decodeJs = foldJsNumber (Left "Not a Number.") Right
 
+instance DecodeJs Int where
+  decodeJs = foldJsNumber (Left "Not a Number.") (Right . floor)
+
 instance DecodeJs JSArray where
   decodeJs = foldJsArray (Left "Not an Array.") Right
 
@@ -109,6 +112,10 @@ valueDecoder :: Decoder Text
 valueDecoder =
   foldAt ["target", "value"] (decoder @Text)
 
+targetDecoder :: Decoder JSVal
+targetDecoder =
+  foldAt ["target"] idDecoder
+
 emptyDecoder :: Decoder ()
 emptyDecoder =
   Decoder $ \_ -> pure (pure ())
@@ -116,6 +123,18 @@ emptyDecoder =
 pureDecoder :: a -> Decoder a
 pureDecoder a =
   Decoder \_ -> pure (pure a)
+
+idDecoder :: Decoder JSVal
+idDecoder =
+  Decoder $ pure . pure
+
+checkedDecoder :: Decoder Bool
+checkedDecoder =
+  foldAt ["target", "checked"] (decoder @Bool)
+
+keycodeDecoder :: Decoder Int
+keycodeDecoder =
+  foldAt ["keyCode"] (decoder @Int)
 
 -- FIXME: Add GHCJS-FFI version of 'fold_json'
 fold_json :: forall a. (() -> a) -> (Bool -> a) -> (Double -> a) -> (Text -> a) -> (JSArray -> a) -> (Object -> a) -> JSVal -> JSM a

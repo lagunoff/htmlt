@@ -1,7 +1,6 @@
 -- FIXME: This module needs refactoring. Find simpler way to work with
 -- recursive environments in ReaderT
-{-# LANGUAGE IncoherentInstances #-}
-{-# LANGUAGE CPP, RecursiveDo #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 module Massaraksh.Main where
 
@@ -31,7 +30,7 @@ withJSM explicitPort jsm = do
   envPort <- either (const Nothing) Just <$> try @SomeException (read <$> getEnv "PORT")
   progName <- getProgName
   let Just port = explicitPort <|> envPort <|> Just 8080
-  let runWarp = if progName == "<interactive>" then Warp.debug else Warp.run
+  let runWarp = Warp.run --if progName == "<interactive>" then Warp.debug else Warp.run
   putStrLn $ "Running jsaddle-warp application on http://localhost:" <> show port <> "/"
   runWarp port jsm
 #endif
@@ -100,23 +99,24 @@ attachComponent
   -> (forall x. w x -> Producer1 w (HtmlM (Fix e)) x)
   -> f
   -> JSM ()
-attachComponent rootEl mkEnv handle flags = mdo
+attachComponent rootEl mkEnv handle flags = do
+  dh@DynamicHandle{..} <- liftIO (newDynamic @d (error "Accessing dynamic state before it was initialized"))
+  UnliftIO{..} <- askUnliftIO
   let
     runEvent :: forall x. w x -> IO x
     runEvent = flip runReaderT hte . runHtmlM . runEffect . recPipe1 handle
     runEvent2 :: forall x. Producer1 w (HtmlM (Fix e)) x -> IO x
     runEvent2 = flip runReaderT hte . runHtmlM . runEffect . flip for (\(Exists w) -> D.toDyn <$> recPipe1 handle w)
-  initial <- liftIO $ runEvent (flags ^. re initL)
-  dh@DynamicHandle{..} <- liftIO (newDynamic initial)
-  UnliftIO{..} <- askUnliftIO
-  let
     hteBuilder   = newRootBuilder rootEl
     hteDynamic   = dh
     hteLiftJSM   = LiftJSM unliftIO
     hteSubscribe = Subscribe \e f -> void $ e `_evSubscribe` f
     hteTellEvent = TellEvent \e -> void $ e `_evSubscribe` runEvent2
     hte          = mkEnv $ HtmlEnv{..}
-  liftIO $ runEvent (() ^. re renderL)
+  initial :: d <- liftIO $ runEvent (flags ^. re initL)
+  liftIO $ _dhModify \_ -> initial
+  u :: () <- liftIO $ runEvent (() ^. re renderL)
+  pure ()
   where
     newRootBuilder rootEl =
       let
