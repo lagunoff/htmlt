@@ -2,13 +2,13 @@
 {-# LANGUAGE CPP #-}
 module Massaraksh.Decode where
 
-import Control.Monad.IO.Class
 import Control.Applicative
+import Control.Monad.IO.Class
+import Data.Text
+import GHC.IORef
+import GHCJS.Prim
 import JavaScript.Array (JSArray)
 import JavaScript.Object (Object)
-import Data.Text
-import GHCJS.Prim
-import GHC.IORef
 import Language.Javascript.JSaddle hiding (Result)
 
 type Result a = JSM (Either Text a)
@@ -117,6 +117,7 @@ pureDecoder :: a -> Decoder a
 pureDecoder a =
   Decoder \_ -> pure (pure a)
 
+-- FIXME: Add GHCJS-FFI version of 'fold_json'
 fold_json :: forall a. (() -> a) -> (Bool -> a) -> (Double -> a) -> (Text -> a) -> (JSArray -> a) -> (Object -> a) -> JSVal -> JSM a
 fold_json onNull onBool onNumber onString onArray onObject val = do
   ioRef <- liftIO $ newIORef (error "fold_json: none of the callbacks were called")

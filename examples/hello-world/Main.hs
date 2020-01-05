@@ -2,25 +2,23 @@
 module Main where
 
 import Massaraksh
+import Control.Monad.State
 import qualified Data.Text as T
 
 type Model = Int
 
-widget :: (MonadWidget e m, HasModel Model e) => m ()
+widget :: (HasModel Model e, HasMessage (HtmlM e ()) e) => Html e
 widget =
   div_ do
     "className" =: "root"
     h1_ do
       "style" ~: headerStyle
---      on "mouseenter" handleMouseEnter
+      on1 "mouseenter" do modify (+ 1)
       text "Hello, World!"
     el "style" do "type" =: "text/css"; text css
   where
     headerStyle n =
       "color: " <> colors !! (n `mod` length colors)
-
-    handleMouseEnter n =
-      undefined -- AStep (+1)
 
     colors =
       [ "rgb(173,192,84)", "rgb(22,153,190)", "rgb(22,93,24)", "rgb(199,232,42)"
@@ -36,4 +34,5 @@ widget =
       , ".root > h1 { font-size: 48px; margin: 0; font-family: \"Helvetica\", Arial, sans-serif; font-weight: 600; border: dashed 4px rgba(0,0,0,0.12); cursor: default; padding: 8px 16px; }"
       ]
 
--- main = defaultMain view 0
+main = withJSM Nothing (attachToBody (Fix . HtmlEnvF) id 0 widget)
+

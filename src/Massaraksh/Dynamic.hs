@@ -11,12 +11,12 @@ data Dynamic a = Dynamic
   { _dynRead    :: IO a
   , _dynUpdates :: Event (Update a) }
 
--- |Result of 'newDynamic'
+-- | Result of 'newDynamic'
 data DynamicHandle a = DynamicHandle
   { _dhDynamic :: Dynamic a
   , _dhModify  :: (a -> a) -> IO () }
 
--- |Create new 'Store' and a function to update the value inside the
+-- | Create new 'Store' and a function to update the value inside the
 -- store
 newDynamic :: a -> IO (DynamicHandle a)
 newDynamic initial = do
@@ -31,7 +31,7 @@ newDynamic initial = do
       _evhPush (Update old new)
   pure DynamicHandle{..}
 
--- |Filter and map
+-- | Filter and map
 mapMaybeD :: b -> (a -> Maybe b) -> Dynamic a -> Dynamic b
 mapMaybeD def f Dynamic{..} = Dynamic dynRead dynUpdates
   where

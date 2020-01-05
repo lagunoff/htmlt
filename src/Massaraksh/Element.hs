@@ -6,506 +6,506 @@ module Massaraksh.Element where
 import Massaraksh.Base
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/div
-div_ :: MonadWidget e m => m a -> m a
+div_ :: HasDom e => HtmlM e a -> HtmlM e a
 div_ = el "div"
 {-# INLINE div_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/table
-table_ :: MonadWidget e m => m a -> m a
+table_ :: HasDom e => HtmlM e a -> HtmlM e a
 table_ = el "table"
 {-# INLINE table_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/thead
-thead_ :: MonadWidget e m => m a -> m a
+thead_ :: HasDom e => HtmlM e a -> HtmlM e a
 thead_ = el "thead"
 {-# INLINE thead_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/tbody
-tbody_ :: MonadWidget e m => m a -> m a
+tbody_ :: HasDom e => HtmlM e a -> HtmlM e a
 tbody_ = el "tbody"
 {-# INLINE tbody_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/tr
-tr_ :: MonadWidget e m => m a -> m a
+tr_ :: HasDom e => HtmlM e a -> HtmlM e a
 tr_ = el "tr"
 {-# INLINE tr_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/th
-th_ :: MonadWidget e m => m a -> m a
+th_ :: HasDom e => HtmlM e a -> HtmlM e a
 th_ = el "th"
 {-# INLINE th_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/td
-td_ :: MonadWidget e m => m a -> m a
+td_ :: HasDom e => HtmlM e a -> HtmlM e a
 td_ = el "td"
 {-# INLINE td_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/tfoot
-tfoot_ :: MonadWidget e m => m a -> m a
+tfoot_ :: HasDom e => HtmlM e a -> HtmlM e a
 tfoot_ = el "tfoot"
 {-# INLINE tfoot_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/section
-section_ :: MonadWidget e m => m a -> m a
+section_ :: HasDom e => HtmlM e a -> HtmlM e a
 section_ = el "section"
 {-# INLINE section_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/header
-header_ :: MonadWidget e m => m a -> m a
+header_ :: HasDom e => HtmlM e a -> HtmlM e a
 header_ = el "header"
 {-# INLINE header_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/footer
-footer_ :: MonadWidget e m => m a -> m a
+footer_ :: HasDom e => HtmlM e a -> HtmlM e a
 footer_ = el "footer"
 {-# INLINE footer_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button
-button_ :: MonadWidget e m => m a -> m a
+button_ :: HasDom e => HtmlM e a -> HtmlM e a
 button_ = el "button"
 {-# INLINE button_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form
-form_ :: MonadWidget e m => m a -> m a
+form_ :: HasDom e => HtmlM e a -> HtmlM e a
 form_ = el "form"
 {-# INLINE form_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/p
-p_ :: MonadWidget e m => m a -> m a
+p_ :: HasDom e => HtmlM e a -> HtmlM e a
 p_ = el "p"
 {-# INLINE p_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/s
-s_ :: MonadWidget e m => m a -> m a
+s_ :: HasDom e => HtmlM e a -> HtmlM e a
 s_ = el "s"
 {-# INLINE s_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/ul
-ul_ :: MonadWidget e m => m a -> m a
+ul_ :: HasDom e => HtmlM e a -> HtmlM e a
 ul_ = el "ul"
 {-# INLINE ul_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/span
-span_ :: MonadWidget e m => m a -> m a
+span_ :: HasDom e => HtmlM e a -> HtmlM e a
 span_ = el "span"
 {-# INLINE span_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/strong
-strong_ :: MonadWidget e m => m a -> m a
+strong_ :: HasDom e => HtmlM e a -> HtmlM e a
 strong_ = el "strong"
 {-# INLINE strong_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/li
-li_ :: MonadWidget e m => m a -> m a
+li_ :: HasDom e => HtmlM e a -> HtmlM e a
 li_ = el "li"
 {-# INLINE li_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h1
-h1_ :: MonadWidget e m => m a -> m a
+h1_ :: HasDom e => HtmlM e a -> HtmlM e a
 h1_ = el "h1"
 {-# INLINE h1_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h2
-h2_ :: MonadWidget e m => m a -> m a
+h2_ :: HasDom e => HtmlM e a -> HtmlM e a
 h2_ = el "h2"
 {-# INLINE h2_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h3
-h3_ :: MonadWidget e m => m a -> m a
+h3_ :: HasDom e => HtmlM e a -> HtmlM e a
 h3_ = el "h3"
 {-# INLINE h3_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h4
-h4_ :: MonadWidget e m => m a -> m a
+h4_ :: HasDom e => HtmlM e a -> HtmlM e a
 h4_ = el "h4"
 {-# INLINE h4_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h5
-h5_ :: MonadWidget e m => m a -> m a
+h5_ :: HasDom e => HtmlM e a -> HtmlM e a
 h5_ = el "h5"
 {-# INLINE h5_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h6
-h6_ :: MonadWidget e m => m a -> m a
+h6_ :: HasDom e => HtmlM e a -> HtmlM e a
 h6_ = el "h6"
 {-# INLINE h6_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/hr
-hr_ :: MonadWidget e m => m a -> m a
+hr_ :: HasDom e => HtmlM e a -> HtmlM e a
 hr_ = el "hr"
 {-# INLINE hr_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/pre
-pre_ :: MonadWidget e m => m a -> m a
+pre_ :: HasDom e => HtmlM e a -> HtmlM e a
 pre_ = el "pre"
 {-# INLINE pre_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input
-input_ :: MonadWidget e m => m a -> m a
+input_ :: HasDom e => HtmlM e a -> HtmlM e a
 input_ = el "input"
 {-# INLINE input_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/label
-label_ :: MonadWidget e m => m a -> m a
+label_ :: HasDom e => HtmlM e a -> HtmlM e a
 label_ = el "label"
 {-# INLINE label_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/a
-a_ :: MonadWidget e m => m a -> m a
+a_ :: HasDom e => HtmlM e a -> HtmlM e a
 a_ = el "a"
 {-# INLINE a_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/mark
-mark_ :: MonadWidget e m => m a -> m a
+mark_ :: HasDom e => HtmlM e a -> HtmlM e a
 mark_ = el "mark"
 {-# INLINE mark_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/ruby
-ruby_ :: MonadWidget e m => m a -> m a
+ruby_ :: HasDom e => HtmlM e a -> HtmlM e a
 ruby_ = el "ruby"
 {-# INLINE ruby_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/rt
-rt_ :: MonadWidget e m => m a -> m a
+rt_ :: HasDom e => HtmlM e a -> HtmlM e a
 rt_ = el "rt"
 {-# INLINE rt_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/rp
-rp_ :: MonadWidget e m => m a -> m a
+rp_ :: HasDom e => HtmlM e a -> HtmlM e a
 rp_ = el "rp"
 {-# INLINE rp_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/bdi
-bdi_ :: MonadWidget e m => m a -> m a
+bdi_ :: HasDom e => HtmlM e a -> HtmlM e a
 bdi_ = el "bdi"
 {-# INLINE bdi_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/bdo
-bdo_ :: MonadWidget e m => m a -> m a
+bdo_ :: HasDom e => HtmlM e a -> HtmlM e a
 bdo_ = el "bdo"
 {-# INLINE bdo_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/wbr
-wbr_ :: MonadWidget e m => m a -> m a
+wbr_ :: HasDom e => HtmlM e a -> HtmlM e a
 wbr_ = el "wbr"
 {-# INLINE wbr_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/details
-details_ :: MonadWidget e m => m a -> m a
+details_ :: HasDom e => HtmlM e a -> HtmlM e a
 details_ = el "details"
 {-# INLINE details_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/summary
-summary_ :: MonadWidget e m => m a -> m a
+summary_ :: HasDom e => HtmlM e a -> HtmlM e a
 summary_ = el "summary"
 {-# INLINE summary_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/menuitem
-menuitem_ :: MonadWidget e m => m a -> m a
+menuitem_ :: HasDom e => HtmlM e a -> HtmlM e a
 menuitem_ = el "menuitem"
 {-# INLINE menuitem_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/menu
-menu_ :: MonadWidget e m => m a -> m a
+menu_ :: HasDom e => HtmlM e a -> HtmlM e a
 menu_ = el "menu"
 {-# INLINE menu_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/fieldset
-fieldset_ :: MonadWidget e m => m a -> m a
+fieldset_ :: HasDom e => HtmlM e a -> HtmlM e a
 fieldset_ = el "fieldset"
 {-# INLINE fieldset_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/legend
-legend_ :: MonadWidget e m => m a -> m a
+legend_ :: HasDom e => HtmlM e a -> HtmlM e a
 legend_ = el "legend"
 {-# INLINE legend_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/datalist
-datalist_ :: MonadWidget e m => m a -> m a
+datalist_ :: HasDom e => HtmlM e a -> HtmlM e a
 datalist_ = el "datalist"
 {-# INLINE datalist_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/optgroup
-optgroup_ :: MonadWidget e m => m a -> m a
+optgroup_ :: HasDom e => HtmlM e a -> HtmlM e a
 optgroup_ = el "optgroup"
 {-# INLINE optgroup_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/keygen
-keygen_ :: MonadWidget e m => m a -> m a
+keygen_ :: HasDom e => HtmlM e a -> HtmlM e a
 keygen_ = el "keygen"
 {-# INLINE keygen_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/output
-output_ :: MonadWidget e m => m a -> m a
+output_ :: HasDom e => HtmlM e a -> HtmlM e a
 output_ = el "output"
 {-# INLINE output_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/progress
-progress_ :: MonadWidget e m => m a -> m a
+progress_ :: HasDom e => HtmlM e a -> HtmlM e a
 progress_ = el "progress"
 {-# INLINE progress_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meter
-meter_ :: MonadWidget e m => m a -> m a
+meter_ :: HasDom e => HtmlM e a -> HtmlM e a
 meter_ = el "meter"
 {-# INLINE meter_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/center
-center_ :: MonadWidget e m => m a -> m a
+center_ :: HasDom e => HtmlM e a -> HtmlM e a
 center_ = el "center"
 {-# INLINE center_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/audio
-audio_ :: MonadWidget e m => m a -> m a
+audio_ :: HasDom e => HtmlM e a -> HtmlM e a
 audio_ = el "audio"
 {-# INLINE audio_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/video
-video_ :: MonadWidget e m => m a -> m a
+video_ :: HasDom e => HtmlM e a -> HtmlM e a
 video_ = el "video"
 {-# INLINE video_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/source
-source_ :: MonadWidget e m => m a -> m a
+source_ :: HasDom e => HtmlM e a -> HtmlM e a
 source_ = el "source"
 {-# INLINE source_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/track
-track_ :: MonadWidget e m => m a -> m a
+track_ :: HasDom e => HtmlM e a -> HtmlM e a
 track_ = el "track"
 {-# INLINE track_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/embed
-embed_ :: MonadWidget e m => m a -> m a
+embed_ :: HasDom e => HtmlM e a -> HtmlM e a
 embed_ = el "embed"
 {-# INLINE embed_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/object
-object_ :: MonadWidget e m => m a -> m a
+object_ :: HasDom e => HtmlM e a -> HtmlM e a
 object_ = el "object"
 {-# INLINE object_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/param
-param_ :: MonadWidget e m => m a -> m a
+param_ :: HasDom e => HtmlM e a -> HtmlM e a
 param_ = el "param"
 {-# INLINE param_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/ins
-ins_ :: MonadWidget e m => m a -> m a
+ins_ :: HasDom e => HtmlM e a -> HtmlM e a
 ins_ = el "ins"
 {-# INLINE ins_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/del
-del_ :: MonadWidget e m => m a -> m a
+del_ :: HasDom e => HtmlM e a -> HtmlM e a
 del_ = el "del"
 {-# INLINE del_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/small
-small_ :: MonadWidget e m => m a -> m a
+small_ :: HasDom e => HtmlM e a -> HtmlM e a
 small_ = el "small"
 {-# INLINE small_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/cite
-cite_ :: MonadWidget e m => m a -> m a
+cite_ :: HasDom e => HtmlM e a -> HtmlM e a
 cite_ = el "cite"
 {-# INLINE cite_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dfn
-dfn_ :: MonadWidget e m => m a -> m a
+dfn_ :: HasDom e => HtmlM e a -> HtmlM e a
 dfn_ = el "dfn"
 {-# INLINE dfn_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/abbr
-abbr_ :: MonadWidget e m => m a -> m a
+abbr_ :: HasDom e => HtmlM e a -> HtmlM e a
 abbr_ = el "abbr"
 {-# INLINE abbr_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/time
-time_ :: MonadWidget e m => m a -> m a
+time_ :: HasDom e => HtmlM e a -> HtmlM e a
 time_ = el "time"
 {-# INLINE time_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/var
-var_ :: MonadWidget e m => m a -> m a
+var_ :: HasDom e => HtmlM e a -> HtmlM e a
 var_ = el "var"
 {-# INLINE var_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/samp
-samp_ :: MonadWidget e m => m a -> m a
+samp_ :: HasDom e => HtmlM e a -> HtmlM e a
 samp_ = el "samp"
 {-# INLINE samp_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/kbd
-kbd_ :: MonadWidget e m => m a -> m a
+kbd_ :: HasDom e => HtmlM e a -> HtmlM e a
 kbd_ = el "kbd"
 {-# INLINE kbd_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/caption
-caption_ :: MonadWidget e m => m a -> m a
+caption_ :: HasDom e => HtmlM e a -> HtmlM e a
 caption_ = el "caption"
 {-# INLINE caption_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/colgroup
-colgroup_ :: MonadWidget e m => m a -> m a
+colgroup_ :: HasDom e => HtmlM e a -> HtmlM e a
 colgroup_ = el "colgroup"
 {-# INLINE colgroup_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/col
-col_ :: MonadWidget e m => m a -> m a
+col_ :: HasDom e => HtmlM e a -> HtmlM e a
 col_ = el "col"
 {-# INLINE col_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/nav
-nav_ :: MonadWidget e m => m a -> m a
+nav_ :: HasDom e => HtmlM e a -> HtmlM e a
 nav_ = el "nav"
 {-# INLINE nav_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/article
-article_ :: MonadWidget e m => m a -> m a
+article_ :: HasDom e => HtmlM e a -> HtmlM e a
 article_ = el "article"
 {-# INLINE article_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/aside
-aside_ :: MonadWidget e m => m a -> m a
+aside_ :: HasDom e => HtmlM e a -> HtmlM e a
 aside_ = el "aside"
 {-# INLINE aside_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/address
-address_ :: MonadWidget e m => m a -> m a
+address_ :: HasDom e => HtmlM e a -> HtmlM e a
 address_ = el "address"
 {-# INLINE address_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/main
-main_ :: MonadWidget e m => m a -> m a
+main_ :: HasDom e => HtmlM e a -> HtmlM e a
 main_ = el "main"
 {-# INLINE main_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/body
-body_ :: MonadWidget e m => m a -> m a
+body_ :: HasDom e => HtmlM e a -> HtmlM e a
 body_ = el "body"
 {-# INLINE body_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/figure
-figure_ :: MonadWidget e m => m a -> m a
+figure_ :: HasDom e => HtmlM e a -> HtmlM e a
 figure_ = el "figure"
 {-# INLINE figure_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/figcaption
-figcaption_ :: MonadWidget e m => m a -> m a
+figcaption_ :: HasDom e => HtmlM e a -> HtmlM e a
 figcaption_ = el "figcaption"
 {-# INLINE figcaption_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dl
-dl_ :: MonadWidget e m => m a -> m a
+dl_ :: HasDom e => HtmlM e a -> HtmlM e a
 dl_ = el "dl"
 {-# INLINE dl_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dt
-dt_ :: MonadWidget e m => m a -> m a
+dt_ :: HasDom e => HtmlM e a -> HtmlM e a
 dt_ = el "dt"
 {-# INLINE dt_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dd
-dd_ :: MonadWidget e m => m a -> m a
+dd_ :: HasDom e => HtmlM e a -> HtmlM e a
 dd_ = el "dd"
 {-# INLINE dd_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/img
-img_ :: MonadWidget e m => m a -> m a
+img_ :: HasDom e => HtmlM e a -> HtmlM e a
 img_ = el "img"
 {-# INLINE img_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe
-iframe_ :: MonadWidget e m => m a -> m a
+iframe_ :: HasDom e => HtmlM e a -> HtmlM e a
 iframe_ = el "iframe"
 {-# INLINE iframe_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/canvas
-canvas_ :: MonadWidget e m => m a -> m a
+canvas_ :: HasDom e => HtmlM e a -> HtmlM e a
 canvas_ = el "canvas"
 {-# INLINE canvas_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/math
-math_ :: MonadWidget e m => m a -> m a
+math_ :: HasDom e => HtmlM e a -> HtmlM e a
 math_ = el "math"
 {-# INLINE math_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/select
-select_ :: MonadWidget e m => m a -> m a
+select_ :: HasDom e => HtmlM e a -> HtmlM e a
 select_ = el "select"
 {-# INLINE select_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/option
-option_ :: MonadWidget e m => m a -> m a
+option_ :: HasDom e => HtmlM e a -> HtmlM e a
 option_ = el "option"
 {-# INLINE option_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/textarea
-textarea_ :: MonadWidget e m => m a -> m a
+textarea_ :: HasDom e => HtmlM e a -> HtmlM e a
 textarea_ = el "textarea"
 {-# INLINE textarea_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/sub
-sub_ :: MonadWidget e m => m a -> m a
+sub_ :: HasDom e => HtmlM e a -> HtmlM e a
 sub_ = el "sub"
 {-# INLINE sub_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/sup
-sup_ :: MonadWidget e m => m a -> m a
+sup_ :: HasDom e => HtmlM e a -> HtmlM e a
 sup_ = el "sup"
 {-# INLINE sup_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/br
-br_ :: MonadWidget e m => m a -> m a
+br_ :: HasDom e => HtmlM e a -> HtmlM e a
 br_ = el "br"
 {-# INLINE br_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/ol
-ol_ :: MonadWidget e m => m a -> m a
+ol_ :: HasDom e => HtmlM e a -> HtmlM e a
 ol_ = el "ol"
 {-# INLINE ol_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/blockquote
-blockquote_ :: MonadWidget e m => m a -> m a
+blockquote_ :: HasDom e => HtmlM e a -> HtmlM e a
 blockquote_ = el "blockquote"
 {-# INLINE blockquote_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/code
-code_ :: MonadWidget e m => m a -> m a
+code_ :: HasDom e => HtmlM e a -> HtmlM e a
 code_ = el "code"
 {-# INLINE code_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/em
-em_ :: MonadWidget e m => m a -> m a
+em_ :: HasDom e => HtmlM e a -> HtmlM e a
 em_ = el "em"
 {-# INLINE em_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/i
-i_ :: MonadWidget e m => m a -> m a
+i_ :: HasDom e => HtmlM e a -> HtmlM e a
 i_ = el "i"
 {-# INLINE i_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/b
-b_ :: MonadWidget e m => m a -> m a
+b_ :: HasDom e => HtmlM e a -> HtmlM e a
 b_ = el "b"
 {-# INLINE b_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/u
-u_ :: MonadWidget e m => m a -> m a
+u_ :: HasDom e => HtmlM e a -> HtmlM e a
 u_ = el "u"
 {-# INLINE u_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/q
-q_ :: MonadWidget e m => m a -> m a
+q_ :: HasDom e => HtmlM e a -> HtmlM e a
 q_ = el "q"
 {-# INLINE q_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/script
-script_ :: MonadWidget e m => m a -> m a
+script_ :: HasDom e => HtmlM e a -> HtmlM e a
 script_ = el "script"
 {-# INLINE script_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/link
-link_ :: MonadWidget e m => m a -> m a
+link_ :: HasDom e => HtmlM e a -> HtmlM e a
 link_ = el "link"
 {-# INLINE link_ #-}

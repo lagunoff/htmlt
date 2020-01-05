@@ -55,6 +55,7 @@ library
   build-depends:
      base >=4.7 && <5
    , bytestring
+   , data-has
    , jsaddle
    , lens
    , mtl
