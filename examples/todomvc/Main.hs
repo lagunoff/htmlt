@@ -5,4 +5,4 @@ import Massaraksh
 
 main :: IO ()
 main = withJSM Nothing $
-  attachComponentToBody (Fix . ComponentEnvF) component ()
+  attachToBody component () (component Init) (component Render)

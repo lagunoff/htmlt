@@ -3,11 +3,13 @@ module Main where
 
 import Massaraksh
 import Control.Monad.State
+import Data.Void
+import Data.Functor.Const
 import qualified Data.Text as T
 
 type Model = Int
 
-widget :: (HasModel Model e, HasMessage (HtmlM e ()) e) => Html e
+widget :: Html' e (Const Void) Model
 widget =
   div_ do
     "className" =: "root"
@@ -18,7 +20,7 @@ widget =
     el "style" do "type" =: "text/css"; text css
   where
     headerStyle n =
-      "color: " <> colors !! (n `mod` length colors)
+      ("color: " :: T.Text) <> colors !! (n `mod` Prelude.length colors)
 
     colors =
       [ "rgb(173,192,84)", "rgb(22,153,190)", "rgb(22,93,24)", "rgb(199,232,42)"
@@ -34,5 +36,5 @@ widget =
       , ".root > h1 { font-size: 48px; margin: 0; font-family: \"Helvetica\", Arial, sans-serif; font-weight: 600; border: dashed 4px rgba(0,0,0,0.12); cursor: default; padding: 8px 16px; }"
       ]
 
-main = withJSM Nothing (attachToBody (Fix . HtmlEnvF) id 0 widget)
+main = withJSM Nothing (attachToBody (absurd . getConst) () (pure 0) (lift widget))
 

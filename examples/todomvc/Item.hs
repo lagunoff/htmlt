@@ -40,11 +40,7 @@ data Msg a where
   EditingCancel :: Msg ()
   EditingCommit :: Msg ()
 
-component
-  :: forall e x
-   . (HasModel Model e, HasDispatch Msg e)
-  => Msg x
-  -> ComponentM Msg e x
+component :: Msg ~> ComponentM' e Msg Model
 component = \case
   Init title ->
     pure (Model title False Nothing)
@@ -73,7 +69,7 @@ component = \case
     Just x  -> modify $ (moEditing .~ Nothing) . (moTitle .~ x)
     Nothing -> pure ()
   where
-    render :: Html e
+    render :: Html' e Msg Model
     render =
       li_ do
       -- [ Dyn.classList_

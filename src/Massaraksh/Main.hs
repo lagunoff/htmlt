@@ -7,7 +7,6 @@ module Massaraksh.Main where
 import Control.Lens
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
-import Data.Typeable
 import Language.Javascript.JSaddle
 import Massaraksh.Base
 import Massaraksh.Dynamic
@@ -22,6 +21,57 @@ import System.Environment
 import Control.Exception
 #endif
 
+type (~>) a b = forall x. a x -> b x
+
+recPipe1 :: forall w m x. Monad m => (w ~> Producer1 w m) -> w x -> Effect m x
+recPipe1 producer w = for (producer w) (\(Exists w) -> D.toDyn <$> recPipe1 producer w)
+
+class HasRender s where
+  renderL :: Prism' s ()
+
+class HasInit a s | s -> a where
+  initL :: Prism' s a
+
+attach
+  :: forall e w s x
+   . JSVal                      -- ^ Root DOM node
+  -> (w ~> ComponentM e w s s)  -- ^ Evaluate messages emitted by component
+  -> e                          -- ^ Extra application-specific environment
+  -> ComponentM e w s s s       -- ^ Init action
+  -> ComponentM e w s s x       -- ^ Render action
+  -> JSM x
+attach rootEl component extraEnv init render = do
+  let uninitialized = error "Accessing dynamic state before it was initialized"
+  hteDynamicRef@DynamicRef{..} <- liftIO (newDynamicRef uninitialized)
+  UnliftIO{..} <- askUnliftIO
+  let
+    dobReplaceRoot = \_ -> pure ()
+    dobRootNode    = pure rootEl
+    hteDomBuilder  = DomBuilder{..}
+    hteEventWriter = EventWriter \e -> void $ e `subscribe` runComponent
+    hteExtraEnv    = extraEnv
+    hteLiftJSM     = LiftJSM unliftIO
+    hteSubscriber  = Subscriber \e f -> void $ e `subscribe` f
+    env            = HtmlEnv{..}
+
+    runComponent :: forall x. ComponentM e w s s x -> IO x
+    runComponent =
+      flip runReaderT env . runHtmlM . runEffect .
+      flip for (\(Exists w) -> D.toDyn <$> recPipe1 component w)
+  initial <- liftIO (runComponent init)
+  liftIO (drefModify \_ -> initial)
+  liftIO (runComponent render)
+
+attachToBody
+  :: (w ~> ComponentM e w s s)  -- ^ Evaluate messages emitted by component
+  -> e                          -- ^ Extra application-specific environment
+  -> ComponentM e w s s s       -- ^ Init action
+  -> ComponentM e w s s x       -- ^ Render action
+  -> JSM x
+attachToBody component extraEnv init render = do
+  rootEl <- jsg "document" ! "body"
+  attach rootEl component extraEnv init render
+
 withJSM :: Maybe Int -> JSM () -> IO ()
 #ifdef ghcjs_HOST_OS
 withJSM _ = id
@@ -34,120 +84,3 @@ withJSM explicitPort jsm = do
   putStrLn $ "Running jsaddle-warp application on http://localhost:" <> show port <> "/"
   runWarp port jsm
 #endif
-
-newtype Fix f = Fix (f (Fix f))
-
-unfix :: Fix f -> f (Fix f)
-unfix (Fix f) = f
-
-recPipe :: Monad m => (w -> Producer w m ()) -> w -> Effect m ()
-recPipe producer w = for (producer w) (recPipe producer)
-
-recPipe1 :: forall w m x. Monad m => (forall x. w x -> Producer1 w m x) -> w x -> Effect m x
-recPipe1 producer w = for (producer w) (\(Exists w) -> D.toDyn <$> recPipe1 producer w)
-
-class HasRender a s where
-  renderL :: Prism' s a
-
-class HasInit a s | s -> a where
-  initL :: Prism' s a
-
-attach
-  :: forall e d x w
-   . (HasHtmlEnv d (w ()) (Fix e))
-  => JSVal
-  -> (HtmlEnv d (w ()) -> Fix e)
-  -> (forall x. w x -> HtmlM (Fix e) x)
-  -> d
-  -> HtmlM (Fix e) x
-  -> JSM x
-attach rootEl mkEnv handle initial html = do
-  dh@DynamicHandle{..} <- liftIO (newDynamic initial)
-  UnliftIO{..} <- askUnliftIO
-  let
-    hteBuilder   = newRootBuilder rootEl
-    hteDynamic   = dh
-    hteLiftJSM   = LiftJSM unliftIO
-    hteSubscribe = Subscribe \e f -> void $ e `_evSubscribe` f
-    hteTellEvent = TellEvent \e -> void $ e `_evSubscribe` (flip runReaderT env . runHtmlM . handle)
-    env          = mkEnv HtmlEnv{..}
-  liftIO . flip runReaderT env . runHtmlM $ html
-  where
-    newRootBuilder rootEl =
-      let
-        dobAskRoot       = pure rootEl
-        dobReplaceRoot _ = pure ()
-      in DomBuilder{..}
-
-attachToBody
-  :: forall e d x w
-   . (HasHtmlEnv d (w ()) (Fix e))
-  => (HtmlEnv d (w ()) -> Fix e)
-  -> (forall x. w x -> HtmlM (Fix e) x)
-  -> d
-  -> HtmlM (Fix e) x
-  -> JSM x
-attachToBody mkEnv handle initial html = do
-  rootEl <- jsg "document" ! "body"
-  attach rootEl mkEnv handle initial html
-
-attachComponent
-  :: forall e d w f
-   . (HasHtmlEnv d (Producer1 w (HtmlM (Fix e)) ()) (Fix e), HasRender () (w ()), HasInit f (w d), Typeable d)
-  => JSVal
-  -> (HtmlEnv d (Producer1 w (HtmlM (Fix e)) ()) -> Fix e)
-  -> (forall x. w x -> Producer1 w (HtmlM (Fix e)) x)
-  -> f
-  -> JSM ()
-attachComponent rootEl mkEnv handle flags = do
-  dh@DynamicHandle{..} <- liftIO (newDynamic @d (error "Accessing dynamic state before it was initialized"))
-  UnliftIO{..} <- askUnliftIO
-  let
-    runEvent :: forall x. w x -> IO x
-    runEvent = flip runReaderT hte . runHtmlM . runEffect . recPipe1 handle
-    runEvent2 :: forall x. Producer1 w (HtmlM (Fix e)) x -> IO x
-    runEvent2 = flip runReaderT hte . runHtmlM . runEffect . flip for (\(Exists w) -> D.toDyn <$> recPipe1 handle w)
-    hteBuilder   = newRootBuilder rootEl
-    hteDynamic   = dh
-    hteLiftJSM   = LiftJSM unliftIO
-    hteSubscribe = Subscribe \e f -> void $ e `_evSubscribe` f
-    hteTellEvent = TellEvent \e -> void $ e `_evSubscribe` runEvent2
-    hte          = mkEnv $ HtmlEnv{..}
-  initial :: d <- liftIO $ runEvent (flags ^. re initL)
-  liftIO $ _dhModify \_ -> initial
-  u :: () <- liftIO $ runEvent (() ^. re renderL)
-  pure ()
-  where
-    newRootBuilder rootEl =
-      let
-        dobAskRoot       = pure rootEl
-        dobReplaceRoot _ = pure ()
-      in DomBuilder{..}
-
-attachComponentToBody
-  :: forall e d w f
-   . (HasHtmlEnv d (Producer1 w (HtmlM (Fix e)) ()) (Fix e), HasRender () (w ()), HasInit f (w d), Typeable d)
-  => (HtmlEnv d (Producer1 w (HtmlM (Fix e)) ()) -> Fix e)
-  -> (forall x. w x -> Producer1 w (HtmlM (Fix e)) x)
-  -> f
-  -> JSM ()
-attachComponentToBody mkEkv handle initial = do
-  rootEl <- jsg "document" ! "body"
-  attachComponent rootEl mkEkv handle initial
-
-newtype ComponentEnvF d w f = ComponentEnvF
-  { unComponentEnv :: HtmlEnv d (Producer1 w (HtmlM f) ()) }
-
-newtype HtmlEnvF d f = HtmlEnvF
-  { unHtmlEnvF :: HtmlEnv d (HtmlM f ()) }
-
-instance HasHtmlEnv d (HtmlM (Fix (HtmlEnvF d)) ()) (Fix (HtmlEnvF d)) where
-  htmlEnvL = iso (unHtmlEnvF . unfix) (Fix . HtmlEnvF)
-
-instance HasHtmlEnv d (Producer1 w (HtmlM (Fix (ComponentEnvF d w))) ()) (Fix (ComponentEnvF d w)) where
-  htmlEnvL = iso (unComponentEnv . unfix) (Fix . ComponentEnvF)
-
-instance HasHtmlEnv d (Producer1 w (HtmlM (Fix (ComponentEnvF d w))) ()) (ComponentEnvF d w (Fix (ComponentEnvF d w))) where
-  htmlEnvL = iso (unComponentEnv) (ComponentEnvF)
-
-type ComponentM o e a = Producer1 o (HtmlM e) a

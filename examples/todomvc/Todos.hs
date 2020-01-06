@@ -13,7 +13,6 @@ import Data.String (fromString)
 import Data.Foldable
 import Data.Text (Text)
 import GHC.Generics
-import Language.Javascript.JSaddle (JSM)
 import Massaraksh
 import Unsafe.Coerce
 import Text.RawString.QQ (r)
@@ -48,22 +47,14 @@ data Msg a where
   Blur :: Msg ()
   TodoMsg :: Item.Msg a -> Int -> Msg a
 
-component
-  :: forall e x
-   . (HasModel Model e, HasDispatch Msg e)
-  => Msg x
-  -> ComponentM Msg e x
+component :: Msg ~> ComponentM' e Msg Model
 component = \case
   Init -> do
     hash <- liftJSM readHash
-    let filter = filterFromUrl hash & fromMaybe All
     todos <- liftJSM readTodos
+    let filter = filterFromUrl hash & fromMaybe All
     pure (Model "" todos filter)
   Render -> do
-    hash <- lift (liftJSM readHash)
-    let filter = filterFromUrl hash & fromMaybe All
-    todos <- liftJSM readTodos
-    liftIO $ print (Model "" todos filter)
     lift render
   Edit x ->
     modify $ moTitle .~ x
@@ -78,7 +69,7 @@ component = \case
     case T.strip (_moTitle model) of
       ""      -> pure ()
       trimmed -> do
-        newItem <- ignoreMessages (Item.component @(Fix (ComponentEnvF Item.Model _)) (Item.Init trimmed))
+        newItem <- undefined -- ignoreMessages (Item.component @(Fix (ComponentEnvF Item.Model _)) (Item.Init trimmed))
         modify $ moTodos %~ (<> [newItem])
         modify $ moTitle .~ ""
   Blur ->
@@ -100,12 +91,12 @@ component = \case
   TodoMsg Item.Destroy idx ->
     modify $ moTodos %~ deleteNth idx
   TodoMsg msg idx ->
-    ignoreMessages (Item.component @(Fix (ComponentEnvF Item.Model _)) msg)
+    undefined -- ignoreMessages (Item.component @(Fix (ComponentEnvF Item.Model _)) msg)
     -- Item.component msg
     --   & liftMsg (flip TodoMsg idx)
     --   & runStateLens @Model (motodos . element idx)
   where
-    render :: Html e
+    render :: Html' e Msg Model
     render =
       div_ do
         section_ do
@@ -116,7 +107,7 @@ component = \case
         footerInfo
         el "style" do "type" =: "text/css"; text css
 
-    renderHeader :: Html e
+    renderHeader :: Html' e Msg Model
     renderHeader =
       header_ do
         "className" =: "header"
@@ -130,7 +121,7 @@ component = \case
           on_ "keydown" $ keycodeDecoder <&> yield1 . KeyPress
           on1_ "blur" $ yield1 Blur
 
-    renderMain :: Html e
+    renderMain :: Html' e Msg Model
     renderMain =
       section_ do
         -- Dyn.classList_
@@ -149,7 +140,7 @@ component = \case
       --   (mapUI (\(Exists msg) idx -> Exists $ TodoMsg msg idx) Item.view)
       --   \parent model -> Item.Props { hidden = isHidden parent model, .. }
 
-    renderFilter :: Filter -> Html e
+    renderFilter :: Filter -> Html' e Msg Model
     renderFilter x =
       li_ do
         a_ do
@@ -157,7 +148,7 @@ component = \case
           "href" =: filterToUrl x
           text $ fromString (show x)
 
-    viewFooter :: Html e
+    viewFooter :: Html' e Msg Model
     viewFooter =
       footer_ do
       -- [ Dyn.classList_
@@ -177,7 +168,7 @@ component = \case
           on1_ "click" $ yield1 ClearCompleted
           text "Clear completed"
 
-    footerInfo :: Html e
+    footerInfo :: Html' e Msg Model
     footerInfo =
       footer_ do
         "className" =: "info"
@@ -223,12 +214,6 @@ deleteNth _ []     = []
 deleteNth i (a:as)
   | i == 0    = as
   | otherwise = a : deleteNth (i-1) as
-
-instance HasRender () (Msg ()) where
-  renderL = prism (const Render) \case Render -> Right (); a -> Left a;
-
-instance HasInit () (Msg Model) where
-  initL = prism (const Init) \case Init -> Right (); a -> Left a
 
 css = [r|
 body {
