@@ -1,12 +1,13 @@
+{-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE CPP #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 module Massaraksh.Base where
 
-import Control.Lens hiding ((#))
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
 import Control.Monad.State
+import Control.Applicative
 import Data.Maybe
 import Data.String
 import Data.Text as T
@@ -21,272 +22,215 @@ import Pipes.Core as P
 import Unsafe.Coerce
 import qualified Data.Dynamic as D
 
-newtype HtmlM e a = HtmlM { runHtmlM :: ReaderT e IO a }
-  deriving (Functor, Applicative, Monad, MonadReader e, MonadIO, MonadFix)
+newtype HtmlT w s t m a = HtmlT { runHtmlT :: ReaderT (HtmlEnv w s t m) m a }
+  deriving (Functor, Applicative, Monad, MonadIO, MonadReader (HtmlEnv w s t m), MonadFix)
 
-type Html e w s t = HtmlM (HtmlEnv e w s t) ()
-type Html' e w s = HtmlM (HtmlEnv e w s s) ()
+data HtmlEnv w s t m = HtmlEnv
+  { hteRootRef    :: RootElmRef
+  , hteDynamicRef :: DynamicRef s t
+  , hteSubscriber :: Subscriber (ComponentT w s t m ()) }
 
-data DomBuilder = DomBuilder
-  { dobRootNode    :: IO JSVal
-  , dobReplaceRoot :: JSVal -> IO ()
-  }
+data RootElmRef = RootElmRef
+  { relmRead  :: IO JSVal
+  , relmWrite :: JSVal -> IO ()  }
 
-data HtmlEnv e w s t = HtmlEnv
-  { hteDomBuilder  :: DomBuilder
-  , hteDynamicRef  :: DynamicRef s t
-  , hteExtraEnv    :: e
-  , hteEventWriter :: EventWriter (ComponentM e w s t ())
-  , hteLiftJSM     :: LiftJSM
-  , hteSubscriber  :: Subscriber }
+data Subscriber a = Subscriber
+  { sbscrPrivate :: forall x. Event x -> (x -> IO ()) -> IO (IO ())
+  , sbscrPublic  :: Event a -> IO (IO ()) }
 
-type HtmlEnv' e w s = HtmlEnv e w s s
-
-newtype Subscriber = Subscriber
-  { runSubscriber :: forall a. Event a -> (a -> IO ()) -> IO () }
-
-newtype EventWriter w = EventWriter
-  { runEventWriter :: Event w -> IO () }
-
-newtype LiftJSM = LiftJSM
-  { runLiftJSM :: forall x. JSM x -> IO x }
-
-type ComponentM e w s t = Producer1 w (HtmlM (HtmlEnv e w s t))
-type ComponentM' e w s = Producer1 w (HtmlM (HtmlEnv e w s s))
+type ComponentT w s t m = Producer1 w (HtmlT w s t m)
 
 type Producer1 w = Proxy X () D.Dynamic (Exists w)
 
 data Exists (f :: * -> *) = forall x. Typeable x => Exists { unExists :: f x }
 
-yield1 :: (Monad m, Typeable a) => w a -> Producer1 w m a
-yield1 w = (\(D.Dynamic _ x) -> unsafeCoerce x) <$> respond (Exists w)
+type MonadHtmlBase m = (MonadJSM m, MonadUnliftIO m)
 
-type HasDom e =
-  ( HasDomBuilder e
-  , HasLiftJSM e )
+type IsHtml h = forall w s t m. (MonadHtmlBase m, h ~ HtmlT w s t m)
 
-type HasDynamic s t e =
-  ( HasDynamicRef s t e
-  , HasSubscriber e )
-
-newBuilder
-  :: ( MonadReader e m
-     , HasDomBuilder e
-     , MonadJSM m
-     , MonadUnliftIO m )
-  => m (DomBuilder)
-newBuilder = do
-  rootEl <- askRootNode
-  elRef <- liftIO (newIORef Nothing)
-  UnliftIO{..} <- askUnliftIO
-  let
-    initial     = error "Root element was accessed before it was initialized"
-    dobRootNode = fromMaybe initial <$> readIORef elRef
-    dobReplaceRoot newEl = do
-      readIORef elRef >>= \case
-        Nothing    -> unliftIO $ liftJSM $ rootEl # "appendChild" $ newEl
-        Just oldEl -> unliftIO $ liftJSM $ rootEl # "replaceChild" $ (newEl, oldEl)
-      liftIO $ writeIORef elRef (Just newEl)
-  pure DomBuilder{..}
-
-askRootNode
-  :: forall m e
-   . (MonadReader e m, HasDomBuilder e, MonadIO m)
-  => m JSVal
-askRootNode = asks (^. domBuilderL . to dobRootNode) >>= liftIO
-
-replaceRoot
-  :: forall m e
-   . (MonadReader e m, HasDomBuilder e, MonadIO m)
-  => JSVal -> m ()
-replaceRoot el = do
-  DomBuilder{..} <- asks (^. domBuilderL)
-  liftIO (dobReplaceRoot el)
-
-withAppendChild
-  :: forall m e a
-   . (MonadReader e m, HasDomBuilder e, MonadJSM m, MonadUnliftIO m)
-  => JSVal -> m a -> m a
-withAppendChild el child = do
-  hteBuilder@DomBuilder{..} <- newBuilder
-  liftIO (dobReplaceRoot el)
-  local (set domBuilderL hteBuilder) child
-
-appendChild
-  :: forall m e
-   . (MonadReader e m, HasDomBuilder e, MonadJSM m, MonadUnliftIO m)
-  => JSVal -> m ()
-appendChild el = do
-  DomBuilder{..} <- newBuilder
-  liftIO (dobReplaceRoot el)
-
-instance (a ~ (), HasDom e) => IsString (HtmlM e a) where
-  fromString = text . T.pack
-
-instance Semigroup a => Semigroup (HtmlM e a) where
-  (<>) = liftM2 (<>)
-
-instance Monoid a => Monoid (HtmlM e a) where
-  mempty = HtmlM $ ReaderT \_ -> mempty
-
-el :: HasDom e => Text -> HtmlM e a -> HtmlM e a
+el :: MonadHtmlBase m => Text -> HtmlT w s t m a -> HtmlT w s t m a
 el tag child = do
   elm <- liftJSM $ jsg "document" # "createElement" $ tag
   withAppendChild elm child
 
-prop
-  :: forall val key e
-   . (HasDom e, ToJSString key, ToJSVal val)
-  => key -> val -> HtmlM e ()
-prop key val =
-  askRootNode >>= \el -> liftJSM $ el <# key $ val
+text :: MonadHtmlBase m => Text -> HtmlT w s t m ()
+text txt = do
+  textNode <- liftJSM $ jsg "document" # "createTextNode" $ txt
+  appendChild textNode
 
-attr :: HasDom e => Text -> Text -> HtmlM e ()
-attr key val =
-  askRootNode >>= \el -> void $ liftJSM $ el # "setAttribute" $ (key, val)
+dynText :: (MonadHtmlBase m, ToJSVal v) => (s -> Text) -> HtmlT w s t m ()
+dynText f = do
+  Dynamic{..} <- asks (drefValue . hteDynamicRef)
+  txt <- f <$> liftIO dynRead
+  textNode <- liftJSM $ jsg "document" # "createTextNode" $ txt
+  dynUpdates `subscribePrivate` \Update{..} -> do
+    void $ liftJSM $ textNode <# "nodeValue" $ f updNew
+  appendChild textNode
+
+prop
+  :: forall v w s t m
+   . (MonadHtmlBase m, ToJSVal v)
+  => Text -> v -> HtmlT w s t m ()
+prop key val = do
+  rootEl <- askRootElm
+  liftJSM $ rootEl <# key $ val
+
+(=:) :: (MonadHtmlBase m, ToJSVal v) => Text -> v -> HtmlT w s t m ()
+(=:) = prop
+infixr 7 =:
 
 dynProp
-  :: forall v s t e
-   . (HasDom e, HasDynamic s t e, ToJSVal v)
-  => Text -> (s -> v) -> HtmlM e ()
+  :: forall v w s t m
+   . (MonadHtmlBase m, ToJSVal v)
+  => Text -> (s -> v) -> HtmlT w s t m ()
 dynProp key f = do
-  Dynamic{..} <- asks (^. dynamicRefL . to drefValue)
+  Dynamic{..} <- asks (drefValue . hteDynamicRef)
   txt <- f <$> liftIO dynRead
-  el <- askRootNode
-  liftJSM (el <# key $ txt)
-  dynUpdates `htmlSubscribe` \Update{..} ->
-    liftJSM (el <# key $ f updNew)
+  rootEl <- askRootElm
+  liftJSM (rootEl <# key $ txt)
+  void $ dynUpdates `subscribePrivate` \Update{..} ->
+    liftJSM (rootEl <# key $ f updNew)
 
-htmlSubscribe
-  :: (MonadReader e m, HasSubscriber e, MonadUnliftIO m)
-  => Event w -> (w -> m ()) -> m ()
-htmlSubscribe e f = do
-  subscriber <- asks (^. subscriberL . to runSubscriber)
+(~:) :: (MonadHtmlBase m, ToJSVal v) => Text -> (s -> v) -> HtmlT w s t m ()
+(~:) = dynProp
+infixr 7 ~:
+
+attr :: MonadHtmlBase m => Text -> Text -> HtmlT w s t m ()
+attr key val = do
+  rootEl <- askRootElm
+  void $ liftJSM $ rootEl # "setAttribute" $ (key, val)
+
+dynAttr :: MonadHtmlBase m => Text -> (s -> Text) -> HtmlT w s t m ()
+dynAttr key f = do
+  Dynamic{..} <- asks (drefValue . hteDynamicRef)
+  txt <- f <$> liftIO dynRead
+  rootEl <- askRootElm
+  liftJSM (rootEl <# key $ txt)
+  void $ dynUpdates `subscribePrivate` \Update{..} ->
+    void $ liftJSM $ rootEl # "setAttribute" $ (key, f updNew)
+
+on
+  :: MonadHtmlBase m
+  => Text
+  -> Decoder (ComponentT w s t m ())
+  -> HtmlT w s t m ()
+on name decoder = do
+  el <- askRootElm
+  UnliftIO{..} <- askUnliftIO
+  let
+    event = Event \k -> do
+      cb <- unliftIO $ liftJSM $ function \_ _ [event] -> do
+        runDecoder decoder event >>= \case
+          Left err  -> pure ()
+          Right val -> liftIO (k val)
+      unliftIO $ liftJSM (el # "addEventListener" $ (name, cb))
+      pure $ unliftIO $ void $ liftJSM $ el # "removeEventListener" $ (name, cb)
+  void $ subscribePublic event
+
+on1
+  :: MonadHtmlBase m
+  => Text
+  -> ComponentT w s t m ()
+  -> HtmlT w s t m ()
+on1 name w = on name (pure w)
+
+yield1 :: (Monad m, Typeable a) => w a -> Producer1 w m a
+yield1 w = (\(D.Dynamic _ x) -> unsafeCoerce x) <$> respond (Exists w)
+
+newRootRef :: MonadHtmlBase m => HtmlT w s t m RootElmRef
+newRootRef = do
+  rootEl <- askRootElm
+  elRef <- liftIO (newIORef Nothing)
+  UnliftIO{..} <- lift askUnliftIO
+  let
+    initial   = error "Root element was accessed before it was initialized"
+    relmRead  = fromMaybe initial <$> readIORef elRef
+    relmWrite = \newEl -> do
+      readIORef elRef >>= \case
+        Nothing    -> unliftIO $ liftJSM (rootEl # "appendChild" $ newEl)
+        Just oldEl -> unliftIO $ liftJSM (rootEl # "replaceChild" $ (newEl, oldEl))
+      writeIORef elRef (Just newEl)
+  pure RootElmRef{..}
+
+askRootElm :: MonadHtmlBase m => HtmlT w s t m JSVal
+askRootElm =
+  asks (relmRead . hteRootRef) >>= liftIO
+
+putRootElm :: MonadHtmlBase m => JSVal -> HtmlT w s t m ()
+putRootElm el = do
+  RootElmRef{..} <- asks hteRootRef
+  liftIO (relmWrite el)
+
+appendChild :: MonadHtmlBase m => JSVal -> HtmlT w s t m ()
+appendChild elm = do
+  hteRootRef@RootElmRef{..} <- newRootRef
+  liftIO (relmWrite elm)
+
+withAppendChild
+  :: MonadHtmlBase m
+  => JSVal
+  -> HtmlT w s t m a
+  -> HtmlT w s t m a
+withAppendChild elm child = do
+  hteRootRef@RootElmRef{..} <- newRootRef
+  liftIO (relmWrite elm)
+  local (\env -> env { hteRootRef }) child
+
+subscribePrivate
+  :: MonadHtmlBase m
+  => Event a
+  -> (a -> HtmlT w s t m ())
+  -> HtmlT w s t m (IO ())
+subscribePrivate e f = do
+  subscriber <- asks (sbscrPrivate . hteSubscriber)
   UnliftIO{..} <- askUnliftIO
   liftIO $ e `subscriber` (unliftIO . f)
 
-on :: (HasDom e, HasEventWriter w e) => Text -> Decoder w -> HtmlM e ()
-on name decoder = do
-  builder <- asks (^. domBuilderL)
-  tellEvent <- asks (^. eventWriterL . to runEventWriter)
-  el <- askRootNode
-  liftJSM do
-    UnliftIO{..} <- askUnliftIO
-    let
-      event = Event \k -> do
-        cb <- unliftIO $ function \_ _ [event] -> do
-          runDecoder decoder event >>= \case
-            Left err  -> pure ()
-            Right val -> liftIO (k val)
-        unliftIO (el # "addEventListener" $ (name, cb))
-        pure $ unliftIO $ void $ el # "removeEventListener" $ (name, cb)
-    liftIO (tellEvent event)
-
-on1 :: (HasDom e, HasEventWriter w e) => Text -> w -> HtmlM e ()
-on1 name w = on name (pure w)
-
-on1_
-  :: ( HasDom e
-     , HasEventWriter (Producer1 w (HtmlM e) ()) e )
-  => Text
-  -> (Producer1 w (HtmlM e) ())
-  -> HtmlM e ()
-on1_ name w = on name (pure w)
-
-on_
-  :: ( HasDom e
-     , HasEventWriter (Producer1 w (HtmlM e) ()) e )
-  => Text
-  -> Decoder (Producer1 w (HtmlM e) ())
-  -> HtmlM e ()
-on_ = on
-
-(=:) :: HasDom e => Text -> Text -> HtmlM e ()
-(=:) = prop
-
-(~:)
-  :: forall v s t e
-   . (HasDom e, HasDynamic s t e, ToJSVal v)
-  => Text -> (s -> v) -> HtmlM e ()
-(~:) = dynProp
-
-infixr 7 ~:, =:
-
-text :: HasDom e => Text -> HtmlM e ()
-text txt = do
-  el <- liftJSM $ jsg "document" # "createTextNode" $ txt
-  appendChild el
-
-dynText :: (HasDom e, HasDynamic s t e) => (s -> Text) -> HtmlM e ()
-dynText f = do
-  Dynamic{..} <- asks (^. dynamicRefL . to drefValue)
-  txt <- f <$> liftIO dynRead
-  el <- liftJSM $ jsg "document" # "createTextNode" $ txt
-  dynUpdates `htmlSubscribe` \Update{..} -> do
-    void $ liftJSM $ el <# "nodeValue" $ f updNew
-  appendChild el
-
-class HasDomBuilder e where
-  domBuilderL :: Lens' e DomBuilder
-
-class HasDynamicRef s t e | e -> s t where
-  dynamicRefL :: Lens' e (DynamicRef s t)
-
-class HasEventWriter w e | e -> w where
-  eventWriterL :: Lens' e (EventWriter w)
-
-class HasSubscriber e where
-  subscriberL :: Lens' e Subscriber
-
-class HasLiftJSM e where
-  liftJSML :: Lens' e LiftJSM
+subscribePublic
+  :: MonadHtmlBase m
+  => Event (ComponentT w s t m ())
+  -> HtmlT w s t m (IO ())
+subscribePublic e = do
+  subscriber <- asks (sbscrPublic . hteSubscriber)
+  UnliftIO{..} <- askUnliftIO
+  liftIO (subscriber e)
 
 #ifndef ghcjs_HOST_OS
-instance (HasLiftJSM e) => MonadJSM (HtmlM e) where
-  liftJSM' jsm = asks (^. liftJSML . to runLiftJSM) >>= liftIO . ($ jsm)
+instance MonadJSM m => MonadJSM (HtmlT w s t m) where
+  liftJSM' = lift . liftJSM'
 
 instance MonadJSM m => MonadJSM (Proxy a' a b' b m) where
   liftJSM' = lift . liftJSM'
 #endif
 
-instance (HasDynamicRef s s e) => MonadState s (HtmlM e) where
-  get = liftIO =<< asks (^. dynamicRefL . to drefValue . to dynRead)
-  put v = liftIO =<< asks (^. dynamicRefL . to drefModify . to ($ const v))
+instance MonadHtmlBase m => MonadState s (HtmlT w s s m) where
+  get = liftIO =<< asks (dynRead . drefValue . hteDynamicRef)
+  put v = liftIO =<< asks (($ const v) . drefModify . hteDynamicRef)
 
-instance MonadUnliftIO (HtmlM e) where
-  askUnliftIO = HtmlM do
+instance MonadUnliftIO m => MonadUnliftIO (HtmlT w s t m) where
+  askUnliftIO = HtmlT do
     UnliftIO{..} <- askUnliftIO
-    pure $ UnliftIO (unliftIO . runHtmlM)
+    pure $ UnliftIO (unliftIO . runHtmlT)
 
-class HasHtmlEnv e w s t a | a -> e w s t where
-  htmlEnvL :: Lens' a (HtmlEnv e w s t)
+class Monad m => MonadSplitState s t m | m -> s t where
+  sGet :: m s
+  sModify :: (s -> t) -> m ()
+  sModify f = sGet >>= sPut . f
+  sPut :: t -> m ()
+  sPut = sModify . const
 
-instance HasHtmlEnv e w s t (HtmlEnv e w s t) where
-  htmlEnvL = iso id id
+instance MonadHtmlBase m => MonadSplitState s t (HtmlT w s t m) where
+  sGet = liftIO =<< asks (dynRead . drefValue . hteDynamicRef)
+  sPut v = liftIO =<< asks (($ const v) . drefModify . hteDynamicRef)
 
-instance HasHtmlEnv e w s t a => HasDomBuilder a where
-  domBuilderL = htmlEnvL . lens hteDomBuilder \s b -> s { hteDomBuilder = b }
+instance MonadTrans (HtmlT w s t) where
+  lift = HtmlT . lift
 
-instance HasHtmlEnv e w s t a => HasDynamicRef s t a where
-  dynamicRefL = htmlEnvL . lens hteDynamicRef \s b -> s { hteDynamicRef = b }
+instance (a ~ (), MonadHtmlBase m) => IsString (HtmlT w s t m a) where
+  fromString = text . T.pack
 
-instance HasHtmlEnv e w s t a => HasEventWriter (ComponentM e w s t ()) a where
-  eventWriterL = htmlEnvL . lens hteEventWriter \s b -> s { hteEventWriter = b }
+instance (Semigroup a, Applicative m) => Semigroup (HtmlT w s t m a) where
+  (<>) = liftA2 (<>)
 
-instance HasHtmlEnv e w s t a => HasSubscriber a where
-  subscriberL = htmlEnvL . lens hteSubscriber \s b -> s { hteSubscriber = b }
-
-instance HasHtmlEnv e w s t a => HasLiftJSM a where
-  liftJSML = htmlEnvL . lens hteLiftJSM \s b -> s { hteLiftJSM = b }
-
-class Monad m => MonadStateW s t m | m -> s t where
-  getw :: m s
-  modifyw :: (s -> t) -> m ()
-  modifyw f = getw >>= putw . f
-  putw :: t -> m ()
-  putw = modifyw . const
-
-instance HasDynamicRef s t a => MonadStateW s t (HtmlM a) where
-  getw = liftIO =<< asks (^. dynamicRefL . to drefValue . to dynRead)
-  putw v = liftIO =<< asks (^. dynamicRefL . to drefModify . to ($ const v))
-
+instance (Monoid a, Applicative m) => Monoid (HtmlT w s t m a) where
+  mempty = HtmlT $ ReaderT \_ -> pure mempty

@@ -1,7 +1,6 @@
 -- FIXME: This module needs refactoring. Find simpler way to work with
 -- recursive environments in ReaderT
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE AllowAmbiguousTypes #-}
 module Massaraksh.Main where
 
 import Control.Lens
@@ -33,12 +32,12 @@ class HasInit a s | s -> a where
   initL :: Prism' s a
 
 attach
-  :: forall e w s x
-   . JSVal                      -- ^ Root DOM node
-  -> (w ~> ComponentM e w s s)  -- ^ Evaluate messages emitted by component
-  -> e                          -- ^ Extra application-specific environment
-  -> ComponentM e w s s s       -- ^ Init action
-  -> ComponentM e w s s x       -- ^ Render action
+  :: forall m w s x
+   . JSVal                     -- ^ Root DOM node
+  -> (w ~> ComponentT w s s m) -- ^ Evaluate messages emitted by component
+  -> (m ~> IO)                 -- ^ Evaluate application specific effects in @m@
+  -> ComponentT w s s m s      -- ^ Init action
+  -> ComponentT w s s m x      -- ^ Render action
   -> JSM x
 attach rootEl component extraEnv init render = do
   let uninitialized = error "Accessing dynamic state before it was initialized"

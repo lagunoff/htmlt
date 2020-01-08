@@ -6,7 +6,7 @@ import Data.Foldable
 import Data.IORef
 import Data.List
 
--- | @Event m a@ is a stream of event occurences of type @a@
+-- | @Event a@ is a stream of event occurences of type @a@
 newtype Event a = Event
   { eventSubscribe :: (a -> IO ()) -> IO (IO ()) }
 

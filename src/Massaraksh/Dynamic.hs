@@ -30,8 +30,8 @@ newDynamicRef initial = do
   ref <- newIORef initial
   EventRef{..} <- newEventRef
   let
-    drefValue = Dynamic (readIORef ref) erefValue
-    drefModify f = do
+    drefValue  = Dynamic (readIORef ref) erefValue
+    drefModify = \f -> do
       old <- readIORef ref
       let new = f old
       writeIORef ref new
@@ -42,15 +42,15 @@ mapMaybeD :: b -> (Update a -> Maybe b) -> Dynamic a -> IO (Dynamic b)
 mapMaybeD def f Dynamic{..} = do
   latestRef <- newIORef def
   let
-    dynRead' = readIORef latestRef
-    dynUpdates' = flip mapMaybeIOE dynUpdates \update ->
-      case f update of
+    read    = readIORef latestRef
+    updates = flip mapMaybeIOE dynUpdates \upd ->
+      case f upd of
         Just new -> do
           old <- readIORef latestRef
           writeIORef latestRef new
           pure $ Just (Update old new)
         Nothing  -> pure Nothing
-  pure (Dynamic dynRead' dynUpdates')
+  pure (Dynamic read updates)
 
 constDyn :: a -> Dynamic a
 constDyn a = Dynamic (pure a) never
