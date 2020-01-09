@@ -12,6 +12,8 @@ import Massaraksh.Base
 import Massaraksh.Dynamic
 import Massaraksh.Event
 import Massaraksh.Base
+import Massaraksh.Types
+import Massaraksh.Internal
 import Data.IORef
 import Pipes as P
 import qualified Data.Dynamic as D

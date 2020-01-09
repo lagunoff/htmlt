@@ -53,7 +53,7 @@ component = \case
     hash <- liftJSM readHash
     todos <- liftJSM readTodos
     let filter = filterFromUrl hash & fromMaybe All
-    pure (Model "" todos filter)
+    pure (Model "" [Item.Model "One" False Nothing, Item.Model "Two" False Nothing, Item.Model "Three" False Nothing] filter)
   Render -> do
     lift render
   Edit x ->
@@ -131,6 +131,10 @@ component = \case
           label_ do
             attr "for" "toggle-all"
             text "Mark all as completed"
+        ul_ do
+          "className" =: "todo-list"
+          dynList (moTodos . traversed) undefined
+            Item.render
       -- , list (motodos) "ul" [ class_ "todo-list" ]
       --   (mapUI (\(Exists msg) idx -> Exists $ TodoMsg msg idx) Item.view)
       --   \parent model -> Item.Props { hidden = isHidden parent model, .. }

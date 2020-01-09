@@ -21,7 +21,9 @@ library
       Massaraksh.Dynamic
       Massaraksh.Element
       Massaraksh.Event
+      Massaraksh.Internal
       Massaraksh.Main
+      Massaraksh.Types
   other-modules:
       Paths_massaraksh
   hs-source-dirs:

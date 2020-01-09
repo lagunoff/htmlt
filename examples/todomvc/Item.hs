@@ -1,6 +1,3 @@
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE MultiWayIf, CPP, TemplateHaskell #-}
 module Item where
@@ -68,29 +65,29 @@ component = \case
     Just "" -> yield1 Destroy
     Just x  -> modify $ (moEditing .~ Nothing) . (moTitle .~ x)
     Nothing -> pure ()
-  where
-    render :: Html Msg Model m
-    render =
-      li_ do
-        dynClassList
-          [ ("completed", _moCompleted)
-          , ("editing", isJust . _moEditing) ]
+
+render :: forall m. MonadHtmlBase m => Html' Msg Model m
+render =
+  li_ do
+    dynClassList
+      [ ("completed", _moCompleted)
+      , ("editing", isJust . _moEditing) ]
 --          , ("hidden", hidden) ]
-        div_ do
-          "className" =: "view"
-          yieldOn "dblclick" $ targetDecoder <&> EditingOn
-        input_ do
-          "className" =: "toggle"
-          "type" =: "checkbox"
-          "checked" ~: _moCompleted
-          yieldOn "change" $ checkedDecoder <&> Completed
-        label_ $ dynText _moTitle
-        button_ do
-          "className" =: "destroy"
-          yieldOn' "click" Destroy
-        input_ do
-          "className" =: "edit"
-          "value" ~: fromMaybe "" . _moEditing
-          yieldOn "input" $ valueDecoder <&> EditInput
-          yieldOn' "blur" Blur
-          yieldOn "keydown" $ keycodeDecoder <&> KeyPress
+    div_ do
+      "className" =: "view"
+      yieldOn "dblclick" $ targetDecoder <&> EditingOn
+    input_ do
+      "className" =: "toggle"
+      "type" =: "checkbox"
+      "checked" ~: _moCompleted
+      yieldOn "change" $ checkedDecoder <&> Completed
+    label_ $ dynText _moTitle
+    button_ do
+      "className" =: "destroy"
+      yieldOn' "click" Destroy
+    input_ do
+      "className" =: "edit"
+      "value" ~: fromMaybe "" . _moEditing
+      yieldOn "input" $ valueDecoder <&> EditInput
+      yieldOn' "blur" Blur
+      yieldOn "keydown" $ keycodeDecoder <&> KeyPress

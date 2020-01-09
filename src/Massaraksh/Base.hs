@@ -1,62 +1,28 @@
-{-# LANGUAGE QuantifiedConstraints #-}
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE MultiWayIf #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 module Massaraksh.Base where
 
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
-import Control.Monad.State
-import Control.Applicative
 import Control.Lens hiding ((#))
 import Control.Natural hiding ((#))
-import Data.Maybe
+import Data.Foldable
 import Data.String
+import Data.IORef
 import Data.List as L
 import Data.Text as T
 import Data.Typeable (Typeable)
-import Data.IORef
 import Language.Javascript.JSaddle
 import Massaraksh.Decode
 import Massaraksh.Dynamic
 import Massaraksh.Event
-import Pipes as P
+import Massaraksh.Internal
+import Massaraksh.Types
 import Pipes.Core as P
 import Pipes.Internal as P
 import Unsafe.Coerce
 import qualified Data.Dynamic as D
-
-newtype HtmlT w s t m a = HtmlT { runHtmlT :: ReaderT (HtmlEnv w s t m) m a }
-  deriving (Functor, Applicative, Monad, MonadIO, MonadReader (HtmlEnv w s t m), MonadFix)
-
-type HtmlT' w s = HtmlT w s s
-
-type Html w s t m = HtmlT w s t m ()
-
-type Html' w s m = HtmlT w s s m ()
-
-data HtmlEnv w s t m = HtmlEnv
-  { hteRootRef    :: RootElmRef
-  , hteDynamicRef :: DynamicRef s t
-  , hteSubscriber :: Subscriber (ComponentT w s t m ()) }
-
-data RootElmRef = RootElmRef
-  { relmRead  :: IO JSVal
-  , relmWrite :: JSVal -> IO ()  }
-
-data Subscriber a = Subscriber
-  { sbscrPrivate :: forall x. Event x -> (x -> IO ()) -> IO (IO ())
-  , sbscrPublic  :: Event a -> IO (IO ()) }
-
-type ComponentT w s t m = Producer1 w (HtmlT w s t m)
-
-type Producer1 w = Proxy X () D.Dynamic (Exists w)
-
-data Exists (f :: * -> *) = forall x. Typeable x => Exists { unExists :: f x }
-
-type MonadHtmlBase m = (MonadJSM m, MonadUnliftIO m)
-
-type IsHtml w s t m h = (MonadHtmlBase m, h ~ HtmlT w s t m)
 
 el :: MonadHtmlBase m => Text -> HtmlT w s t m a -> HtmlT w s t m a
 el tag child = do
@@ -177,8 +143,8 @@ overHtml
 overHtml ww stab (HtmlT (ReaderT ab)) = HtmlT $ ReaderT \e ->
   let
     dynRef = overDynamic stab (hteDynamicRef e)
-    subscriber = contramap (overComponent ww stab) (hteSubscriber e)
-  in ab $ e { hteDynamicRef = dynRef, hteSubscriber = subscriber }
+    subscriber = contramap (overComponent ww stab) (hteSubscriberRef e)
+  in ab $ e { hteDynamicRef = dynRef, hteSubscriberRef = subscriber }
 
 overComponent
   :: Functor m
@@ -213,125 +179,48 @@ componentLocal f ww = \case
 yield1 :: (Monad m, Typeable a) => w a -> Producer1 w m a
 yield1 w = (\(D.Dynamic _ x) -> unsafeCoerce x) <$> respond (Exists w)
 
-newRootRef :: MonadHtmlBase m => HtmlT w s t m RootElmRef
-newRootRef = do
-  rootEl <- askRootElm
-  elRef <- liftIO (newIORef Nothing)
-  UnliftIO{..} <- lift askUnliftIO
+dynList
+  :: forall w w' s a m
+   . MonadHtmlBase m
+  => IndexedTraversal' Int s a
+  -> (HtmlEnv w' a a m -> (w' ~> w))
+  -> Html w' a a m
+  -> Html w s s m
+dynList stbb liftw child = do
+  hte <- ask
+  rootEl <- liftIO $ relmRead (hteRootRef hte)
+  s <- liftIO $ dynRead $ drefValue (hteDynamicRef hte)
+  childEnvs <- liftIO (newIORef [])
   let
-    initial   = error "Root element was accessed before it was initialized"
-    relmRead  = fromMaybe initial <$> readIORef elRef
-    relmWrite = \newEl -> do
-      readIORef elRef >>= \case
-        Nothing    -> unliftIO $ liftJSM (rootEl # "appendChild" $ newEl)
-        Just oldEl -> unliftIO $ liftJSM (rootEl # "replaceChild" $ (newEl, oldEl))
-      writeIORef elRef (Just newEl)
-  pure RootElmRef{..}
+    setup :: Int -> [a] -> [a] -> m ()
+    setup idx old new = case (old, new) of
+      ([], [])   -> pure ()
+      ([], x:xs) -> mdo
+        -- New list is longer, appending new elements
+        hteSubscriberRef <- liftIO (newSubscriberRef undefined)
+        hteDynamicRef <- liftIO (newDynamicRef x)
+        let newEnv = HtmlEnv{hteRootRef = hteRootRef hte, ..}
+        flip runReaderT newEnv $ runHtmlT child
+        liftIO (modifyIORef childEnvs (<> [newEnv]))
+        setup (idx + 1) [] xs
+      (x:xs, []) -> do
+        -- New list is shorter, deleting elements that no longer
+        -- present in the new list
+        childEnvsValue <- liftIO (readIORef childEnvs)
+        let tailEnvs = L.drop idx childEnvsValue
+        for_ tailEnvs \HtmlEnv{..} -> do
+          subscriptions <- liftIO $ readIORef (sbrefSubscriptions hteSubscriberRef)
+          liftIO $ for_ subscriptions (readIORef >=> id)
+          childEl <- liftIO (relmRead hteRootRef)
+          liftJSM (rootEl # "removeChild" $ childEl)
+      (x:xs, y:ys) -> do
+        setup (idx + 1) xs ys
 
-data SubscriberRef a = SubscriberRef
-  { sbrefValue         :: Subscriber a
-  , sbrefSubscriptions :: IORef [IORef (IO ())] }
-
-newSubscriberRef :: (a -> IO ()) -> IO (SubscriberRef a)
-newSubscriberRef k = do
-  sbrefSubscriptions <- newIORef []
-  let
-    sbscrPrivate :: forall x. Event x -> (x -> IO ()) -> IO (IO ())
-    sbscrPrivate = \e f -> do
-      unsub <- e `subscribe` f
-      unRef <- newIORef unsub
-      modifyIORef sbrefSubscriptions ((:) unRef)
-      pure $ modifyIORef sbrefSubscriptions (delete unRef)
-    sbscrPublic = \e -> do
-      unsub <- e `subscribe` k
-      unRef <- newIORef unsub
-      modifyIORef sbrefSubscriptions ((:) unRef)
-      pure $ modifyIORef sbrefSubscriptions (delete unRef)
-    sbrefValue = Subscriber{..}
-  pure SubscriberRef{..}
-
-askRootElm :: MonadHtmlBase m => HtmlT w s t m JSVal
-askRootElm =
-  asks (relmRead . hteRootRef) >>= liftIO
-
-putRootElm :: MonadHtmlBase m => JSVal -> Html w s t m
-putRootElm el = do
-  RootElmRef{..} <- asks hteRootRef
-  liftIO (relmWrite el)
-
-appendChild :: MonadHtmlBase m => JSVal -> Html w s t m
-appendChild elm = do
-  hteRootRef@RootElmRef{..} <- newRootRef
-  liftIO (relmWrite elm)
-
-withAppendChild
-  :: MonadHtmlBase m
-  => JSVal
-  -> HtmlT w s t m a
-  -> HtmlT w s t m a
-withAppendChild elm child = do
-  hteRootRef@RootElmRef{..} <- newRootRef
-  liftIO (relmWrite elm)
-  local (\env -> env { hteRootRef }) child
-
-subscribePrivate
-  :: MonadHtmlBase m
-  => Event a
-  -> (a -> Html w s t m)
-  -> HtmlT w s t m (IO ())
-subscribePrivate e f = do
-  subscriber <- asks (sbscrPrivate . hteSubscriber)
-  UnliftIO{..} <- askUnliftIO
-  liftIO $ e `subscriber` (unliftIO . f)
-
-subscribePublic
-  :: MonadHtmlBase m
-  => Event (ComponentT w s t m ())
-  -> HtmlT w s t m (IO ())
-subscribePublic e = do
-  subscriber <- asks (sbscrPublic . hteSubscriber)
-  UnliftIO{..} <- askUnliftIO
-  liftIO (subscriber e)
-
-#ifndef ghcjs_HOST_OS
-instance MonadJSM m => MonadJSM (HtmlT w s t m) where
-  liftJSM' = lift . liftJSM'
-
-instance MonadJSM m => MonadJSM (Proxy a' a b' b m) where
-  liftJSM' = lift . liftJSM'
-#endif
-
-instance MonadHtmlBase m => MonadState s (HtmlT w s s m) where
-  get = liftIO =<< asks (dynRead . drefValue . hteDynamicRef)
-  put v = liftIO =<< asks (($ const v) . drefModify . hteDynamicRef)
-
-instance MonadUnliftIO m => MonadUnliftIO (HtmlT w s t m) where
-  askUnliftIO = HtmlT do
-    UnliftIO{..} <- askUnliftIO
-    pure $ UnliftIO (unliftIO . runHtmlT)
-
-class Monad m => MonadSplitState s t m | m -> s t where
-  sGet :: m s
-  sModify :: (s -> t) -> m ()
-  sModify f = sGet >>= sPut . f
-  sPut :: t -> m ()
-  sPut = sModify . const
-
-instance MonadHtmlBase m => MonadSplitState s t (HtmlT w s t m) where
-  sGet = liftIO =<< asks (dynRead . drefValue . hteDynamicRef)
-  sPut v = liftIO =<< asks (($ const v) . drefModify . hteDynamicRef)
-
-instance MonadTrans (HtmlT w s t) where
-  lift = HtmlT . lift
+  HtmlT $ lift $ setup 0 [] (toListOf stbb s)
+  let updates = dynUpdates . drefValue . hteDynamicRef $ hte
+  updates `subscribePrivate` \Update{..} -> do
+    HtmlT $ lift $ setup 0 (toListOf stbb updOld) (toListOf stbb updNew)
+  pure ()
 
 instance (a ~ (), MonadHtmlBase m) => IsString (HtmlT w s t m a) where
   fromString = text . T.pack
-
-instance (Semigroup a, Applicative m) => Semigroup (HtmlT w s t m a) where
-  (<>) = liftA2 (<>)
-
-instance (Monoid a, Applicative m) => Monoid (HtmlT w s t m a) where
-  mempty = HtmlT $ ReaderT \_ -> pure mempty
-
-instance Contravariant Subscriber where
-  contramap g Subscriber{..} = Subscriber sbscrPrivate (sbscrPublic . fmap g)

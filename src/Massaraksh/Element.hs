@@ -4,6 +4,7 @@
 -- https://github.com/dmjio/miso/blob/0576696323652ec17a921a0be8c41e82685da374/src/Miso/Html/Element.hs
 module Massaraksh.Element where
 
+import Massaraksh.Types
 import Massaraksh.Base
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/div
