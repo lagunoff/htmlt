@@ -29,6 +29,12 @@ import qualified Data.Dynamic as D
 newtype HtmlT w s t m a = HtmlT { runHtmlT :: ReaderT (HtmlEnv w s t m) m a }
   deriving (Functor, Applicative, Monad, MonadIO, MonadReader (HtmlEnv w s t m), MonadFix)
 
+type HtmlT' w s = HtmlT w s s
+
+type Html w s t m = HtmlT w s t m ()
+
+type Html' w s m = HtmlT w s s m ()
+
 data HtmlEnv w s t m = HtmlEnv
   { hteRootRef    :: RootElmRef
   , hteDynamicRef :: DynamicRef s t
@@ -50,19 +56,19 @@ data Exists (f :: * -> *) = forall x. Typeable x => Exists { unExists :: f x }
 
 type MonadHtmlBase m = (MonadJSM m, MonadUnliftIO m)
 
-type IsHtml h = forall w s t m. (MonadHtmlBase m, h ~ HtmlT w s t m)
+type IsHtml w s t m h = (MonadHtmlBase m, h ~ HtmlT w s t m)
 
 el :: MonadHtmlBase m => Text -> HtmlT w s t m a -> HtmlT w s t m a
 el tag child = do
   elm <- liftJSM $ jsg "document" # "createElement" $ tag
   withAppendChild elm child
 
-text :: MonadHtmlBase m => Text -> HtmlT w s t m ()
+text :: MonadHtmlBase m => Text -> Html w s t m
 text txt = do
   textNode <- liftJSM $ jsg "document" # "createTextNode" $ txt
   appendChild textNode
 
-dynText :: MonadHtmlBase m => (s -> Text) -> HtmlT w s t m ()
+dynText :: MonadHtmlBase m => (s -> Text) -> Html w s t m
 dynText f = do
   Dynamic{..} <- asks (drefValue . hteDynamicRef)
   txt <- f <$> liftIO dynRead
@@ -74,19 +80,19 @@ dynText f = do
 prop
   :: forall v w s t m
    . (MonadHtmlBase m, ToJSVal v)
-  => Text -> v -> HtmlT w s t m ()
+  => Text -> v -> Html w s t m
 prop key val = do
   rootEl <- askRootElm
   liftJSM $ rootEl <# key $ val
 
-(=:) :: MonadHtmlBase m => Text -> Text -> HtmlT w s t m ()
+(=:) :: MonadHtmlBase m => Text -> Text -> Html w s t m
 (=:) = prop
 infixr 7 =:
 
 dynProp
   :: forall v w s t m
    . (MonadHtmlBase m, ToJSVal v)
-  => Text -> (s -> v) -> HtmlT w s t m ()
+  => Text -> (s -> v) -> Html w s t m
 dynProp key f = do
   Dynamic{..} <- asks (drefValue . hteDynamicRef)
   txt <- f <$> liftIO dynRead
@@ -95,16 +101,16 @@ dynProp key f = do
   void $ dynUpdates `subscribePrivate` \Update{..} ->
     liftJSM (rootEl <# key $ f updNew)
 
-(~:) :: (MonadHtmlBase m, ToJSVal v) => Text -> (s -> v) -> HtmlT w s t m ()
+(~:) :: (MonadHtmlBase m, ToJSVal v) => Text -> (s -> v) -> Html w s t m
 (~:) = dynProp
 infixr 7 ~:
 
-attr :: MonadHtmlBase m => Text -> Text -> HtmlT w s t m ()
+attr :: MonadHtmlBase m => Text -> Text -> Html w s t m
 attr key val = do
   rootEl <- askRootElm
   void $ liftJSM $ rootEl # "setAttribute" $ (key, val)
 
-dynAttr :: MonadHtmlBase m => Text -> (s -> Text) -> HtmlT w s t m ()
+dynAttr :: MonadHtmlBase m => Text -> (s -> Text) -> Html w s t m
 dynAttr key f = do
   Dynamic{..} <- asks (drefValue . hteDynamicRef)
   txt <- f <$> liftIO dynRead
@@ -117,7 +123,7 @@ on
   :: MonadHtmlBase m
   => Text
   -> Decoder (ComponentT w s t m ())
-  -> HtmlT w s t m ()
+  -> Html w s t m
 on name decoder = do
   el <- askRootElm
   UnliftIO{..} <- askUnliftIO
@@ -131,19 +137,33 @@ on name decoder = do
       pure $ unliftIO $ void $ liftJSM $ el # "removeEventListener" $ (name, cb)
   void $ subscribePublic event
 
-on1
+on'
   :: MonadHtmlBase m
   => Text
   -> ComponentT w s t m ()
-  -> HtmlT w s t m ()
-on1 name w = on name (pure w)
+  -> Html w s t m
+on' name w = on name (pure w)
 
-dynClassList :: MonadHtmlBase m => [(Text, s -> Bool)] -> HtmlT w s t m ()
+yieldOn
+  :: MonadHtmlBase m
+  => Text
+  -> Decoder (w ())
+  -> Html w s t m
+yieldOn name decoder = on name (fmap yield1 decoder)
+
+yieldOn'
+  :: MonadHtmlBase m
+  => Text
+  -> w ()
+  -> Html w s t m
+yieldOn' name w = on name (pure (yield1 w))
+
+dynClassList :: MonadHtmlBase m => [(Text, s -> Bool)] -> Html w s t m
 dynClassList xs =
   dynProp (T.pack "className") $
   \s -> T.unwords (L.foldl' (\acc (cs, f) -> if f s then cs:acc else acc) [] xs)
 
-classList :: MonadHtmlBase m => [(Text, Bool)] -> HtmlT w s t m ()
+classList :: MonadHtmlBase m => [(Text, Bool)] -> Html w s t m
 classList xs =
   prop (T.pack "className") $
   T.unwords (L.foldl' (\acc (cs, cond) -> if cond then cs:acc else acc) [] xs)
@@ -234,12 +254,12 @@ askRootElm :: MonadHtmlBase m => HtmlT w s t m JSVal
 askRootElm =
   asks (relmRead . hteRootRef) >>= liftIO
 
-putRootElm :: MonadHtmlBase m => JSVal -> HtmlT w s t m ()
+putRootElm :: MonadHtmlBase m => JSVal -> Html w s t m
 putRootElm el = do
   RootElmRef{..} <- asks hteRootRef
   liftIO (relmWrite el)
 
-appendChild :: MonadHtmlBase m => JSVal -> HtmlT w s t m ()
+appendChild :: MonadHtmlBase m => JSVal -> Html w s t m
 appendChild elm = do
   hteRootRef@RootElmRef{..} <- newRootRef
   liftIO (relmWrite elm)
@@ -257,7 +277,7 @@ withAppendChild elm child = do
 subscribePrivate
   :: MonadHtmlBase m
   => Event a
-  -> (a -> HtmlT w s t m ())
+  -> (a -> Html w s t m)
   -> HtmlT w s t m (IO ())
 subscribePrivate e f = do
   subscriber <- asks (sbscrPrivate . hteSubscriber)

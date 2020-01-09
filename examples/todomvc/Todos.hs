@@ -92,7 +92,7 @@ component = \case
     -- componentLocal (const env) Item.component action
     pure undefined
   where
-    render :: HtmlT Msg Model Model m ()
+    render :: Html' Msg Model m
     render =
       div_ do
         section_ do
@@ -103,7 +103,7 @@ component = \case
         footerInfo
         el "style" do "type" =: "text/css"; text css
 
-    renderHeader :: HtmlT Msg Model Model m ()
+    renderHeader :: Html' Msg Model m
     renderHeader =
       header_ do
         "className" =: "header"
@@ -113,11 +113,11 @@ component = \case
           "placeholder" =: "What needs to be done?"
           "autofocus" =: "on"
           "value" ~: _moTitle
-          on "input" $ valueDecoder <&> yield1 . Edit
-          on "keydown" $ keycodeDecoder <&> yield1 . KeyPress
-          on1 "blur" $ yield1 Blur
+          yieldOn "input" $ valueDecoder <&> Edit
+          yieldOn "keydown" $ keycodeDecoder <&> KeyPress
+          yieldOn' "blur" Blur
 
-    renderMain :: HtmlT Msg Model Model m ()
+    renderMain :: Html' Msg Model m
     renderMain =
       section_ do
         dynClassList
@@ -127,7 +127,7 @@ component = \case
           "type" =: "checkbox"
           "id" =: "toggle-all"
           "className" =: "toggle-all"
-          on "click" $ checkedDecoder <&> yield1 . ToggleAll
+          yieldOn "click" $ checkedDecoder <&> ToggleAll
           label_ do
             attr "for" "toggle-all"
             text "Mark all as completed"
@@ -135,7 +135,7 @@ component = \case
       --   (mapUI (\(Exists msg) idx -> Exists $ TodoMsg msg idx) Item.view)
       --   \parent model -> Item.Props { hidden = isHidden parent model, .. }
 
-    renderFilter :: Filter -> HtmlT Msg Model Model m ()
+    renderFilter :: Filter -> Html' Msg Model m
     renderFilter x =
       li_ do
         a_ do
@@ -143,7 +143,7 @@ component = \case
           "href" =: filterToUrl x
           text $ fromString (show x)
 
-    viewFooter :: HtmlT Msg Model Model m ()
+    viewFooter :: Html' Msg Model m
     viewFooter =
       footer_ do
         dynClassList
@@ -158,10 +158,10 @@ component = \case
           for_ [ All, Active, Completed ] renderFilter
         button_ do
           "className" =: "clear-completed"
-          on1 "click" $ yield1 ClearCompleted
+          yieldOn' "click" ClearCompleted
           text "Clear completed"
 
-    footerInfo :: HtmlT Msg Model Model m ()
+    footerInfo :: Html' Msg Model m
     footerInfo =
       footer_ do
         "className" =: "info"

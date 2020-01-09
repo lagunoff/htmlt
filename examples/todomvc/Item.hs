@@ -69,7 +69,7 @@ component = \case
     Just x  -> modify $ (moEditing .~ Nothing) . (moTitle .~ x)
     Nothing -> pure ()
   where
-    render :: HtmlT Msg Model Model m ()
+    render :: Html Msg Model m
     render =
       li_ do
         dynClassList
@@ -78,19 +78,19 @@ component = \case
 --          , ("hidden", hidden) ]
         div_ do
           "className" =: "view"
-          on "dblClick" $ targetDecoder <&> yield1 . EditingOn
+          yieldOn "dblclick" $ targetDecoder <&> EditingOn
         input_ do
           "className" =: "toggle"
           "type" =: "checkbox"
           "checked" ~: _moCompleted
-          on "change" $ checkedDecoder <&> yield1 . Completed
+          yieldOn "change" $ checkedDecoder <&> Completed
         label_ $ dynText _moTitle
         button_ do
           "className" =: "destroy"
-          on1 "click" $ yield1 Destroy
+          yieldOn' "click" Destroy
         input_ do
           "className" =: "edit"
           "value" ~: fromMaybe "" . _moEditing
-          on "input" $ valueDecoder <&> yield1 . EditInput
-          on1 "blur" $ yield1 Blur
-          on "keydown" $ keycodeDecoder <&> yield1 . KeyPress
+          yieldOn "input" $ valueDecoder <&> EditInput
+          yieldOn' "blur" Blur
+          yieldOn "keydown" $ keycodeDecoder <&> KeyPress
