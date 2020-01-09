@@ -59,6 +59,7 @@ library
    , jsaddle
    , lens
    , mtl
+   , natural-transformation
    , pipes
    , text
    , transformers

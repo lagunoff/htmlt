@@ -1,9 +1,10 @@
 {-# LANGUAGE InstanceSigs #-}
 module Massaraksh.Dynamic where
 
+import Control.Lens
 import Data.IORef
-import Massaraksh.Event
 import GHC.Generics
+import Massaraksh.Event
 
 data Update a = Update { updOld :: a , updNew :: a }
   deriving (Show, Eq, Generic, Functor)
@@ -13,7 +14,7 @@ data Update a = Update { updOld :: a , updNew :: a }
 -- entities. The problem is that this name conflicts with @Dynamic@
 -- from base which is also used by this library
 data Dynamic a = Dynamic
-  { dynRead    :: IO a -- ^ Read current value
+  { dynRead    :: IO a             -- ^ Read current value
   , dynUpdates :: Event (Update a) -- ^ Event that fires when the value changes
   }
 
@@ -54,6 +55,12 @@ mapMaybeD def f Dynamic{..} = do
 
 constDyn :: a -> Dynamic a
 constDyn a = Dynamic (pure a) never
+
+overDynamic :: Lens s t a b -> DynamicRef s t -> DynamicRef a b
+overDynamic stab DynamicRef{..} = DynamicRef value modify
+  where
+    value  = fmap (getConst . stab Const) drefValue
+    modify = \f -> drefModify (over stab f)
 
 instance Functor Dynamic where
   fmap f Dynamic{..} =

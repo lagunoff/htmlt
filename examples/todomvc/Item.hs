@@ -40,7 +40,7 @@ data Msg a where
   EditingCancel :: Msg ()
   EditingCommit :: Msg ()
 
-component :: Msg ~> ComponentM' e Msg Model
+component :: forall m. MonadHtmlBase m => Msg ~> ComponentT Msg Model Model m
 component = \case
   Init title ->
     pure (Model title False Nothing)
@@ -69,15 +69,13 @@ component = \case
     Just x  -> modify $ (moEditing .~ Nothing) . (moTitle .~ x)
     Nothing -> pure ()
   where
-    render :: Html' e Msg Model
+    render :: HtmlT Msg Model Model m ()
     render =
       li_ do
-      -- [ Dyn.classList_
-      --   [ ("completed", completed . model)
-      --   , ("editing", isJust . editing . model)
-      --   , ("hidden", hidden)
-      --   ]
-      -- ]
+        dynClassList
+          [ ("completed", _moCompleted)
+          , ("editing", isJust . _moEditing) ]
+--          , ("hidden", hidden) ]
         div_ do
           "className" =: "view"
           on "dblClick" $ targetDecoder <&> yield1 . EditingOn

@@ -48,9 +48,10 @@ executable massaraksh-todomvc
     , lens
     , massaraksh
     , mtl
+    , raw-strings-qq
     , text
     , transformers
-    , raw-strings-qq
+    , unliftio-core
   if impl(ghcjs)
     ghc-options: -dedupe
     build-depends:

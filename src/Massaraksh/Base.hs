@@ -8,17 +8,21 @@ import Control.Monad.IO.Unlift
 import Control.Monad.Reader
 import Control.Monad.State
 import Control.Applicative
+import Control.Lens hiding ((#))
+import Control.Natural hiding ((#))
 import Data.Maybe
 import Data.String
+import Data.List as L
 import Data.Text as T
 import Data.Typeable (Typeable)
-import GHC.IORef
+import Data.IORef
 import Language.Javascript.JSaddle
 import Massaraksh.Decode
 import Massaraksh.Dynamic
 import Massaraksh.Event
 import Pipes as P
 import Pipes.Core as P
+import Pipes.Internal as P
 import Unsafe.Coerce
 import qualified Data.Dynamic as D
 
@@ -58,7 +62,7 @@ text txt = do
   textNode <- liftJSM $ jsg "document" # "createTextNode" $ txt
   appendChild textNode
 
-dynText :: (MonadHtmlBase m, ToJSVal v) => (s -> Text) -> HtmlT w s t m ()
+dynText :: MonadHtmlBase m => (s -> Text) -> HtmlT w s t m ()
 dynText f = do
   Dynamic{..} <- asks (drefValue . hteDynamicRef)
   txt <- f <$> liftIO dynRead
@@ -75,7 +79,7 @@ prop key val = do
   rootEl <- askRootElm
   liftJSM $ rootEl <# key $ val
 
-(=:) :: (MonadHtmlBase m, ToJSVal v) => Text -> v -> HtmlT w s t m ()
+(=:) :: MonadHtmlBase m => Text -> Text -> HtmlT w s t m ()
 (=:) = prop
 infixr 7 =:
 
@@ -134,6 +138,58 @@ on1
   -> HtmlT w s t m ()
 on1 name w = on name (pure w)
 
+dynClassList :: MonadHtmlBase m => [(Text, s -> Bool)] -> HtmlT w s t m ()
+dynClassList xs =
+  dynProp (T.pack "className") $
+  \s -> T.unwords (L.foldl' (\acc (cs, f) -> if f s then cs:acc else acc) [] xs)
+
+classList :: MonadHtmlBase m => [(Text, Bool)] -> HtmlT w s t m ()
+classList xs =
+  prop (T.pack "className") $
+  T.unwords (L.foldl' (\acc (cs, cond) -> if cond then cs:acc else acc) [] xs)
+
+overHtml
+  :: Functor m
+  => (w' ~> w)
+  -> Lens s t a b
+  -> HtmlT w' a b m x
+  -> HtmlT w s t m x
+overHtml ww stab (HtmlT (ReaderT ab)) = HtmlT $ ReaderT \e ->
+  let
+    dynRef = overDynamic stab (hteDynamicRef e)
+    subscriber = contramap (overComponent ww stab) (hteSubscriber e)
+  in ab $ e { hteDynamicRef = dynRef, hteSubscriber = subscriber }
+
+overComponent
+  :: Functor m
+  => (w' ~> w)
+  -> Lens s t a b
+  -> ComponentT w' a b m x
+  -> ComponentT w s t m x
+overComponent ww stab = \case
+  Request q k          -> Request q \a' -> overComponent ww stab (k a')
+  Respond (Exists w) k -> Respond (Exists (ww w)) \a' -> overComponent ww stab (k a')
+  M m                  -> M (overHtml ww stab m <&> overComponent ww stab)
+  Pure r               -> Pure r
+
+htmlLocal
+  :: (HtmlEnv w s t m -> HtmlEnv w' s' t' m)
+  -> HtmlT w' s' t' m x
+  -> HtmlT w s t m x
+htmlLocal f (HtmlT (ReaderT mx)) = HtmlT $ ReaderT (mx . f)
+
+componentLocal
+  :: Monad m
+  => (HtmlEnv w s t m -> HtmlEnv w' s' t' m)
+  -> (w' ~> ComponentT w' s' t' m)
+  -> ComponentT w' s' t' m x
+  -> ComponentT w s t m x
+componentLocal f ww = \case
+  Request q k          -> Request q \a' -> componentLocal f ww (k a')
+  Respond (Exists w) k -> componentLocal f ww (ww w) >>= componentLocal f ww . k . D.toDyn
+  M m                  -> M (htmlLocal f m <&> componentLocal f ww)
+  Pure r               -> Pure r
+
 yield1 :: (Monad m, Typeable a) => w a -> Producer1 w m a
 yield1 w = (\(D.Dynamic _ x) -> unsafeCoerce x) <$> respond (Exists w)
 
@@ -151,6 +207,28 @@ newRootRef = do
         Just oldEl -> unliftIO $ liftJSM (rootEl # "replaceChild" $ (newEl, oldEl))
       writeIORef elRef (Just newEl)
   pure RootElmRef{..}
+
+data SubscriberRef a = SubscriberRef
+  { sbrefValue         :: Subscriber a
+  , sbrefSubscriptions :: IORef [IORef (IO ())] }
+
+newSubscriberRef :: (a -> IO ()) -> IO (SubscriberRef a)
+newSubscriberRef k = do
+  sbrefSubscriptions <- newIORef []
+  let
+    sbscrPrivate :: forall x. Event x -> (x -> IO ()) -> IO (IO ())
+    sbscrPrivate = \e f -> do
+      unsub <- e `subscribe` f
+      unRef <- newIORef unsub
+      modifyIORef sbrefSubscriptions ((:) unRef)
+      pure $ modifyIORef sbrefSubscriptions (delete unRef)
+    sbscrPublic = \e -> do
+      unsub <- e `subscribe` k
+      unRef <- newIORef unsub
+      modifyIORef sbrefSubscriptions ((:) unRef)
+      pure $ modifyIORef sbrefSubscriptions (delete unRef)
+    sbrefValue = Subscriber{..}
+  pure SubscriberRef{..}
 
 askRootElm :: MonadHtmlBase m => HtmlT w s t m JSVal
 askRootElm =
@@ -234,3 +312,6 @@ instance (Semigroup a, Applicative m) => Semigroup (HtmlT w s t m a) where
 
 instance (Monoid a, Applicative m) => Monoid (HtmlT w s t m a) where
   mempty = HtmlT $ ReaderT \_ -> pure mempty
+
+instance Contravariant Subscriber where
+  contramap g Subscriber{..} = Subscriber sbscrPrivate (sbscrPublic . fmap g)

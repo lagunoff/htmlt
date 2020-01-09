@@ -45,9 +45,9 @@ data Msg a where
   BeforeUnload :: Msg ()
   EditingCommit :: Msg ()
   Blur :: Msg ()
-  TodoMsg :: Item.Msg a -> Int -> Msg a
+  TodoMsg :: HtmlEnv Item.Msg Item.Model Item.Model m -> ComponentT Item.Msg Item.Model Item.Model m x -> Msg x
 
-component :: Msg ~> ComponentM' e Msg Model
+component :: forall m. MonadHtmlBase m => Msg ~> ComponentT Msg Model Model m
 component = \case
   Init -> do
     hash <- liftJSM readHash
@@ -69,7 +69,7 @@ component = \case
     case T.strip (_moTitle model) of
       ""      -> pure ()
       trimmed -> do
-        newItem <- undefined -- ignoreMessages (Item.component @(Fix (ComponentEnvF Item.Model _)) (Item.Init trimmed))
+        newItem <- overComponent undefined undefined $ Item.component (Item.Init trimmed)
         modify $ moTodos %~ (<> [newItem])
         modify $ moTitle .~ ""
   Blur ->
@@ -88,15 +88,11 @@ component = \case
     model <- get @Model
     pure ()
     -- liftIO $ writeTodos (todos model)
-  TodoMsg Item.Destroy idx ->
-    modify $ moTodos %~ deleteNth idx
-  TodoMsg msg idx ->
-    undefined -- ignoreMessages (Item.component @(Fix (ComponentEnvF Item.Model _)) msg)
-    -- Item.component msg
-    --   & liftMsg (flip TodoMsg idx)
-    --   & runStateLens @Model (motodos . element idx)
+  TodoMsg env action ->
+    -- componentLocal (const env) Item.component action
+    pure undefined
   where
-    render :: Html' e Msg Model
+    render :: HtmlT Msg Model Model m ()
     render =
       div_ do
         section_ do
@@ -107,7 +103,7 @@ component = \case
         footerInfo
         el "style" do "type" =: "text/css"; text css
 
-    renderHeader :: Html' e Msg Model
+    renderHeader :: HtmlT Msg Model Model m ()
     renderHeader =
       header_ do
         "className" =: "header"
@@ -117,22 +113,21 @@ component = \case
           "placeholder" =: "What needs to be done?"
           "autofocus" =: "on"
           "value" ~: _moTitle
-          on_ "input" $ valueDecoder <&> yield1 . Edit
-          on_ "keydown" $ keycodeDecoder <&> yield1 . KeyPress
-          on1_ "blur" $ yield1 Blur
+          on "input" $ valueDecoder <&> yield1 . Edit
+          on "keydown" $ keycodeDecoder <&> yield1 . KeyPress
+          on1 "blur" $ yield1 Blur
 
-    renderMain :: Html' e Msg Model
+    renderMain :: HtmlT Msg Model Model m ()
     renderMain =
       section_ do
-        -- Dyn.classList_
-        -- [ ("hidden", null . todos)
-        -- , ("main", const True)
-        -- ]
+        dynClassList
+          [ ("hidden", null . _moTodos)
+          , ("main", const True) ]
         input_ do
           "type" =: "checkbox"
           "id" =: "toggle-all"
           "className" =: "toggle-all"
-          on_ "click" $ checkedDecoder <&> yield1 . ToggleAll
+          on "click" $ checkedDecoder <&> yield1 . ToggleAll
           label_ do
             attr "for" "toggle-all"
             text "Mark all as completed"
@@ -140,22 +135,20 @@ component = \case
       --   (mapUI (\(Exists msg) idx -> Exists $ TodoMsg msg idx) Item.view)
       --   \parent model -> Item.Props { hidden = isHidden parent model, .. }
 
-    renderFilter :: Filter -> Html' e Msg Model
+    renderFilter :: Filter -> HtmlT Msg Model Model m ()
     renderFilter x =
       li_ do
         a_ do
-          -- Dyn.classList_ [("selected", (x ==) . TodoMVC.Todos.filter)],
+          dynClassList [ ("selected", (x ==) . Todos._moFilter) ]
           "href" =: filterToUrl x
           text $ fromString (show x)
 
-    viewFooter :: Html' e Msg Model
+    viewFooter :: HtmlT Msg Model Model m ()
     viewFooter =
       footer_ do
-      -- [ Dyn.classList_
-      --   [ ("footer", const True)
-      --   , ("hidden", null . todos)
-      --   ]
-      -- ]
+        dynClassList
+          [ ("footer", const True)
+          , ("hidden", null . _moTodos) ]
         span_ do
           "className" =: "todo-count"
           strong_ do dynText (fromString . show . itemsLeft)
@@ -165,10 +158,10 @@ component = \case
           for_ [ All, Active, Completed ] renderFilter
         button_ do
           "className" =: "clear-completed"
-          on1_ "click" $ yield1 ClearCompleted
+          on1 "click" $ yield1 ClearCompleted
           text "Clear completed"
 
-    footerInfo :: Html' e Msg Model
+    footerInfo :: HtmlT Msg Model Model m ()
     footerInfo =
       footer_ do
         "className" =: "info"
