@@ -44,12 +44,11 @@ attach rootEl component runM init render = do
   hteDynamicRef@DynamicRef{..} <- liftIO (newDynamicRef uninitializedDyn)
   runRef <- liftIO (newIORef uninitializedEval)
   UnliftIO{..} <- askUnliftIO
-  SubscriberRef{..} <- liftIO (newSubscriberRef (\w -> readIORef runRef >>= ($ w)))
+  hteSubscriberRef@SubscriberRef{..} <- liftIO (newSubscriberRef (\w -> readIORef runRef >>= ($ w)))
   let
     relmWrite     = \_ -> pure ()
     relmRead      = pure rootEl
     hteRootRef    = RootElmRef{..}
-    hteSubscriber = sbrefValue
     env           = HtmlEnv{..}
     runComponent :: forall a. ComponentT w s s m a -> IO a
     runComponent =
