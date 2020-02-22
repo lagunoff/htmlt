@@ -27,7 +27,7 @@ import qualified Data.Dynamic as D
 el :: MonadHtmlBase m => Text -> HtmlT w s t m a -> HtmlT w s t m a
 el tag child = do
   elm <- liftJSM $ jsg "document" # "createElement" $ tag
-  withAppendChild elm child
+  localRootElm elm child
 
 text :: MonadHtmlBase m => Text -> Html w s t m
 text txt = do
@@ -57,7 +57,7 @@ infixr 7 =:
 
 dynProp
   :: forall v w s t m
-   . (MonadHtmlBase m, ToJSVal v)
+   . (MonadHtmlBase m, ToJSVal v, Eq v)
   => Text -> (s -> v) -> Html w s t m
 dynProp key f = do
   Dynamic{..} <- asks (drefValue . hteDynamicRef)
@@ -65,9 +65,10 @@ dynProp key f = do
   rootEl <- askRootElm
   liftJSM (rootEl <# key $ txt)
   void $ dynUpdates `subscribePrivate` \Update{..} ->
-    liftJSM (rootEl <# key $ f updNew)
+    when (f updNew /= f updOld) $
+      liftJSM (rootEl <# key $ f updNew)
 
-(~:) :: (MonadHtmlBase m, ToJSVal v) => Text -> (s -> v) -> Html w s t m
+(~:) :: (MonadHtmlBase m, ToJSVal v, Eq v) => Text -> (s -> v) -> Html w s t m
 (~:) = dynProp
 infixr 7 ~:
 

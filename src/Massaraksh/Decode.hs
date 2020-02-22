@@ -6,6 +6,7 @@ import Control.Applicative
 import Control.Monad.IO.Class
 import Data.Text
 import GHC.IORef
+import GHC.Generics
 import GHCJS.Prim
 import JavaScript.Array (JSArray)
 import JavaScript.Object (Object)
@@ -111,6 +112,18 @@ instance DecodeJs Object where
 valueDecoder :: Decoder Text
 valueDecoder =
   foldAt ["target", "value"] (decoder @Text)
+
+data DeltaMouse = DeltaMouse
+  { deltaX :: Int
+  , deltaY :: Int
+  , deltaZ :: Int
+  } deriving (Eq, Show, Generic)
+
+deltaDecoder :: Decoder DeltaMouse
+deltaDecoder = DeltaMouse
+  <$> foldAt ["deltaX"] decoder
+  <*> foldAt ["deltaY"] decoder
+  <*> foldAt ["deltaZ"] decoder
 
 targetDecoder :: Decoder JSVal
 targetDecoder =

@@ -38,12 +38,12 @@ appendChild elm = do
   hteRootRef@RootElmRef{..} <- newRootRef
   liftIO (relmWrite elm)
 
-withAppendChild
+localRootElm
   :: MonadHtmlBase m
   => JSVal
   -> HtmlT w s t m a
   -> HtmlT w s t m a
-withAppendChild elm child = do
+localRootElm elm child = do
   hteRootRef@RootElmRef{..} <- newRootRef
   liftIO (relmWrite elm)
   local (\env -> env { hteRootRef }) child
