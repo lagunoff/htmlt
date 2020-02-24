@@ -1,4 +1,6 @@
+{-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 module Massaraksh.Types where
 
@@ -7,31 +9,35 @@ import Control.Lens hiding ((#))
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
 import Control.Monad.State
-import Data.Typeable (Typeable)
+import Control.Natural
+import Data.IORef
 import Language.Javascript.JSaddle
 import Massaraksh.Dynamic
 import Massaraksh.Event
-import Pipes as P
-import Data.IORef
-import qualified Data.Dynamic as D
 
-newtype HtmlT w s t m a = HtmlT { runHtmlT :: ReaderT (HtmlEnv w s t m) m a }
-  deriving (Functor, Applicative, Monad, MonadIO, MonadReader (HtmlEnv w s t m), MonadFix)
+newtype HtmlT s t m a = HtmlT { runHtmlT :: ReaderT (HtmlEnv s t m) m a }
+  deriving (Functor, Applicative, Monad, MonadIO, MonadReader (HtmlEnv s t m), MonadFix)
 
-type HtmlT' w s = HtmlT w s s
+type HtmlT' w s = HtmlT s s
 
-type Html w s t m = HtmlT w s t m ()
+type Html w s t = HtmlT s t JSM
 
-type Html' w s m = HtmlT w s s m ()
+type Html' w s = Html w s s
 
-data HtmlEnv w s t m = HtmlEnv
-  { hteRootRef       :: RootElmRef
-  , hteDynamicRef    :: DynamicRef s t
-  , hteSubscriberRef :: SubscriberRef (ComponentT w s t m ()) }
+type HtmlEvalT w s t m = forall x. w x -> HtmlT s t m x
 
-data RootElmRef = RootElmRef
-  { relmRead  :: IO JSVal
-  , relmWrite :: JSVal -> IO () }
+type HtmlRecT w s t m = HtmlEvalT w s t m -> HtmlEvalT w s t m
+
+type HtmlRecT' w s m = HtmlRecT w s s m
+
+data HtmlEnv s t m = HtmlEnv
+  { hteElement    :: ElementRef
+  , hteModel      :: DynamicRef s t
+  , hteSubscriber :: SubscriberRef (Exist (HtmlT s t m)) }
+
+data ElementRef = ElementRef
+  { relmRead  :: IO Element
+  , relmWrite :: Element -> IO () }
 
 data SubscriberRef a = SubscriberRef
   { sbrefValue         :: Subscriber a
@@ -41,51 +47,44 @@ data Subscriber a = Subscriber
   { sbscrPrivate :: forall x. Event x -> (x -> IO ()) -> IO (IO ())
   , sbscrPublic  :: Event a -> IO (IO ()) }
 
-type ComponentT w s t m = Producer1 w (HtmlT w s t m)
+data Exist (f :: * -> *) = forall x. Exist (f x)
 
-type Producer1 w = Proxy X () D.Dynamic (Exists w)
+type HtmlBase m = (MonadJSM m, MonadUnliftIO m)
 
-data Exists (f :: * -> *) = forall x. Typeable x => Exists { unExists :: f x }
+type Node = JSVal
 
-type MonadHtmlBase m = (MonadJSM m, MonadUnliftIO m)
+type Element = JSVal
 
-type IsHtml w s t m h = (MonadHtmlBase m, h ~ HtmlT w s t m)
+htmlFix :: (HtmlEvalT w s t m -> HtmlEvalT w s t m) -> HtmlEvalT w s t m
+htmlFix f = f (htmlFix f)
 
-#ifndef ghcjs_HOST_OS
-instance MonadJSM m => MonadJSM (HtmlT w s t m) where
-  liftJSM' = lift . liftJSM'
+instance HtmlBase m => MonadState s (HtmlT s s m) where
+  get = liftIO =<< asks (dynRead . drefValue . hteModel)
+  put v = liftIO =<< asks (($ const v) . drefModify . hteModel)
 
-instance MonadJSM m => MonadJSM (Proxy a' a b' b m) where
-  liftJSM' = lift . liftJSM'
-#endif
-
-instance MonadHtmlBase m => MonadState s (HtmlT w s s m) where
-  get = liftIO =<< asks (dynRead . drefValue . hteDynamicRef)
-  put v = liftIO =<< asks (($ const v) . drefModify . hteDynamicRef)
-
-instance MonadUnliftIO m => MonadUnliftIO (HtmlT w s t m) where
+instance MonadUnliftIO m => MonadUnliftIO (HtmlT s t m) where
   askUnliftIO = HtmlT do
     UnliftIO{..} <- askUnliftIO
     pure $ UnliftIO (unliftIO . runHtmlT)
 
-class Monad m => MonadSplitState s t m | m -> s t where
-  sGet :: m s
-  sModify :: (s -> t) -> m ()
-  sModify f = sGet >>= sPut . f
-  sPut :: t -> m ()
-  sPut = sModify . const
+class Monad m => OpticalState s t m | m -> s t where
+  oget :: m s
+  omodify :: (s -> t) -> m ()
+  omodify f = oget >>= oput . f
+  oput :: t -> m ()
+  oput = omodify . const
 
-instance MonadHtmlBase m => MonadSplitState s t (HtmlT w s t m) where
-  sGet = liftIO =<< asks (dynRead . drefValue . hteDynamicRef)
-  sPut v = liftIO =<< asks (($ const v) . drefModify . hteDynamicRef)
+instance HtmlBase m => OpticalState s t (HtmlT s t m) where
+  oget = liftIO =<< asks (dynRead . drefValue . hteModel)
+  oput v = liftIO =<< asks (($ const v) . drefModify . hteModel)
 
-instance MonadTrans (HtmlT w s t) where
+instance MonadTrans (HtmlT s t) where
   lift = HtmlT . lift
 
-instance (Semigroup a, Applicative m) => Semigroup (HtmlT w s t m a) where
+instance (Semigroup a, Applicative m) => Semigroup (HtmlT s t m a) where
   (<>) = liftA2 (<>)
 
-instance (Monoid a, Applicative m) => Monoid (HtmlT w s t m a) where
+instance (Monoid a, Applicative m) => Monoid (HtmlT s t m a) where
   mempty = HtmlT $ ReaderT \_ -> pure mempty
 
 instance Contravariant Subscriber where
@@ -93,3 +92,8 @@ instance Contravariant Subscriber where
 
 instance Contravariant SubscriberRef where
   contramap g SubscriberRef{..} = SubscriberRef (contramap g sbrefValue) sbrefSubscriptions
+
+#ifndef ghcjs_HOST_OS
+instance MonadJSM m => MonadJSM (HtmlT s t m) where
+  liftJSM' = lift . liftJSM'
+#endif

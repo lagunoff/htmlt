@@ -8,7 +8,9 @@
 module Todos where
 
 import Control.Lens hiding ((#))
+import Control.Monad.Reader
 import Control.Monad.State
+import Control.Natural
 import Data.String (fromString)
 import Data.Foldable
 import Data.Text (Text)
@@ -29,6 +31,7 @@ data Model = Model
   { _moTitle  :: Text
   , _moTodos  :: [Item.Model]
   , _moFilter :: Filter
+  , _moTodo   :: Item.Model
   } deriving (Show, Eq, Generic)
 
 makeLenses ''Model
@@ -45,17 +48,35 @@ data Msg a where
   BeforeUnload :: Msg ()
   EditingCommit :: Msg ()
   Blur :: Msg ()
-  TodoMsg :: HtmlEnv Item.Msg Item.Model Item.Model m -> ComponentT Item.Msg Item.Model Item.Model m x -> Msg x
 
-component :: forall m. MonadHtmlBase m => Msg ~> ComponentT Msg Model Model m
-component = \case
+x02 :: HtmlBase m => HtmlRecT Msg Model Model m
+x02 yield = \case
+  Render -> do
+    div_ do
+      dynText _moTitle
+      overHtml undefined moTodo (htmlFix Item.itemWidget Item.Render)
+
+overHtml₂
+  :: Functor m
+  => (w₂ ~> w₁)
+  -> Lens s t a b
+  -> HtmlT w₂ a b m x
+  -> HtmlT w₁ s t m x
+overHtml₂ ww stab (HtmlT (ReaderT ab)) = HtmlT $ ReaderT \e ->
+  let
+    dynRef = overDynamic stab (hteModel e)
+    subscriber = contramap (\(Exist w) -> Exist (overHtml ww stab w)) (hteSubscriber e)
+  in ab $ e { hteModel = dynRef, hteSubscriber = subscriber }
+
+todosWidget :: forall m. HtmlBase m => HtmlRecT' Msg Model m
+todosWidget yield = \case
   Init -> do
     hash <- liftJSM readHash
     todos <- liftJSM readTodos
     let filter = filterFromUrl hash & fromMaybe All
-    pure (Model "" [Item.Model "One" False Nothing, Item.Model "Two" False Nothing, Item.Model "Three" False Nothing] filter)
+    pure (Model "" [Item.Model "One" False Nothing, Item.Model "Two" False Nothing, Item.Model "Three" False Nothing] filter undefined)
   Render -> do
-    lift render
+    render
   Edit x ->
     modify $ moTitle .~ x
   SetFilter x ->
@@ -69,13 +90,14 @@ component = \case
     case T.strip (_moTitle model) of
       ""      -> pure ()
       trimmed -> do
-        newItem <- overComponent undefined undefined $ Item.component (Item.Init trimmed)
-        modify $ moTodos %~ (<> [newItem])
-        modify $ moTitle .~ ""
+        -- newItem <- overComponent undefined undefined $ Item.itemWidget (Item.Init trimmed)
+        -- modify $ moTodos %~ (<> [newItem])
+        -- modify $ moTitle .~ ""
+        pure ()
   Blur ->
-    yield1 EditingCommit
+    yield EditingCommit
   KeyPress 13 ->
-    yield1 EditingCommit
+    yield EditingCommit
   KeyPress _ ->
     pure ()
   HashChange hash ->
@@ -88,11 +110,9 @@ component = \case
     model <- get @Model
     pure ()
     -- liftIO $ writeTodos (todos model)
-  TodoMsg env action ->
-    -- componentLocal (const env) Item.component action
-    pure undefined
+
   where
-    render :: Html' Msg Model m
+    render :: HtmlT' Msg Model m ()
     render =
       div_ do
         section_ do
@@ -103,7 +123,7 @@ component = \case
         footerInfo
         el "style" do "type" =: "text/css"; text css
 
-    renderHeader :: Html' Msg Model m
+    renderHeader :: HtmlT' Msg Model m ()
     renderHeader =
       header_ do
         "className" =: "header"
@@ -113,11 +133,11 @@ component = \case
           "placeholder" =: "What needs to be done?"
           "autofocus" =: "on"
           "value" ~: _moTitle
-          yieldOn "input" $ valueDecoder <&> Edit
-          yieldOn "keydown" $ keycodeDecoder <&> KeyPress
-          yieldOn' "blur" Blur
+          on "input" $ valueDecoder <&> yield . Edit
+          on "keydown" $ keycodeDecoder <&> yield . KeyPress
+          on' "blur" $ yield Blur
 
-    renderMain :: Html' Msg Model m
+    renderMain :: HtmlT' Msg Model m ()
     renderMain =
       section_ do
         dynClassList
@@ -127,19 +147,19 @@ component = \case
           "type" =: "checkbox"
           "id" =: "toggle-all"
           "className" =: "toggle-all"
-          yieldOn "click" $ checkedDecoder <&> ToggleAll
+          on "click" $ checkedDecoder <&> yield . ToggleAll
           label_ do
             attr "for" "toggle-all"
             text "Mark all as completed"
         ul_ do
           "className" =: "todo-list"
           dynList (moTodos . traversed) undefined
-            Item.render
+             $ htmlFix Item.itemWidget Item.Render
       -- , list (motodos) "ul" [ class_ "todo-list" ]
       --   (mapUI (\(Exists msg) idx -> Exists $ TodoMsg msg idx) Item.view)
       --   \parent model -> Item.Props { hidden = isHidden parent model, .. }
 
-    renderFilter :: Filter -> Html' Msg Model m
+    renderFilter :: Filter -> HtmlT' Msg Model m ()
     renderFilter x =
       li_ do
         a_ do
@@ -147,7 +167,7 @@ component = \case
           "href" =: filterToUrl x
           text $ fromString (show x)
 
-    viewFooter :: Html' Msg Model m
+    viewFooter :: HtmlT' Msg Model m ()
     viewFooter =
       footer_ do
         dynClassList
@@ -162,10 +182,10 @@ component = \case
           for_ [ All, Active, Completed ] renderFilter
         button_ do
           "className" =: "clear-completed"
-          yieldOn' "click" ClearCompleted
+          on' "click" $ yield ClearCompleted
           text "Clear completed"
 
-    footerInfo :: Html' Msg Model m
+    footerInfo :: HtmlT' Msg Model m ()
     footerInfo =
       footer_ do
         "className" =: "info"
@@ -189,9 +209,6 @@ component = \case
     pluralize :: Text -> Text -> Int -> Text
     pluralize singular plural 0 = singular
     pluralize singular plural _ = plural
-
-ignoreMessages :: Producer1 w m x -> Producer1 w' m' x
-ignoreMessages = unsafeCoerce
 
 filterFromUrl :: Text -> Maybe Filter
 filterFromUrl = \case

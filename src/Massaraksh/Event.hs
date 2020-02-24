@@ -14,8 +14,8 @@ subscribe :: Event a -> (a -> IO ()) -> IO (IO ())
 subscribe = eventSubscribe
 
 data EventRef a = EventRef
-  { erefValue :: Event a
-  , erefPush  :: a -> IO () }
+  { erefValue   :: Event a
+  , erefTrigger :: a -> IO () }
 
 -- | Create new event and a function to supply values to that event
 newEventRef :: IO (EventRef a)
@@ -26,7 +26,7 @@ newEventRef = do
       kRef <- newIORef k -- Need 'IORef' for an 'Eq' instance
       modifyIORef subscribers ((:) kRef)
       pure $ modifyIORef subscribers (delete kRef)
-    erefPush a = do
+    erefTrigger a = do
       callbacks <- readIORef subscribers
       for_ callbacks $ readIORef >=> ($ a)
   pure EventRef{..}

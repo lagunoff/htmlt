@@ -4,79 +4,76 @@ name:                massaraksh
 version:             0.1.0.0
 homepage:            https://github.com/lagunoff/massaraksh
 license:             BSD3
-license-file:        LICENSE
 author:              Vladislav Lagunov
 maintainer:          vlad.lagunoff@gmail.com
 copyright:           2019 Vladislav Lagunov
 category:            Web
 build-type:          Simple
 extra-source-files:
-    README.md
+  README.md
 
 library
   exposed-modules:
-      Massaraksh
-      Massaraksh.Base
-      Massaraksh.Decode
-      Massaraksh.Dynamic
-      Massaraksh.Element
-      Massaraksh.Event
-      Massaraksh.Internal
-      Massaraksh.Main
-      Massaraksh.Types
+    Massaraksh
+    Massaraksh.Base
+    Massaraksh.Decode
+    Massaraksh.Dynamic
+    Massaraksh.Element
+    Massaraksh.Event
+    Massaraksh.Internal
+    Massaraksh.Main
+    Massaraksh.Types
+
   other-modules:
-      Paths_massaraksh
+    Paths_massaraksh
+
   hs-source-dirs:
-      src
-  default-extensions:
-      BlockArguments
-    , ConstraintKinds
-    , DataKinds
-    , DeriveFunctor
-    , DeriveGeneric
-    , DuplicateRecordFields
-    , FlexibleContexts
-    , FlexibleInstances
-    , FunctionalDependencies
-    , GADTs
-    , GeneralizedNewtypeDeriving
-    , LambdaCase
-    , MultiParamTypeClasses
-    , NamedFieldPuns
-    , PolyKinds
-    , RankNTypes
-    , RecordWildCards
-    , ScopedTypeVariables
-    , TypeApplications
-    , TypeFamilies
-    , TypeOperators
-    , TypeSynonymInstances
-    , UndecidableInstances
+    src
 
   ghc-options:
     -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -Wno-unused-do-bind -O0
   build-depends:
-     base >=4.7 && <5
-   , bytestring
-   , jsaddle
-   , lens
-   , mtl
-   , natural-transformation
-   , pipes
-   , text
-   , transformers
-   , unliftio-core
+    base >=4.7 && <5,
+    bytestring,
+    jsaddle,
+    lens,
+    mtl,
+    natural-transformation,
+    text,
+    transformers,
+    unliftio-core
 
   if impl(ghcjs)
-    hs-source-dirs:
-        src-ghcjs
+    hs-source-dirs: src-ghcjs
     ghc-options: -dedupe
-    build-depends:
-        ghcjs-base
-      , ghcjs-prim
+    build-depends: ghcjs-base, ghcjs-prim
   else
-    hs-source-dirs:
-        src-ghc
-    build-depends:
-        jsaddle-warp
+    hs-source-dirs: src-ghc
+    build-depends: jsaddle-warp
+
+  default-extensions:
+    BlockArguments
+    ConstraintKinds
+    DataKinds
+    DeriveFunctor
+    DeriveGeneric
+    DuplicateRecordFields
+    FlexibleContexts
+    FlexibleInstances
+    FunctionalDependencies
+    GADTs
+    GeneralizedNewtypeDeriving
+    LambdaCase
+    MultiParamTypeClasses
+    NamedFieldPuns
+    PolyKinds
+    RankNTypes
+    RecordWildCards
+    ScopedTypeVariables
+    TypeApplications
+    TypeFamilies
+    TypeOperators
+    TypeSynonymInstances
+    UndecidableInstances
+
   default-language: Haskell2010

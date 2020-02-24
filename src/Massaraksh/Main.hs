@@ -1,22 +1,14 @@
--- FIXME: This module needs refactoring. Find simpler way to work with
--- recursive environments in ReaderT
-{-# LANGUAGE CPP, RecursiveDo #-}
+{-# LANGUAGE CPP #-}
 module Massaraksh.Main where
 
-import Control.Lens
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
 import Control.Natural
 import Language.Javascript.JSaddle
-import Massaraksh.Base
 import Massaraksh.Dynamic
-import Massaraksh.Event
-import Massaraksh.Base
 import Massaraksh.Types
 import Massaraksh.Internal
 import Data.IORef
-import Pipes as P
-import qualified Data.Dynamic as D
 
 #ifndef ghcjs_HOST_OS
 import Control.Applicative ((<|>))
@@ -25,60 +17,93 @@ import System.Environment
 import Control.Exception
 #endif
 
-recPipe1 :: forall w m x. Monad m => (w ~> Producer1 w m) -> w x -> Effect m x
-recPipe1 producer w = for (producer w) (\(Exists w) -> D.toDyn <$> recPipe1 producer w)
-
 attach
   :: forall m w s x
    . Monad m
-  => JSVal                     -- ^ Root DOM node
-  -> (w ~> ComponentT w s s m) -- ^ Evaluate messages emitted by component
-  -> (m ~> IO)                 -- ^ Evaluate application specific effects in @m@
-  -> ComponentT w s s m s      -- ^ Init action
-  -> ComponentT w s s m x      -- ^ Render action
+  => Element              -- ^ Root DOM node
+  -> (w ~> HtmlT s s m) -- ^ Evaluate messages emitted by component
+  -> (m ~> IO)            -- ^ Evaluate application effects in @m@
+  -> HtmlT s s m s      -- ^ Init action
+  -> HtmlT s s m x      -- ^ Render action
   -> JSM x
-attach rootEl component runM init render = do
+attach rootEl runW runM init render = do
   let
     uninitializedDyn = error "Accessing dynamic variable before it was initialized"
     uninitializedEval = error "Accessing evaluation function before it was initialized"
-  hteDynamicRef@DynamicRef{..} <- liftIO (newDynamicRef uninitializedDyn)
-  runRef <- liftIO (newIORef uninitializedEval)
   UnliftIO{..} <- askUnliftIO
-  hteSubscriberRef@SubscriberRef{..} <- liftIO (newSubscriberRef (\w -> readIORef runRef >>= ($ w)))
+  runRef <- liftIO (newIORef uninitializedEval)
+  hteModel <- liftIO (newDynamicRef uninitializedDyn)
+  hteSubscriber <- liftIO (newSubscriberRef (\w -> (readIORef runRef >>= ($ w))))
   let
-    relmWrite     = \_ -> pure ()
-    relmRead      = pure rootEl
-    hteRootRef    = RootElmRef{..}
-    env           = HtmlEnv{..}
-    runComponent :: forall a. ComponentT w s s m a -> IO a
-    runComponent =
-      runM . flip runReaderT env . runHtmlT . runEffect .
-      flip for (\(Exists w) -> D.toDyn <$> recPipe1 component w)
-  liftIO (writeIORef runRef runComponent)
-  initial <- liftIO (runComponent init)
-  liftIO (drefModify \_ -> initial)
-  liftIO (runComponent render)
+    hteElement = ElementRef (pure rootEl) (\_ -> pure ())
+    htmlEnv = HtmlEnv{..}
+    runHtml :: forall a. HtmlT s s m a -> IO a
+    runHtml = runM . flip runReaderT htmlEnv . runHtmlT
+  liftIO $ writeIORef runRef (\(Exist h) -> void $ runHtml h)
+  initial <- liftIO (runHtml init)
+  liftIO $ drefModify hteModel \_ -> initial
+  liftIO $ runHtml render
 
 attachToBody
   :: Monad m
-  => (w ~> ComponentT w s s m) -- ^ Evaluate messages emitted by component
-  -> (m ~> IO)                 -- ^ Evaluate application specific effects in @m@
-  -> ComponentT w s s m s      -- ^ Init action
-  -> ComponentT w s s m x      -- ^ Render action
+  => (w ~> HtmlT s s m) -- ^ Evaluate messages emitted by component
+  -> (m ~> IO)            -- ^ Evaluate application effects in @m@
+  -> HtmlT s s m s      -- ^ Init action
+  -> HtmlT s s m x      -- ^ Render action
   -> JSM x
-attachToBody component runM init render = do
+attachToBody runW runM init render = do
   rootEl <- jsg "document" ! "body"
-  attach rootEl component runM init render
+  attach rootEl runW runM init render
 
-withJSM :: Maybe Int -> JSM () -> IO ()
+attachSimple
+  :: forall w s x
+   . Element                -- ^ Root DOM node
+  -> (w ~> HtmlT s s JSM) -- ^ Evaluate messages emitted by component
+  -> HtmlT s s JSM s      -- ^ Init action
+  -> HtmlT s s JSM x      -- ^ Render action
+  -> JSM x
+attachSimple rootEl runW init render = do
+  UnliftIO{..} <- askUnliftIO
+  attach rootEl runW unliftIO init render
+
+attachToBodySimple
+  :: (w ~> HtmlT s s JSM) -- ^ Evaluate messages emitted by component
+  -> HtmlT s s JSM s      -- ^ Init action
+  -> HtmlT s s JSM x      -- ^ Render action
+  -> JSM x
+attachToBodySimple runW init render = do
+  UnliftIO{..} <- askUnliftIO
+  attachToBody runW unliftIO init render
+
+attachIO
+  :: forall m w s x
+   . Monad m
+  => Element              -- ^ Root DOM node
+  -> (w ~> HtmlT s s m) -- ^ Evaluate messages emitted by component
+  -> (m ~> IO)            -- ^ Evaluate application effects in @m@
+  -> HtmlT s s m s      -- ^ Init action
+  -> HtmlT s s m x      -- ^ Render action
+  -> IO ()
+attachIO rootEl runW runM init render = withJSM $ attach rootEl runW runM init render
+
+attachToBodyIO
+  :: Monad m
+  => (w ~> HtmlT s s m) -- ^ Evaluate messages emitted by component
+  -> (m ~> IO)            -- ^ Evaluate application effects in @m@
+  -> HtmlT s s m s      -- ^ Init action
+  -> HtmlT s s m x      -- ^ Render action
+  -> IO ()
+attachToBodyIO runW runM init render = withJSM $ attachToBody runW runM init render
+
+withJSM :: JSM x -> IO ()
 #ifdef ghcjs_HOST_OS
-withJSM _ = id
+withJSM = id
 #else
-withJSM explicitPort jsm = do
+withJSM jsm = do
   envPort <- either (const Nothing) Just <$> try @SomeException (read <$> getEnv "PORT")
   progName <- getProgName
-  let Just port = explicitPort <|> envPort <|> Just 8080
-  let runWarp = Warp.run --if progName == "<interactive>" then Warp.debug else Warp.run
+  let Just port = envPort <|> Just 8080
+  let runWarp = if progName == "<interactive>" then Warp.debug else Warp.run
   putStrLn $ "Running jsaddle-warp application on http://localhost:" <> show port <> "/"
-  runWarp port jsm
+  runWarp port (void jsm)
 #endif

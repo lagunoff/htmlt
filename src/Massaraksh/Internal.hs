@@ -9,9 +9,9 @@ import Data.IORef
 import Data.Maybe
 import Data.List
 
-newRootRef :: MonadHtmlBase m => HtmlT w s t m RootElmRef
-newRootRef = do
-  rootEl <- askRootElm
+newElementRef :: HtmlBase m => HtmlT s t m ElementRef
+newElementRef = do
+  rootEl <- readElement
   elRef <- liftIO (newIORef Nothing)
   UnliftIO{..} <- lift askUnliftIO
   let
@@ -22,50 +22,50 @@ newRootRef = do
         Nothing    -> unliftIO $ liftJSM (rootEl # "appendChild" $ newEl)
         Just oldEl -> unliftIO $ liftJSM (rootEl # "replaceChild" $ (newEl, oldEl))
       writeIORef elRef (Just newEl)
-  pure RootElmRef{..}
+  pure ElementRef{..}
 
-askRootElm :: MonadHtmlBase m => HtmlT w s t m JSVal
-askRootElm =
-  asks (relmRead . hteRootRef) >>= liftIO
+readElement :: HtmlBase m => HtmlT s t m Element
+readElement =
+  asks (relmRead . hteElement) >>= liftIO
 
-putRootElm :: MonadHtmlBase m => JSVal -> Html w s t m
-putRootElm el = do
-  RootElmRef{..} <- asks hteRootRef
+writeElement :: HtmlBase m => Element -> HtmlT s t m ()
+writeElement el = do
+  ElementRef{..} <- asks hteElement
   liftIO (relmWrite el)
 
-appendChild :: MonadHtmlBase m => JSVal -> Html w s t m
+appendChild :: HtmlBase m => Node -> HtmlT s t m ()
 appendChild elm = do
-  hteRootRef@RootElmRef{..} <- newRootRef
+  hteElement@ElementRef{..} <- newElementRef
   liftIO (relmWrite elm)
 
-localRootElm
-  :: MonadHtmlBase m
-  => JSVal
-  -> HtmlT w s t m a
-  -> HtmlT w s t m a
-localRootElm elm child = do
-  hteRootRef@RootElmRef{..} <- newRootRef
+localDOMElement
+  :: HtmlBase m
+  => Element
+  -> HtmlT s t m a
+  -> HtmlT s t m a
+localDOMElement elm child = do
+  hteElement@ElementRef{..} <- newElementRef
   liftIO (relmWrite elm)
-  local (\env -> env { hteRootRef }) child
+  local (\env -> env { hteElement }) child
 
 subscribePrivate
-  :: MonadHtmlBase m
+  :: HtmlBase m
   => Event a
-  -> (a -> Html w s t m)
-  -> HtmlT w s t m (IO ())
+  -> (a -> HtmlT s t m ())
+  -> HtmlT s t m (IO ())
 subscribePrivate e f = do
-  subscriber <- asks (sbscrPrivate . sbrefValue . hteSubscriberRef)
+  subscriber <- asks (sbscrPrivate . sbrefValue . hteSubscriber)
   UnliftIO{..} <- askUnliftIO
   liftIO $ e `subscriber` (unliftIO . f)
 
 subscribePublic
-  :: MonadHtmlBase m
-  => Event (ComponentT w s t m ())
-  -> HtmlT w s t m (IO ())
+  :: HtmlBase m
+  => Event (HtmlT s t m x)
+  -> HtmlT s t m (IO ())
 subscribePublic e = do
-  subscriber <- asks (sbscrPublic . sbrefValue . hteSubscriberRef)
+  subscriber <- asks (sbscrPublic . sbrefValue . hteSubscriber)
   UnliftIO{..} <- askUnliftIO
-  liftIO (subscriber e)
+  liftIO (subscriber $ Exist <$> e)
 
 newSubscriberRef :: (a -> IO ()) -> IO (SubscriberRef a)
 newSubscriberRef k = do

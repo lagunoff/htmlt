@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, DeriveAnyClass #-}
 {-# LANGUAGE MultiWayIf, CPP, TemplateHaskell #-}
 module Item where
 
@@ -13,10 +13,9 @@ import Massaraksh
 
 data Props = Props
   { _propHidden :: Bool
+--  , _propModel  :: Model
   } deriving (Show, Eq, Generic)
-
-makeLenses ''Props
-
+_propModel = id
 data Model = Model
   { _moTitle     :: Text
   , _moCompleted :: Bool
@@ -24,6 +23,7 @@ data Model = Model
   } deriving (Show, Eq, Generic, ToJSVal, FromJSVal)
 
 makeLenses ''Model
+makeLenses ''Props
 
 data Msg a where
   Init :: Text -> Msg Model
@@ -37,57 +37,53 @@ data Msg a where
   EditingCancel :: Msg ()
   EditingCommit :: Msg ()
 
-component :: forall m. MonadHtmlBase m => Msg ~> ComponentT Msg Model Model m
-component = \case
+itemWidget :: HtmlBase m => HtmlRecT Msg Model Model m
+itemWidget yield = \case
   Init title ->
     pure (Model title False Nothing)
-  Render ->
-    lift render
+  Render -> do
+    li_ do
+      dynClassList
+        [ ("completed", _moCompleted . _propModel)
+        , ("editing", isJust . _moEditing . _propModel) ]
+  --          , ("hidden", hidden) ]
+      div_ do
+        "className" =: "view"
+        on "dblclick" $ targetDecoder <&> yield . EditingOn
+      input_ do
+        "className" =: "toggle"
+        "type"      =: "checkbox"
+        "checked"   ~: _moCompleted . _propModel
+        on "change" $ checkedDecoder <&> yield . Completed
+      label_ $ dynText (_moTitle . _propModel)
+      button_ do
+        "className" =: "destroy"
+        on' "click" do yield Destroy
+      input_ do
+        "className" =: "edit"
+        "value"     ~: fromMaybe "" . _moEditing .  _propModel
+        on "input" $ valueDecoder <&> yield . EditInput
+        on' "blur" $ yield Blur
+        on "keydown" $ keycodeDecoder <&> yield . KeyPress
   Completed x ->
-    modify (moCompleted .~ x)
+    omodify ((moCompleted .~ x) . _propModel)
   Destroy ->
     pure ()
   Blur ->
-    yield1 EditingCommit
+    yield EditingCommit
   KeyPress code -> do
-    if | code == 13 -> yield1 EditingCommit -- Enter
-       | code == 27 -> yield1 EditingCancel -- Escape
+    if | code == 13 -> yield EditingCommit -- Enter
+       | code == 27 -> yield EditingCancel -- Escape
        | otherwise  -> pure ()
   EditingOn _ -> do
-    model <- get
-    modify (moEditing .~ Just (_moTitle model))
+    model <- oget
+    omodify ((moEditing .~ Just (_moTitle $ _propModel model)) . _propModel)
     -- FIXME: Set focus to the editing input
   EditInput x ->
-    modify $ moEditing %~ fmap (const x)
+    omodify $ (moEditing %~ fmap (const x)) . _propModel
   EditingCancel -> do
-    modify $ moEditing .~ Nothing
-  EditingCommit -> gets _moEditing >>= \case
-    Just "" -> yield1 Destroy
-    Just x  -> modify $ (moEditing .~ Nothing) . (moTitle .~ x)
+    omodify $ (moEditing .~ Nothing) . _propModel
+  EditingCommit -> oget <&> (_moEditing .  _propModel) >>= \case
+    Just "" -> yield Destroy
+    Just x  -> omodify $ (moEditing .~ Nothing) . (moTitle .~ x) . _propModel
     Nothing -> pure ()
-
-render :: forall m. MonadHtmlBase m => Html' Msg Model m
-render =
-  li_ do
-    dynClassList
-      [ ("completed", _moCompleted)
-      , ("editing", isJust . _moEditing) ]
---          , ("hidden", hidden) ]
-    div_ do
-      "className" =: "view"
-      yieldOn "dblclick" $ targetDecoder <&> EditingOn
-    input_ do
-      "className" =: "toggle"
-      "type" =: "checkbox"
-      "checked" ~: _moCompleted
-      yieldOn "change" $ checkedDecoder <&> Completed
-    label_ $ dynText _moTitle
-    button_ do
-      "className" =: "destroy"
-      yieldOn' "click" Destroy
-    input_ do
-      "className" =: "edit"
-      "value" ~: fromMaybe "" . _moEditing
-      yieldOn "input" $ valueDecoder <&> EditInput
-      yieldOn' "blur" Blur
-      yieldOn "keydown" $ keycodeDecoder <&> KeyPress

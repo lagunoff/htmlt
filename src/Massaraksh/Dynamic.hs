@@ -6,7 +6,7 @@ import Data.IORef
 import GHC.Generics
 import Massaraksh.Event
 
-data Update a = Update { updOld :: a , updNew :: a }
+data Update a = Update { updOld :: a, updNew :: a }
   deriving (Show, Eq, Generic, Functor)
 
 -- | FIXME: Name was adopted from @reflex@ library, originally this
@@ -36,7 +36,7 @@ newDynamicRef initial = do
       old <- readIORef ref
       let new = f old
       writeIORef ref new
-      erefPush (Update old new)
+      erefTrigger (Update old new)
   pure DynamicRef{..}
 
 mapMaybeD :: b -> (Update a -> Maybe b) -> Dynamic a -> IO (Dynamic b)

@@ -8,506 +8,506 @@ import Massaraksh.Types
 import Massaraksh.Base
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/div
-div_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+div_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 div_ = el "div"
 {-# INLINE div_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/table
-table_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+table_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 table_ = el "table"
 {-# INLINE table_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/thead
-thead_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+thead_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 thead_ = el "thead"
 {-# INLINE thead_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/tbody
-tbody_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+tbody_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 tbody_ = el "tbody"
 {-# INLINE tbody_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/tr
-tr_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+tr_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 tr_ = el "tr"
 {-# INLINE tr_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/th
-th_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+th_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 th_ = el "th"
 {-# INLINE th_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/td
-td_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+td_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 td_ = el "td"
 {-# INLINE td_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/tfoot
-tfoot_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+tfoot_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 tfoot_ = el "tfoot"
 {-# INLINE tfoot_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/section
-section_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+section_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 section_ = el "section"
 {-# INLINE section_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/header
-header_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+header_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 header_ = el "header"
 {-# INLINE header_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/footer
-footer_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+footer_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 footer_ = el "footer"
 {-# INLINE footer_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button
-button_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+button_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 button_ = el "button"
 {-# INLINE button_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form
-form_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+form_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 form_ = el "form"
 {-# INLINE form_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/p
-p_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+p_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 p_ = el "p"
 {-# INLINE p_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/s
-s_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+s_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 s_ = el "s"
 {-# INLINE s_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/ul
-ul_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+ul_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 ul_ = el "ul"
 {-# INLINE ul_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/span
-span_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+span_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 span_ = el "span"
 {-# INLINE span_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/strong
-strong_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+strong_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 strong_ = el "strong"
 {-# INLINE strong_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/li
-li_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+li_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 li_ = el "li"
 {-# INLINE li_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h1
-h1_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+h1_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 h1_ = el "h1"
 {-# INLINE h1_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h2
-h2_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+h2_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 h2_ = el "h2"
 {-# INLINE h2_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h3
-h3_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+h3_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 h3_ = el "h3"
 {-# INLINE h3_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h4
-h4_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+h4_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 h4_ = el "h4"
 {-# INLINE h4_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h5
-h5_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+h5_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 h5_ = el "h5"
 {-# INLINE h5_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h6
-h6_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+h6_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 h6_ = el "h6"
 {-# INLINE h6_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/hr
-hr_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+hr_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 hr_ = el "hr"
 {-# INLINE hr_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/pre
-pre_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+pre_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 pre_ = el "pre"
 {-# INLINE pre_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input
-input_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+input_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 input_ = el "input"
 {-# INLINE input_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/label
-label_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+label_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 label_ = el "label"
 {-# INLINE label_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/a
-a_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+a_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 a_ = el "a"
 {-# INLINE a_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/mark
-mark_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+mark_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 mark_ = el "mark"
 {-# INLINE mark_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/ruby
-ruby_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+ruby_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 ruby_ = el "ruby"
 {-# INLINE ruby_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/rt
-rt_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+rt_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 rt_ = el "rt"
 {-# INLINE rt_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/rp
-rp_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+rp_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 rp_ = el "rp"
 {-# INLINE rp_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/bdi
-bdi_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+bdi_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 bdi_ = el "bdi"
 {-# INLINE bdi_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/bdo
-bdo_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+bdo_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 bdo_ = el "bdo"
 {-# INLINE bdo_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/wbr
-wbr_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+wbr_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 wbr_ = el "wbr"
 {-# INLINE wbr_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/details
-details_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+details_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 details_ = el "details"
 {-# INLINE details_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/summary
-summary_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+summary_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 summary_ = el "summary"
 {-# INLINE summary_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/menuitem
-menuitem_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+menuitem_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 menuitem_ = el "menuitem"
 {-# INLINE menuitem_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/menu
-menu_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+menu_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 menu_ = el "menu"
 {-# INLINE menu_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/fieldset
-fieldset_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+fieldset_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 fieldset_ = el "fieldset"
 {-# INLINE fieldset_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/legend
-legend_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+legend_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 legend_ = el "legend"
 {-# INLINE legend_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/datalist
-datalist_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+datalist_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 datalist_ = el "datalist"
 {-# INLINE datalist_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/optgroup
-optgroup_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+optgroup_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 optgroup_ = el "optgroup"
 {-# INLINE optgroup_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/keygen
-keygen_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+keygen_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 keygen_ = el "keygen"
 {-# INLINE keygen_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/output
-output_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+output_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 output_ = el "output"
 {-# INLINE output_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/progress
-progress_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+progress_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 progress_ = el "progress"
 {-# INLINE progress_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meter
-meter_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+meter_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 meter_ = el "meter"
 {-# INLINE meter_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/center
-center_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+center_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 center_ = el "center"
 {-# INLINE center_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/audio
-audio_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+audio_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 audio_ = el "audio"
 {-# INLINE audio_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/video
-video_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+video_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 video_ = el "video"
 {-# INLINE video_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/source
-source_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+source_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 source_ = el "source"
 {-# INLINE source_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/track
-track_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+track_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 track_ = el "track"
 {-# INLINE track_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/embed
-embed_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+embed_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 embed_ = el "embed"
 {-# INLINE embed_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/object
-object_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+object_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 object_ = el "object"
 {-# INLINE object_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/param
-param_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+param_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 param_ = el "param"
 {-# INLINE param_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/ins
-ins_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+ins_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 ins_ = el "ins"
 {-# INLINE ins_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/del
-del_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+del_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 del_ = el "del"
 {-# INLINE del_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/small
-small_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+small_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 small_ = el "small"
 {-# INLINE small_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/cite
-cite_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+cite_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 cite_ = el "cite"
 {-# INLINE cite_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dfn
-dfn_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+dfn_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 dfn_ = el "dfn"
 {-# INLINE dfn_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/abbr
-abbr_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+abbr_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 abbr_ = el "abbr"
 {-# INLINE abbr_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/time
-time_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+time_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 time_ = el "time"
 {-# INLINE time_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/var
-var_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+var_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 var_ = el "var"
 {-# INLINE var_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/samp
-samp_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+samp_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 samp_ = el "samp"
 {-# INLINE samp_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/kbd
-kbd_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+kbd_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 kbd_ = el "kbd"
 {-# INLINE kbd_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/caption
-caption_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+caption_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 caption_ = el "caption"
 {-# INLINE caption_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/colgroup
-colgroup_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+colgroup_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 colgroup_ = el "colgroup"
 {-# INLINE colgroup_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/col
-col_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+col_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 col_ = el "col"
 {-# INLINE col_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/nav
-nav_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+nav_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 nav_ = el "nav"
 {-# INLINE nav_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/article
-article_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+article_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 article_ = el "article"
 {-# INLINE article_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/aside
-aside_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+aside_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 aside_ = el "aside"
 {-# INLINE aside_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/address
-address_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+address_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 address_ = el "address"
 {-# INLINE address_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/main
-main_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+main_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 main_ = el "main"
 {-# INLINE main_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/body
-body_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+body_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 body_ = el "body"
 {-# INLINE body_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/figure
-figure_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+figure_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 figure_ = el "figure"
 {-# INLINE figure_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/figcaption
-figcaption_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+figcaption_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 figcaption_ = el "figcaption"
 {-# INLINE figcaption_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dl
-dl_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+dl_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 dl_ = el "dl"
 {-# INLINE dl_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dt
-dt_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+dt_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 dt_ = el "dt"
 {-# INLINE dt_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dd
-dd_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+dd_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 dd_ = el "dd"
 {-# INLINE dd_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/img
-img_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+img_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 img_ = el "img"
 {-# INLINE img_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe
-iframe_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+iframe_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 iframe_ = el "iframe"
 {-# INLINE iframe_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/canvas
-canvas_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+canvas_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 canvas_ = el "canvas"
 {-# INLINE canvas_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/math
-math_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+math_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 math_ = el "math"
 {-# INLINE math_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/select
-select_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+select_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 select_ = el "select"
 {-# INLINE select_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/option
-option_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+option_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 option_ = el "option"
 {-# INLINE option_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/textarea
-textarea_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+textarea_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 textarea_ = el "textarea"
 {-# INLINE textarea_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/sub
-sub_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+sub_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 sub_ = el "sub"
 {-# INLINE sub_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/sup
-sup_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+sup_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 sup_ = el "sup"
 {-# INLINE sup_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/br
-br_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+br_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 br_ = el "br"
 {-# INLINE br_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/ol
-ol_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+ol_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 ol_ = el "ol"
 {-# INLINE ol_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/blockquote
-blockquote_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+blockquote_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 blockquote_ = el "blockquote"
 {-# INLINE blockquote_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/code
-code_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+code_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 code_ = el "code"
 {-# INLINE code_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/em
-em_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+em_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 em_ = el "em"
 {-# INLINE em_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/i
-i_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+i_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 i_ = el "i"
 {-# INLINE i_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/b
-b_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+b_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 b_ = el "b"
 {-# INLINE b_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/u
-u_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+u_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 u_ = el "u"
 {-# INLINE u_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/q
-q_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+q_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 q_ = el "q"
 {-# INLINE q_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/script
-script_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+script_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 script_ = el "script"
 {-# INLINE script_ #-}
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/link
-link_ :: MonadHtmlBase m => HtmlT w s t m a -> HtmlT w s t m a
+link_ :: HtmlBase m => HtmlT s t m x -> HtmlT s t m x
 link_ = el "link"
 {-# INLINE link_ #-}

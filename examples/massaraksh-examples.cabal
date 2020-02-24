@@ -42,16 +42,17 @@ executable massaraksh-todomvc
     , TypeOperators
   ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -Wno-unused-do-bind -O0
   build-depends:
-      base >=4.7 && <5
-    , bytestring
-    , jsaddle
-    , lens
-    , massaraksh
-    , mtl
-    , raw-strings-qq
-    , text
-    , transformers
-    , unliftio-core
+                    base >=4.7 && <5
+                , bytestring
+                , jsaddle
+                , lens
+                , massaraksh
+                , mtl
+                , natural-transformation
+                , raw-strings-qq
+                , text
+                , transformers
+                , unliftio-core
   if impl(ghcjs)
     ghc-options: -dedupe
     build-depends:

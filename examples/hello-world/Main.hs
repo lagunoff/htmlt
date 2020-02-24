@@ -1,3 +1,4 @@
+{-# LANGUAGE LiberalTypeSynonyms #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
@@ -9,13 +10,13 @@ import qualified Data.Text as T
 
 type Model = Int
 
-widget :: Html' e (Const Void) Model
+widget :: Html void Model Model ()
 widget =
   div_ do
     "className" =: "root"
     h1_ do
       "style" ~: headerStyle
-      on1 "mouseenter" do modify (+ 1)
+      on' "mouseenter" do modify (+ 1)
       text "Hello, World!"
     el "style" do "type" =: "text/css"; text css
   where
@@ -36,5 +37,5 @@ widget =
       , ".root > h1 { font-size: 48px; margin: 0; font-family: \"Helvetica\", Arial, sans-serif; font-weight: 600; border: dashed 4px rgba(0,0,0,0.12); cursor: default; padding: 8px 16px; }"
       ]
 
-main = withJSM Nothing (attachToBody (absurd . getConst) () (pure 0) (lift widget))
+main = withJSM (attachToBodySimple (absurd . getConst) (pure 0) widget)
 
