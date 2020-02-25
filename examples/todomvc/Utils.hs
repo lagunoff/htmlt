@@ -1,11 +1,14 @@
+{-# LANGUAGE NoOverloadedStrings #-}
 module Utils where
 
 import Control.Monad (void)
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Maybe
+import Control.Monad.Reader
 import Data.Maybe
 import Data.Text
 import Language.Javascript.JSaddle
+import Massaraksh
 import qualified Item as Item
 
 setup
@@ -43,3 +46,7 @@ readHash :: JSM Text
 readHash = do
   jsval <- jsg "location" ! "hash"
   fromMaybe mempty <$> fromJSVal jsval
+
+unsafeInit :: HtmlT a b m x -> m x
+unsafeInit = flip runReaderT env . runHtmlT where
+  env = error "unsafeInit: Illegal usage of `HtmlEnv`"

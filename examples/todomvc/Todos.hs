@@ -1,22 +1,13 @@
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE IncoherentInstances #-}
-{-# LANGUAGE Unsafe #-}
-{-# LANGUAGE OverloadedStrings, QuasiQuotes #-}
-{-# LANGUAGE TemplateHaskell #-}
 module Todos where
 
 import Control.Lens hiding ((#))
-import Control.Monad.Reader
 import Control.Monad.State
-import Control.Natural
 import Data.String (fromString)
 import Data.Foldable
 import Data.Text (Text)
 import GHC.Generics
 import Massaraksh
-import Unsafe.Coerce
+import Utils
 import Text.RawString.QQ (r)
 import Utils (readTodos, writeTodos, readHash, writeHash)
 import qualified Data.Text as T
@@ -31,7 +22,6 @@ data Model = Model
   { _moTitle  :: Text
   , _moTodos  :: [Item.Model]
   , _moFilter :: Filter
-  , _moTodo   :: Item.Model
   } deriving (Show, Eq, Generic)
 
 makeLenses ''Model
@@ -47,34 +37,14 @@ data Msg a where
   HashChange :: Text -> Msg ()
   BeforeUnload :: Msg ()
   EditingCommit :: Msg ()
-  Blur :: Msg ()
 
-x02 :: HtmlBase m => HtmlRecT Msg Model Model m
-x02 yield = \case
-  Render -> do
-    div_ do
-      dynText _moTitle
-      overHtml undefined moTodo (htmlFix Item.itemWidget Item.Render)
-
-overHtml₂
-  :: Functor m
-  => (w₂ ~> w₁)
-  -> Lens s t a b
-  -> HtmlT w₂ a b m x
-  -> HtmlT w₁ s t m x
-overHtml₂ ww stab (HtmlT (ReaderT ab)) = HtmlT $ ReaderT \e ->
-  let
-    dynRef = overDynamic stab (hteModel e)
-    subscriber = contramap (\(Exist w) -> Exist (overHtml ww stab w)) (hteSubscriber e)
-  in ab $ e { hteModel = dynRef, hteSubscriber = subscriber }
-
-todosWidget :: forall m. HtmlBase m => HtmlRecT' Msg Model m
+todosWidget :: forall m. HtmlBase m => HtmlRec' Msg Model m
 todosWidget yield = \case
-  Init -> do
-    hash <- liftJSM readHash
-    todos <- liftJSM readTodos
+  Init -> liftJSM do
+    hash <- readHash
+    todos <- readTodos
     let filter = filterFromUrl hash & fromMaybe All
-    pure (Model "" [Item.Model "One" False Nothing, Item.Model "Two" False Nothing, Item.Model "Three" False Nothing] filter undefined)
+    pure (Model "" todos filter)
   Render -> do
     render
   Edit x ->
@@ -90,29 +60,24 @@ todosWidget yield = \case
     case T.strip (_moTitle model) of
       ""      -> pure ()
       trimmed -> do
-        -- newItem <- overComponent undefined undefined $ Item.itemWidget (Item.Init trimmed)
-        -- modify $ moTodos %~ (<> [newItem])
-        -- modify $ moTitle .~ ""
-        pure ()
-  Blur ->
-    yield EditingCommit
+        newItem <- lift $ unsafeInit $ htmlFix Item.itemWidget (Item.Init trimmed)
+        modify $ moTodos %~ (<> [newItem])
+        modify $ moTitle .~ ""
   KeyPress 13 ->
     yield EditingCommit
   KeyPress _ ->
     pure ()
-  HashChange hash ->
-    case filterFromUrl hash of
-      Just x -> modify $ moFilter .~ x
-      Nothing -> do
-        modify $ moFilter .~ All
---        embed $ writeHash (filterToUrl All)
+  HashChange hash -> case filterFromUrl hash of
+    Just x  -> modify $ moFilter .~ x
+    Nothing -> do
+      modify $ moFilter .~ All
+      liftJSM $ writeHash (filterToUrl All)
   BeforeUnload -> do
-    model <- get @Model
-    pure ()
-    -- liftIO $ writeTodos (todos model)
+    todos <- gets _moTodos
+    liftJSM $ writeTodos todos
 
   where
-    render :: HtmlT' Msg Model m ()
+    render :: HtmlT' Model m ()
     render =
       div_ do
         section_ do
@@ -123,7 +88,7 @@ todosWidget yield = \case
         footerInfo
         el "style" do "type" =: "text/css"; text css
 
-    renderHeader :: HtmlT' Msg Model m ()
+    renderHeader :: HtmlT' Model m ()
     renderHeader =
       header_ do
         "className" =: "header"
@@ -135,9 +100,8 @@ todosWidget yield = \case
           "value" ~: _moTitle
           on "input" $ valueDecoder <&> yield . Edit
           on "keydown" $ keycodeDecoder <&> yield . KeyPress
-          on' "blur" $ yield Blur
 
-    renderMain :: HtmlT' Msg Model m ()
+    renderMain :: HtmlT' Model m ()
     renderMain =
       section_ do
         dynClassList
@@ -148,18 +112,17 @@ todosWidget yield = \case
           "id" =: "toggle-all"
           "className" =: "toggle-all"
           on "click" $ checkedDecoder <&> yield . ToggleAll
-          label_ do
-            attr "for" "toggle-all"
-            text "Mark all as completed"
+        label_ do
+          attr "for" "toggle-all"
+          text "Mark all as completed"
         ul_ do
           "className" =: "todo-list"
-          dynList (moTodos . traversed) undefined
-             $ htmlFix Item.itemWidget Item.Render
-      -- , list (motodos) "ul" [ class_ "todo-list" ]
-      --   (mapUI (\(Exists msg) idx -> Exists $ TodoMsg msg idx) Item.view)
-      --   \parent model -> Item.Props { hidden = isHidden parent model, .. }
+          dynList (moTodos . traversed) $ \idx unliftHtml ->
+            (Item.Render &) $ htmlFix $ Item.itemWidget `composeHtml` \skip -> \case
+              Item.Destroy -> unliftHtml $ modify $ moTodos %~ deleteNth idx
+              other        -> skip other
 
-    renderFilter :: Filter -> HtmlT' Msg Model m ()
+    renderFilter :: Filter -> HtmlT' Model m ()
     renderFilter x =
       li_ do
         a_ do
@@ -167,7 +130,7 @@ todosWidget yield = \case
           "href" =: filterToUrl x
           text $ fromString (show x)
 
-    viewFooter :: HtmlT' Msg Model m ()
+    viewFooter :: HtmlT' Model m ()
     viewFooter =
       footer_ do
         dynClassList
@@ -185,7 +148,7 @@ todosWidget yield = \case
           on' "click" $ yield ClearCompleted
           text "Clear completed"
 
-    footerInfo :: HtmlT' Msg Model m ()
+    footerInfo :: HtmlT' Model m ()
     footerInfo =
       footer_ do
         "className" =: "info"

@@ -18,46 +18,50 @@ build-type:     Simple
 
 executable massaraksh-todomvc
   main-is: Main.hs
-  other-modules:
-      Paths_massaraksh_examples
-  hs-source-dirs:
-      todomvc
-  default-extensions:
-      BlockArguments
-    , DataKinds
-    , DeriveAnyClass
-    , DeriveGeneric
-    , DuplicateRecordFields
-    , FlexibleContexts
-    , GADTs
-    , LambdaCase
-    , MultiParamTypeClasses
-    , NamedFieldPuns
-    , PolyKinds
-    , RankNTypes
-    , RecordWildCards
-    , ScopedTypeVariables
-    , TypeApplications
-    , TypeFamilies
-    , TypeOperators
+  other-modules: Paths_massaraksh_examples
+  hs-source-dirs: todomvc
   ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -Wno-unused-do-bind -O0
   build-depends:
-                    base >=4.7 && <5
-                , bytestring
-                , jsaddle
-                , lens
-                , massaraksh
-                , mtl
-                , natural-transformation
-                , raw-strings-qq
-                , text
-                , transformers
-                , unliftio-core
+    base >=4.7 && <5,
+    bytestring,
+    jsaddle,
+    lens,
+    massaraksh,
+    mtl,
+    natural-transformation,
+    raw-strings-qq,
+    text,
+    transformers,
+    unliftio-core
+
   if impl(ghcjs)
     ghc-options: -dedupe
-    build-depends:
-        ghcjs-base
+    build-depends: ghcjs-base
   else
-    build-depends:
-        jsaddle-warp
+    build-depends: jsaddle-warp
   default-language: Haskell2010
+
+  default-extensions:
+    BlockArguments
+    DataKinds
+    DeriveAnyClass
+    DeriveGeneric
+    DuplicateRecordFields
+    FlexibleContexts
+    FlexibleInstances
+    GADTs
+    LambdaCase
+    MultiParamTypeClasses
+    MultiWayIf
+    NamedFieldPuns
+    OverloadedStrings
+    PolyKinds
+    QuasiQuotes
+    RankNTypes
+    RecordWildCards
+    ScopedTypeVariables
+    StandaloneDeriving
+    TemplateHaskell
+    TypeApplications
+    TypeFamilies
+    TypeOperators

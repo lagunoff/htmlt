@@ -129,6 +129,10 @@ targetDecoder :: Decoder JSVal
 targetDecoder =
   foldAt ["target"] idDecoder
 
+currentTargetDecoder :: Decoder JSVal
+currentTargetDecoder =
+  foldAt ["currentTarget"] idDecoder
+
 emptyDecoder :: Decoder ()
 emptyDecoder =
   Decoder $ \_ -> pure (pure ())

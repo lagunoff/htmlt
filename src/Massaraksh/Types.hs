@@ -16,19 +16,25 @@ import Massaraksh.Dynamic
 import Massaraksh.Event
 
 newtype HtmlT s t m a = HtmlT { runHtmlT :: ReaderT (HtmlEnv s t m) m a }
-  deriving (Functor, Applicative, Monad, MonadIO, MonadReader (HtmlEnv s t m), MonadFix)
+  deriving (
+    Functor, Applicative, Monad, MonadIO, MonadReader (HtmlEnv s t m), MonadFix
+  )
 
-type HtmlT' w s = HtmlT s s
+type HtmlT' s = HtmlT s s
 
-type Html w s t = HtmlT s t JSM
+type Html s t = HtmlT s t JSM
 
-type Html' w s = Html w s s
+type Html' s = Html s s
 
-type HtmlEvalT w s t m = forall x. w x -> HtmlT s t m x
+type HtmlEval w s t m = w ~> HtmlT s t m
 
-type HtmlRecT w s t m = HtmlEvalT w s t m -> HtmlEvalT w s t m
+type HtmlRec w s t m = (w ~> HtmlT s t m) -> w ~> HtmlT s t m
 
-type HtmlRecT' w s m = HtmlRecT w s s m
+type HtmlRec' w s m = HtmlRec w s s m
+
+type HtmlLift s t a b m = HtmlT s t m ~> HtmlT a b m
+
+type HtmlInterleave s t a b m x = (HtmlT s t m ~> HtmlT a b m) -> HtmlT a b m x
 
 data HtmlEnv s t m = HtmlEnv
   { hteElement    :: ElementRef
@@ -49,14 +55,11 @@ data Subscriber a = Subscriber
 
 data Exist (f :: * -> *) = forall x. Exist (f x)
 
-type HtmlBase m = (MonadJSM m, MonadUnliftIO m)
+type HtmlBase m = (MonadJSM m, MonadUnliftIO m, MonadFix m)
 
 type Node = JSVal
 
 type Element = JSVal
-
-htmlFix :: (HtmlEvalT w s t m -> HtmlEvalT w s t m) -> HtmlEvalT w s t m
-htmlFix f = f (htmlFix f)
 
 instance HtmlBase m => MonadState s (HtmlT s s m) where
   get = liftIO =<< asks (dynRead . drefValue . hteModel)
@@ -88,10 +91,12 @@ instance (Monoid a, Applicative m) => Monoid (HtmlT s t m a) where
   mempty = HtmlT $ ReaderT \_ -> pure mempty
 
 instance Contravariant Subscriber where
-  contramap g Subscriber{..} = Subscriber sbscrPrivate (sbscrPublic . fmap g)
+  contramap g Subscriber{..} =
+    Subscriber sbscrPrivate (sbscrPublic . fmap g)
 
 instance Contravariant SubscriberRef where
-  contramap g SubscriberRef{..} = SubscriberRef (contramap g sbrefValue) sbrefSubscriptions
+  contramap g SubscriberRef{..} =
+    SubscriberRef (contramap g sbrefValue) sbrefSubscriptions
 
 #ifndef ghcjs_HOST_OS
 instance MonadJSM m => MonadJSM (HtmlT s t m) where

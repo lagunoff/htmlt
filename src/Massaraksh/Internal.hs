@@ -38,12 +38,12 @@ appendChild elm = do
   hteElement@ElementRef{..} <- newElementRef
   liftIO (relmWrite elm)
 
-localDOMElement
+localElement
   :: HtmlBase m
   => Element
   -> HtmlT s t m a
   -> HtmlT s t m a
-localDOMElement elm child = do
+localElement elm child = do
   hteElement@ElementRef{..} <- newElementRef
   liftIO (relmWrite elm)
   local (\env -> env { hteElement }) child
