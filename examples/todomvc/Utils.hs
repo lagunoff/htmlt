@@ -47,6 +47,6 @@ readHash = do
   jsval <- jsg "location" ! "hash"
   fromMaybe mempty <$> fromJSVal jsval
 
-unsafeInit :: HtmlT a b m x -> m x
+unsafeInit :: HtmlT s m x -> m x
 unsafeInit = flip runReaderT env . runHtmlT where
   env = error "unsafeInit: Illegal usage of `HtmlEnv`"

@@ -38,7 +38,7 @@ data Msg a where
   BeforeUnload :: Msg ()
   EditingCommit :: Msg ()
 
-todosWidget :: forall m. HtmlBase m => HtmlRec' Msg Model m
+todosWidget :: forall m. HtmlBase m => HtmlRec Msg Model m
 todosWidget yield = \case
   Init -> liftJSM do
     hash <- readHash
@@ -60,7 +60,7 @@ todosWidget yield = \case
     case T.strip (_moTitle model) of
       ""      -> pure ()
       trimmed -> do
-        newItem <- lift $ unsafeInit $ htmlFix Item.itemWidget (Item.Init trimmed)
+        newItem <- lift $ unsafeInit $ htmlFix itemWidget (Item.Init trimmed)
         modify $ moTodos %~ (<> [newItem])
         modify $ moTitle .~ ""
   KeyPress 13 ->
@@ -77,7 +77,11 @@ todosWidget yield = \case
     liftJSM $ writeTodos todos
 
   where
-    render :: HtmlT' Model m ()
+    itemWidget :: HtmlRec Item.Msg Item.Model m
+    itemWidget = Item.itemWidget $ Item.Config
+      undefined undefined
+
+    render :: HtmlT Model m ()
     render =
       div_ do
         section_ do
@@ -88,7 +92,7 @@ todosWidget yield = \case
         footerInfo
         el "style" do "type" =: "text/css"; text css
 
-    renderHeader :: HtmlT' Model m ()
+    renderHeader :: HtmlT Model m ()
     renderHeader =
       header_ do
         "className" =: "header"
@@ -101,7 +105,7 @@ todosWidget yield = \case
           on "input" $ valueDecoder <&> yield . Edit
           on "keydown" $ keycodeDecoder <&> yield . KeyPress
 
-    renderMain :: HtmlT' Model m ()
+    renderMain :: HtmlT Model m ()
     renderMain =
       section_ do
         dynClassList
@@ -118,11 +122,11 @@ todosWidget yield = \case
         ul_ do
           "className" =: "todo-list"
           dynList (moTodos . traversed) $ \idx unliftHtml ->
-            (Item.Render &) $ htmlFix $ Item.itemWidget `composeHtml` \skip -> \case
+            (Item.Render &) $ htmlFix $ itemWidget `composeHtml` \skip -> \case
               Item.Destroy -> unliftHtml $ modify $ moTodos %~ deleteNth idx
               other        -> skip other
 
-    renderFilter :: Filter -> HtmlT' Model m ()
+    renderFilter :: Filter -> HtmlT Model m ()
     renderFilter x =
       li_ do
         a_ do
@@ -130,7 +134,7 @@ todosWidget yield = \case
           "href" =: filterToUrl x
           text $ fromString (show x)
 
-    viewFooter :: HtmlT' Model m ()
+    viewFooter :: HtmlT Model m ()
     viewFooter =
       footer_ do
         dynClassList
@@ -148,7 +152,7 @@ todosWidget yield = \case
           on' "click" $ yield ClearCompleted
           text "Clear completed"
 
-    footerInfo :: HtmlT' Model m ()
+    footerInfo :: HtmlT Model m ()
     footerInfo =
       footer_ do
         "className" =: "info"

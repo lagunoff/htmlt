@@ -3,11 +3,12 @@ module Main where
 
 import Massaraksh
 import Control.Monad.State
+import Text.RawString.QQ (r)
 import qualified Data.Text as T
 
 type Model = Int
 
-widget :: Html Model Model ()
+widget :: Html Model
 widget =
   div_ do
     "className" =: "root"
@@ -28,10 +29,28 @@ colors =
   , "rgb(61,44,247)", "rgb(118,45,39)", "rgb(248,116,17)", "rgb(27,184,238)"
   , "rgb(117,23,222)" ]
 
-css = T.unwords
-  [ "html, body { margin: 0; height: 100%; }"
-  , ".root { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }"
-  , ".root > h1 { font-size: 48px; margin: 0; font-family: \"Helvetica\", Arial, sans-serif; font-weight: 600; border: dashed 4px rgba(0,0,0,0.12); cursor: default; padding: 8px 16px; }"
-  ]
+css = [r|
+  html, body {
+    margin: 0;
+    height: 100%;
+  }
+
+ .root {
+   width: 100%;
+   height: 100%;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+ }
+
+ .root > h1 {
+   font-size: 48px;
+   margin: 0;
+   font-family: "Helvetica", Arial, sans-serif;
+   font-weight: 600;
+   border: dashed 4px rgba(0,0,0,0.12);
+   cursor: default;
+   padding: 8px 16px;
+ } |]
 
 main = withJSM $ attachToBodySimple 0 widget

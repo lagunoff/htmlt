@@ -18,17 +18,17 @@ import Massaraksh.Event
 import Massaraksh.Internal
 import Massaraksh.Types
 
-el :: HtmlBase m => Text -> HtmlT s t m x -> HtmlT s t m x
+el :: HtmlBase m => Text -> HtmlT s m x -> HtmlT s m x
 el tag child = do
   elm <- liftJSM $ jsg "document" # "createElement" $ tag
   localElement elm child
 
-text :: HtmlBase m => Text -> HtmlT s t m ()
+text :: HtmlBase m => Text -> HtmlT s m ()
 text txt = do
   textNode <- liftJSM $ jsg "document" # "createTextNode" $ txt
   appendChild textNode
 
-dynText :: HtmlBase m => (s -> Text) -> HtmlT s t m ()
+dynText :: HtmlBase m => (s -> Text) -> HtmlT s m ()
 dynText f = do
   Dynamic{..} <- asks (drefValue . hteModel)
   txt <- f <$> liftIO dynRead
@@ -37,18 +37,18 @@ dynText f = do
     void $ liftJSM $ textNode <# "nodeValue" $ f updNew
   appendChild textNode
 
-prop :: (HtmlBase m, ToJSVal v) => Text -> v -> HtmlT s t m ()
+prop :: (HtmlBase m, ToJSVal v) => Text -> v -> HtmlT s m ()
 prop key val = do
   rootEl <- readElement
   liftJSM $ rootEl <# key $ val
 
-(=:) :: HtmlBase m => Text -> Text -> HtmlT s t m ()
+(=:) :: HtmlBase m => Text -> Text -> HtmlT s m ()
 (=:) = prop
 infixr 7 =:
 
 dynProp
   :: (HtmlBase m, ToJSVal v, FromJSVal v, Eq v)
-  => Text -> (s -> v) -> HtmlT s t m ()
+  => Text -> (s -> v) -> HtmlT s m ()
 dynProp key f = do
   Dynamic{..} <- asks (drefValue . hteModel)
   txt <- f <$> liftIO dynRead
@@ -61,16 +61,16 @@ dynProp key f = do
 
 (~:)
   :: (HtmlBase m, ToJSVal v, FromJSVal v, Eq v)
-  => Text -> (s -> v) -> HtmlT s t m ()
+  => Text -> (s -> v) -> HtmlT s m ()
 (~:) = dynProp
 infixr 7 ~:
 
-attr :: HtmlBase m => Text -> Text -> HtmlT s t m ()
+attr :: HtmlBase m => Text -> Text -> HtmlT s m ()
 attr key val = do
   rootEl <- readElement
   void $ liftJSM $ rootEl # "setAttribute" $ (key, val)
 
-dynAttr :: HtmlBase m => Text -> (s -> Text) -> HtmlT s t m ()
+dynAttr :: HtmlBase m => Text -> (s -> Text) -> HtmlT s m ()
 dynAttr key f = do
   Dynamic{..} <- asks (drefValue . hteModel)
   txt <- f <$> liftIO dynRead
@@ -82,8 +82,8 @@ dynAttr key f = do
 on
   :: HtmlBase m
   => Text
-  -> Decoder (HtmlT s t m x)
-  -> HtmlT s t m ()
+  -> Decoder (HtmlT s m x)
+  -> HtmlT s m ()
 on name decoder = do
   el <- readElement
   UnliftIO{..} <- askUnliftIO
@@ -100,28 +100,28 @@ on name decoder = do
 on'
   :: HtmlBase m
   => Text
-  -> HtmlT s t m x
-  -> HtmlT s t m ()
+  -> HtmlT s m x
+  -> HtmlT s m ()
 on' name w = on name (pure w)
 
-dynClassList :: HtmlBase m => [(Text, s -> Bool)] -> HtmlT s t m ()
+dynClassList :: HtmlBase m => [(Text, s -> Bool)] -> HtmlT s m ()
 dynClassList xs =
   dynProp (T.pack "className") $
   \s -> T.unwords (L.foldl' (\acc (cs, f) -> if f s then cs:acc else acc) [] xs)
 
-classList :: HtmlBase m => [(Text, Bool)] -> HtmlT s t m ()
+classList :: HtmlBase m => [(Text, Bool)] -> HtmlT s m ()
 classList xs =
   prop (T.pack "className") $
   T.unwords (L.foldl' (\acc (cs, cond) -> if cond then cs:acc else acc) [] xs)
 
-htmlFix :: (HtmlEval w s t m -> HtmlEval w s t m) -> HtmlEval w s t m
+htmlFix :: (HtmlEval w s m -> HtmlEval w s m) -> HtmlEval w s m
 htmlFix f = f (htmlFix f)
 
 overHtml
   :: Functor m
-  => Lens s t a b
-  -> HtmlT a b m x
-  -> HtmlT s t m x
+  => Lens' s a
+  -> HtmlT a m x
+  -> HtmlT s m x
 overHtml stab = localHtmlEnv \e -> let
   model = overDynamic stab (hteModel e)
   subscriber = flip contramap (hteSubscriber e) \(Exist html) ->
@@ -129,32 +129,32 @@ overHtml stab = localHtmlEnv \e -> let
   in e { hteModel = model, hteSubscriber = subscriber }
 
 composeHtml
-  :: HtmlRec w a b m
-  -> HtmlRec w a b m
-  -> HtmlRec w a b m
+  :: HtmlRec w a m
+  -> HtmlRec w a m
+  -> HtmlRec w a m
 composeHtml next override yield = next (override yield)
 
 interleaveHtml
   :: HtmlBase m
-  => Lens s t a b
-  -> (HtmlLift s t a b m -> HtmlT a b m x)
-  -> HtmlT s t m x
+  => Lens' s a
+  -> (HtmlLift s t a b m -> HtmlT a m x)
+  -> HtmlT s m x
 interleaveHtml stab interleave = do
   UnliftIO{..} <- askUnliftIO
   overHtml stab $ interleave (liftIO . unliftIO)
 
 localHtmlEnv
-  :: (HtmlEnv s₁ t₁ m -> HtmlEnv s₂ t₂ m)
-  -> HtmlT s₂ t₂ m x
-  -> HtmlT s₁ t₁ m x
+  :: (HtmlEnv s₁ m -> HtmlEnv s₂ m)
+  -> HtmlT s₂ m x
+  -> HtmlT s₁ m x
 localHtmlEnv f (HtmlT (ReaderT h)) = HtmlT $ ReaderT (h . f)
 
 dynListSimple
   :: forall s a m
    . HtmlBase m
   => IndexedTraversal' Int s a
-  -> HtmlT a a m ()
-  -> HtmlT s s m ()
+  -> HtmlT a m ()
+  -> HtmlT s m ()
 dynListSimple l child =
   dynList l $ const (const child)
 
@@ -162,18 +162,18 @@ dynList
   :: forall s a m
    . HtmlBase m
   => IndexedTraversal' Int s a
-  -> (Int -> HtmlInterleave s s a a m ())
-  -> HtmlT s s m ()
+  -> (Int -> HtmlInterleave s (s, a) m ())
+  -> HtmlT s m ()
 dynList stbb interleave = do
   unliftH <- askUnliftIO
-  unliftM <- lift $ askUnliftIO
+  unliftM <- lift askUnliftIO
   hte <- ask
   rootEl <- liftIO $ relmRead (hteElement hte)
   s <- liftIO $ dynRead $ drefValue (hteModel hte)
   childEnvs <- liftIO (newIORef [])
   let
-    mkHandler :: HtmlEnv a a m -> Exist (HtmlT a a m) -> IO ()
-    mkHandler env (Exist html) = do
+    mkHandler :: HtmlEnv a m -> Exist (HtmlT a m) -> IO ()
+    mkHandler env (Exist html) =
       void $ unliftIO unliftM $ flip runReaderT env $ runHtmlT html
 
     setup :: Int -> [a] -> [a] -> m ()
@@ -183,9 +183,9 @@ dynList stbb interleave = do
         -- New list is longer, append new elements
         subscriber <- liftIO (newSubscriberRef (mkHandler newEnv))
         let parentDyn = drefValue (hteModel hte)
+        -- FIXME:
         value <- liftIO $ mapMaybeD x ((^? stbb . index idx) . updNew) parentDyn
         let
-          -- FIXME:
           model = DynamicRef value \ab -> drefModify (hteModel hte) $
             iover stbb \i -> if i == idx then ab else id
           child = interleave idx (liftIO . unliftIO unliftH)
@@ -213,5 +213,5 @@ dynList stbb interleave = do
     HtmlT $ lift $ setup 0 (toListOf stbb updOld) (toListOf stbb updNew)
   pure ()
 
-instance (x ~ (), HtmlBase m) => IsString (HtmlT s t m x) where
+instance (x ~ (), HtmlBase m) => IsString (HtmlT s m x) where
   fromString = text . T.pack

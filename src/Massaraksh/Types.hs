@@ -15,31 +15,27 @@ import Language.Javascript.JSaddle
 import Massaraksh.Dynamic
 import Massaraksh.Event
 
-newtype HtmlT s t m a = HtmlT { runHtmlT :: ReaderT (HtmlEnv s t m) m a }
+newtype HtmlT s m a = HtmlT { runHtmlT :: ReaderT (HtmlEnv s m) m a }
   deriving (
-    Functor, Applicative, Monad, MonadIO, MonadReader (HtmlEnv s t m), MonadFix
+    Functor, Applicative, Monad, MonadIO, MonadReader (HtmlEnv s m), MonadFix
   )
 
-type HtmlT' s = HtmlT s s
+type HtmlM s = HtmlT s JSM
 
-type Html s t = HtmlT s t JSM
+type Html s = HtmlM s ()
 
-type Html' s = Html s s
+type HtmlEval w s m = w ~> HtmlT s m
 
-type HtmlEval w s t m = w ~> HtmlT s t m
+type HtmlRec w s m = (w ~> HtmlT s m) -> w ~> HtmlT s m
 
-type HtmlRec w s t m = (w ~> HtmlT s t m) -> w ~> HtmlT s t m
+type HtmlLift s t a b m = HtmlT s m ~> HtmlT a m
 
-type HtmlRec' w s m = HtmlRec w s s m
+type HtmlInterleave s a m x = (HtmlT s m ~> HtmlT a m) -> HtmlT a m x
 
-type HtmlLift s t a b m = HtmlT s t m ~> HtmlT a b m
-
-type HtmlInterleave s t a b m x = (HtmlT s t m ~> HtmlT a b m) -> HtmlT a b m x
-
-data HtmlEnv s t m = HtmlEnv
+data HtmlEnv s m = HtmlEnv
   { hteElement    :: ElementRef
-  , hteModel      :: DynamicRef s t
-  , hteSubscriber :: SubscriberRef (Exist (HtmlT s t m)) }
+  , hteModel      :: DynamicRef s s
+  , hteSubscriber :: SubscriberRef (Exist (HtmlT s m)) }
 
 data ElementRef = ElementRef
   { relmRead  :: IO Element
@@ -61,33 +57,22 @@ type Node = JSVal
 
 type Element = JSVal
 
-instance HtmlBase m => MonadState s (HtmlT s s m) where
+instance HtmlBase m => MonadState s (HtmlT s m) where
   get = liftIO =<< asks (dynRead . drefValue . hteModel)
   put v = liftIO =<< asks (($ const v) . drefModify . hteModel)
 
-instance MonadUnliftIO m => MonadUnliftIO (HtmlT s t m) where
+instance MonadUnliftIO m => MonadUnliftIO (HtmlT s m) where
   askUnliftIO = HtmlT do
     UnliftIO{..} <- askUnliftIO
     pure $ UnliftIO (unliftIO . runHtmlT)
 
-class Monad m => OpticalState s t m | m -> s t where
-  oget :: m s
-  omodify :: (s -> t) -> m ()
-  omodify f = oget >>= oput . f
-  oput :: t -> m ()
-  oput = omodify . const
-
-instance HtmlBase m => OpticalState s t (HtmlT s t m) where
-  oget = liftIO =<< asks (dynRead . drefValue . hteModel)
-  oput v = liftIO =<< asks (($ const v) . drefModify . hteModel)
-
-instance MonadTrans (HtmlT s t) where
+instance MonadTrans (HtmlT s) where
   lift = HtmlT . lift
 
-instance (Semigroup a, Applicative m) => Semigroup (HtmlT s t m a) where
+instance (Semigroup a, Applicative m) => Semigroup (HtmlT s m a) where
   (<>) = liftA2 (<>)
 
-instance (Monoid a, Applicative m) => Monoid (HtmlT s t m a) where
+instance (Monoid a, Applicative m) => Monoid (HtmlT s m a) where
   mempty = HtmlT $ ReaderT \_ -> pure mempty
 
 instance Contravariant Subscriber where
@@ -99,6 +84,6 @@ instance Contravariant SubscriberRef where
     SubscriberRef (contramap g sbrefValue) sbrefSubscriptions
 
 #ifndef ghcjs_HOST_OS
-instance MonadJSM m => MonadJSM (HtmlT s t m) where
+instance MonadJSM m => MonadJSM (HtmlT s m) where
   liftJSM' = lift . liftJSM'
 #endif

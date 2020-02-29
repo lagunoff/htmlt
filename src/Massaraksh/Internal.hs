@@ -9,7 +9,7 @@ import Data.IORef
 import Data.Maybe
 import Data.List
 
-newElementRef :: HtmlBase m => HtmlT s t m ElementRef
+newElementRef :: HtmlBase m => HtmlT s m ElementRef
 newElementRef = do
   rootEl <- readElement
   elRef <- liftIO (newIORef Nothing)
@@ -24,16 +24,16 @@ newElementRef = do
       writeIORef elRef (Just newEl)
   pure ElementRef{..}
 
-readElement :: HtmlBase m => HtmlT s t m Element
+readElement :: HtmlBase m => HtmlT s m Element
 readElement =
   asks (relmRead . hteElement) >>= liftIO
 
-writeElement :: HtmlBase m => Element -> HtmlT s t m ()
+writeElement :: HtmlBase m => Element -> HtmlT s m ()
 writeElement el = do
   ElementRef{..} <- asks hteElement
   liftIO (relmWrite el)
 
-appendChild :: HtmlBase m => Node -> HtmlT s t m ()
+appendChild :: HtmlBase m => Node -> HtmlT s m ()
 appendChild elm = do
   hteElement@ElementRef{..} <- newElementRef
   liftIO (relmWrite elm)
@@ -41,8 +41,8 @@ appendChild elm = do
 localElement
   :: HtmlBase m
   => Element
-  -> HtmlT s t m a
-  -> HtmlT s t m a
+  -> HtmlT s m a
+  -> HtmlT s m a
 localElement elm child = do
   hteElement@ElementRef{..} <- newElementRef
   liftIO (relmWrite elm)
@@ -51,8 +51,8 @@ localElement elm child = do
 subscribePrivate
   :: HtmlBase m
   => Event a
-  -> (a -> HtmlT s t m ())
-  -> HtmlT s t m (IO ())
+  -> (a -> HtmlT s m ())
+  -> HtmlT s m (IO ())
 subscribePrivate e f = do
   subscriber <- asks (sbscrPrivate . sbrefValue . hteSubscriber)
   UnliftIO{..} <- askUnliftIO
@@ -60,8 +60,8 @@ subscribePrivate e f = do
 
 subscribePublic
   :: HtmlBase m
-  => Event (HtmlT s t m x)
-  -> HtmlT s t m (IO ())
+  => Event (HtmlT s m x)
+  -> HtmlT s m (IO ())
 subscribePublic e = do
   subscriber <- asks (sbscrPublic . sbrefValue . hteSubscriber)
   UnliftIO{..} <- askUnliftIO

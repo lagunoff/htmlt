@@ -23,11 +23,11 @@ attach
   => Element       -- ^ Root DOM node
   -> (m ~> IO)     -- ^ Evaluate application effects in @m@
   -> s             -- ^ Initial state
-  -> HtmlT s s m x -- ^ Render action
+  -> HtmlT s m x -- ^ Render action
   -> JSM x
 attach rootEl runM init render = mdo
   let
-    runHtml :: forall a. HtmlT s s m a -> IO a
+    runHtml :: forall a. HtmlT s m a -> IO a
     runHtml = runM . flip runReaderT htmlEnv . runHtmlT
     hteElement = ElementRef (pure rootEl) (\_ -> pure ())
     htmlEnv = HtmlEnv{..}
@@ -39,7 +39,7 @@ attachToBody
   :: Monad m
   => (m ~> IO)     -- ^ Evaluate application effects in @m@
   -> s             -- ^ Initial state
-  -> HtmlT s s m x -- ^ Render action
+  -> HtmlT s m x -- ^ Render action
   -> JSM x
 attachToBody runM init render = do
   rootEl <- jsg "document" ! "body"
@@ -49,7 +49,7 @@ attachSimple
   :: forall s x
    . Element         -- ^ Root DOM node
   -> s               -- ^ Initial state
-  -> HtmlT s s JSM x -- ^ Render action
+  -> HtmlT s JSM x -- ^ Render action
   -> JSM x
 attachSimple rootEl init render = do
   UnliftIO{..} <- askUnliftIO
@@ -57,7 +57,7 @@ attachSimple rootEl init render = do
 
 attachToBodySimple
   :: s               -- ^ Initial state
-  -> HtmlT s s JSM x -- ^ Render action
+  -> HtmlT s JSM x -- ^ Render action
   -> JSM x
 attachToBodySimple init render = do
   UnliftIO{..} <- askUnliftIO
@@ -69,7 +69,7 @@ attachIO
   => Element       -- ^ Root DOM node
   -> (m ~> IO)     -- ^ Evaluate application effects in @m@
   -> s             -- ^ Initial state
-  -> HtmlT s s m x -- ^ Render action
+  -> HtmlT s m x -- ^ Render action
   -> IO ()
 attachIO rootEl runM init render =
   withJSM $ attach rootEl runM init render
@@ -78,7 +78,7 @@ attachToBodyIO
   :: Monad m
   => (m ~> IO)     -- ^ Evaluate application effects in @m@
   -> s             -- ^ Initial state
-  -> HtmlT s s m x -- ^ Render action
+  -> HtmlT s m x -- ^ Render action
   -> IO ()
 attachToBodyIO runM init render =
   withJSM $ attachToBody runM init render

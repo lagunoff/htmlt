@@ -4,14 +4,18 @@ import Control.Lens hiding ((#))
 import Control.Monad.State
 import Data.Maybe
 import Data.Text as T
-import GHC.Generics
+import GHC.Generics (Generic)
 import GHCJS.Types
 import GHCJS.Marshal
 import Massaraksh
 import Language.Javascript.JSaddle
 
+data Config s = Config
+  { cfgProps :: s -> Props
+  , cfgModel :: Lens' s Model }
+
 data Props = Props
-  { _propHidden :: Bool
+  { propHidden :: Bool
   } deriving (Show, Eq, Generic)
 
 data Model = Model
@@ -21,7 +25,6 @@ data Model = Model
   } deriving (Show, Eq, Generic, ToJSVal, FromJSVal)
 
 makeLenses ''Model
-makeLenses ''Props
 
 data Msg a where
   Init :: Text -> Msg Model
@@ -35,37 +38,37 @@ data Msg a where
   EditingCancel :: Msg ()
   EditingCommit :: Msg ()
 
-itemWidget :: HtmlBase m => HtmlRec Msg Model Model m
-itemWidget yield = \case
+itemWidget :: HtmlBase m => Config s -> HtmlRec Msg s m
+itemWidget Config{..} yield = \case
   Init title ->
     pure (Model title False Nothing)
   Render -> do
     li_ do
       dynClassList
-        [ ("completed", _moCompleted )
-        , ("editing", isJust . _moEditing ) ]
-  --          , ("hidden", hidden) ]
+        [ ("completed", (^. cfgModel . moCompleted))
+        , ("editing", (^. cfgModel . moEditing . to isJust))
+        , ("hidden", propHidden . cfgProps) ]
       div_ do
         "className" =: "view"
         on "dblclick" $ targetDecoder <&> yield . EditingOn
         input_ do
           "className" =: "toggle"
           "type"      =: "checkbox"
-          "checked"   ~: _moCompleted
+          "checked"   ~: (^. cfgModel . moCompleted)
           on "change" $ checkedDecoder <&> yield . Completed
-        label_ $ dynText (_moTitle )
+        label_ $ dynText (^. cfgModel . moTitle)
         button_ do
           "className" =: "destroy"
           on' "click" do yield Destroy
       input_ do
         "className" =: "edit"
         "type"      =: "text"
-        "value"     ~: fromMaybe "" . _moEditing
+        "value"     ~: (^. cfgModel . moEditing . to (fromMaybe ""))
         on "input" $ valueDecoder <&> yield . EditInput
         on' "blur" $ yield Blur
         on "keydown" $ keycodeDecoder <&> yield . KeyPress
   Completed x ->
-    omodify ((moCompleted .~ x) )
+    modify $ cfgModel . moCompleted .~ x
   Destroy ->
     pure ()
   Blur ->
@@ -75,21 +78,21 @@ itemWidget yield = \case
        | code == 27 -> yield EditingCancel -- Escape
        | otherwise  -> pure ()
   EditingOn elm -> do
-    model <- oget
-    omodify $ moEditing .~ Just (_moTitle model)
+    title <- gets (^. cfgModel . moTitle)
+    modify $ cfgModel . moEditing .~ Just title
     void $ liftJSM $ do
       -- FIXME: currentTarget doesn't work for @dblclick@ it gets
       -- assigned to null, @elm@ points to label inside div.view
       input <- elm ! ("parentNode" :: Text) ! ("parentNode" :: Text)
-        # ("querySelector" :: Text) $ ["input[type=text]"  :: Text]
+        # ("querySelector" :: Text) $ ["input[type=text]" :: Text]
       cb <- function \_ _ _ -> void $ liftJSM $ input #
         ("focus" :: Text) $ ([] :: [Int])
       jsg2 ("setTimeout" :: Text) cb (100 :: Int)
   EditInput x ->
-    omodify $ (moEditing %~ fmap (const x))
+    modify $ cfgModel . moEditing %~ fmap (const x)
   EditingCancel -> do
-    omodify $ (moEditing .~ Nothing)
-  EditingCommit -> oget <&> _moEditing >>= \case
+    modify $ cfgModel . moEditing .~ Nothing
+  EditingCommit -> gets (^. cfgModel . moEditing) >>= \case
     Just "" -> yield Destroy
-    Just x  -> omodify $ (moEditing .~ Nothing) . (moTitle .~ x)
+    Just x  -> modify $ (cfgModel . moEditing .~ Nothing) . (cfgModel . moTitle .~ x)
     Nothing -> pure ()
