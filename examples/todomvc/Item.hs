@@ -5,14 +5,14 @@ import Control.Monad.State
 import Data.Maybe
 import Data.Text as T
 import GHC.Generics (Generic)
-import GHCJS.Types
 import GHCJS.Marshal
-import Massaraksh
+import GHCJS.Types
 import Language.Javascript.JSaddle
+import Massaraksh
 
 data Config s = Config
-  { cfgProps :: s -> Props
-  , cfgModel :: Lens' s Model }
+  { cfgModel :: Lens' s Model
+  , cfgProps :: s -> Props }
 
 data Props = Props
   { propHidden :: Bool

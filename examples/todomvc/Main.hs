@@ -7,5 +7,7 @@ import Language.Javascript.JSaddle.Types ()
 
 main :: IO ()
 main = withJSM do
-  initialState <- unsafeInit $ htmlFix todosWidget Init
-  attachToBodySimple initialState (htmlFix todosWidget Render)
+  let widget = htmlFix todosWidget
+  initialState <- unsafeInit (widget Init)
+  rs <- attachToBodySimple initialState (widget Render)
+  setup (rsEval rs) (widget BeforeUnload) (widget . HashChange)

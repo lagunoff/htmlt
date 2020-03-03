@@ -3,13 +3,13 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 module Massaraksh.Base where
 
+import Control.Lens hiding ((#))
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
-import Control.Lens hiding ((#))
 import Data.Foldable
-import Data.String
 import Data.IORef
 import Data.List as L
+import Data.String
 import Data.Text as T hiding (index)
 import Language.Javascript.JSaddle as JS
 import Massaraksh.Decode
@@ -144,73 +144,86 @@ interleaveHtml stab interleave = do
   overHtml stab $ interleave (liftIO . unliftIO)
 
 localHtmlEnv
-  :: (HtmlEnv s₁ m -> HtmlEnv s₂ m)
-  -> HtmlT s₂ m x
-  -> HtmlT s₁ m x
+  :: (HtmlEnv s m -> HtmlEnv a m)
+  -> HtmlT a m x
+  -> HtmlT s m x
 localHtmlEnv f (HtmlT (ReaderT h)) = HtmlT $ ReaderT (h . f)
 
-dynListSimple
+itraverseHtml
   :: forall s a m
    . HtmlBase m
   => IndexedTraversal' Int s a
-  -> HtmlT a m ()
+  -> HtmlT (s, a) m ()
   -> HtmlT s m ()
-dynListSimple l child =
-  dynList l $ const (const child)
+itraverseHtml l child =
+  itraverseInterleaveHtml l $ const (const child)
 
-dynList
+data ListItemRef s m = ListItemRef
+  { lirHtmlEnv :: HtmlEnv s m
+  , lirModify  :: (s -> s) -> IO ()
+  }
+
+itraverseInterleaveHtml
   :: forall s a m
    . HtmlBase m
   => IndexedTraversal' Int s a
   -> (Int -> HtmlInterleave s (s, a) m ())
   -> HtmlT s m ()
-dynList stbb interleave = do
+itraverseInterleaveHtml l interleave = do
   unliftH <- askUnliftIO
   unliftM <- lift askUnliftIO
   hte <- ask
   rootEl <- liftIO $ relmRead (hteElement hte)
   s <- liftIO $ dynRead $ drefValue (hteModel hte)
-  childEnvs <- liftIO (newIORef [])
+  itemRefs <- liftIO (newIORef [])
   let
-    mkHandler :: HtmlEnv a m -> Exist (HtmlT a m) -> IO ()
-    mkHandler env (Exist html) =
-      void $ unliftIO unliftM $ flip runReaderT env $ runHtmlT html
+    mkModifier :: Int -> Dynamic (s, a) -> ((s, a) -> (s, a)) -> IO ()
+    mkModifier idx dyn f = do
+      (_, oldA) <- dynRead dyn
+      drefModify (hteModel hte) \oldS -> let
+        (newS, newA) = f (oldS, oldA)
+        in newS & iover l \i x -> if i == idx then newA else x
 
-    setup :: Int -> [a] -> [a] -> m ()
-    setup idx old new = case (old, new) of
-      ([], [])   -> pure ()
-      ([], x:xs) -> mdo
+    -- FIXME: 'setup' should return new contents for 'itemRefs'
+    setup :: s -> Int -> [ListItemRef (s, a) m] -> [a] -> [a] -> m ()
+    setup s idx refs old new = case (refs, old, new) of
+      (_, [], [])   -> pure ()
+      ([], [], x:xs) -> mdo
         -- New list is longer, append new elements
-        subscriber <- liftIO (newSubscriberRef (mkHandler newEnv))
-        let parentDyn = drefValue (hteModel hte)
-        -- FIXME:
-        value <- liftIO $ mapMaybeD x ((^? stbb . index idx) . updNew) parentDyn
+        subscriber <- liftIO $ newSubscriberRef \(Exist h) ->
+          void $ unliftIO unliftM $ flip runReaderT newEnv $ runHtmlT h
+        dynRef <- liftIO $ newDynamicRef (s, x)
         let
-          model = DynamicRef value \ab -> drefModify (hteModel hte) $
-            iover stbb \i -> if i == idx then ab else id
-          child = interleave idx (liftIO . unliftIO unliftH)
-          newEnv = HtmlEnv (hteElement hte) model subscriber
+          model   = dynRef { drefModify = mkModifier idx (drefValue dynRef) }
+          child   = interleave idx (liftIO . unliftIO unliftH)
+          newEnv  = HtmlEnv (hteElement hte) model subscriber
+          itemRef = ListItemRef newEnv (drefModify dynRef)
         flip runReaderT newEnv $ runHtmlT child
-        liftIO (modifyIORef childEnvs (<> [newEnv]))
-        setup (idx + 1) [] xs
-      (x:xs, []) -> do
+        liftIO (modifyIORef itemRefs (<> [itemRef]))
+        setup s (idx + 1) [] [] xs
+      (_, x:xs, []) -> do
         -- New list is shorter, delete the elements that no longer
         -- present in the new list
-        childEnvsValue <- liftIO (readIORef childEnvs)
-        let (newEnvs, tailEnvs) = L.splitAt idx childEnvsValue
-        liftIO (writeIORef childEnvs newEnvs)
-        for_ tailEnvs \HtmlEnv{..} -> do
-          subscriptions <- liftIO $ readIORef (sbrefSubscriptions hteSubscriber)
+        itemRefsValue <- liftIO (readIORef itemRefs)
+        let (newRefs, tailRefs) = L.splitAt idx itemRefsValue
+        liftIO (writeIORef itemRefs newRefs)
+        for_ tailRefs \ListItemRef{..} -> do
+          subscriptions <- liftIO $ readIORef $ sbrefSubscriptions (hteSubscriber lirHtmlEnv)
           liftIO $ for_ subscriptions (readIORef >=> id)
           childEl <- liftJSM $ rootEl ! "childNodes" JS.!! idx
           liftJSM (rootEl # "removeChild" $ [childEl])
-      (x:xs, y:ys) -> do
-        setup (idx + 1) xs ys
+      (r:rs, x:xs, y:ys) -> do
+        -- Update child elemens along the way
+        liftIO $ lirModify r \(oldS, oldA) -> (s, y)
+        setup s (idx + 1) rs xs ys
+      (_, _, _) -> do
+        error "dynList: Incoherent internal state"
 
-  HtmlT $ lift $ setup 0 [] (toListOf stbb s)
+  lift $ setup s 0 [] [] (toListOf l s)
   let updates = dynUpdates . drefValue . hteModel $ hte
   updates `subscribePrivate` \Update{..} -> do
-    HtmlT $ lift $ setup 0 (toListOf stbb updOld) (toListOf stbb updNew)
+    refs <- liftIO (readIORef itemRefs)
+    lift $ setup updNew 0 refs (toListOf l updOld) (toListOf l updNew)
   pure ()
 
 instance (x ~ (), HtmlBase m) => IsString (HtmlT s m x) where

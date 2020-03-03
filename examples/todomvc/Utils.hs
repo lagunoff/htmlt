@@ -12,17 +12,17 @@ import Massaraksh
 import qualified Item as Item
 
 setup
-  :: (Text -> msg)
+  :: (msg -> IO ())
   -> msg
-  -> (msg -> JSM ())
+  -> (Text -> msg)
   -> JSM ()
-setup hashChange beforeUnload handle = do
+setup handle beforeUnload hashChange = do
   win <- jsg "window"
   win <# "onpopstate" $ fun \_ _ _ -> do
     Just hash <- jsg "location" ! "hash" >>= fromJSVal
-    handle $ hashChange hash
+    liftIO $ handle $ hashChange hash
   win <# "onbeforeunload" $ fun \_ _ _ -> do
-    handle $ beforeUnload
+    liftIO $ handle $ beforeUnload
 
 writeTodos :: [Item.Model] -> JSM ()
 writeTodos xs = do

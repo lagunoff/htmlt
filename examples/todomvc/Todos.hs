@@ -43,7 +43,7 @@ todosWidget yield = \case
   Init -> liftJSM do
     hash <- readHash
     todos <- readTodos
-    let filter = filterFromUrl hash & fromMaybe All
+    let filter = fromMaybe All $ hash ^? url2Filter
     pure (Model "" todos filter)
   Render -> do
     render
@@ -67,19 +67,17 @@ todosWidget yield = \case
     yield EditingCommit
   KeyPress _ ->
     pure ()
-  HashChange hash -> case filterFromUrl hash of
+  HashChange hash -> case hash ^? url2Filter of
     Just x  -> modify $ moFilter .~ x
     Nothing -> do
       modify $ moFilter .~ All
-      liftJSM $ writeHash (filterToUrl All)
+      liftJSM $ writeHash (review url2Filter All)
   BeforeUnload -> do
     todos <- gets _moTodos
     liftJSM $ writeTodos todos
-
   where
-    itemWidget :: HtmlRec Item.Msg Item.Model m
-    itemWidget = Item.itemWidget $ Item.Config
-      undefined undefined
+    itemWidget = Item.itemWidget $ Item.Config _2
+      \(parModel, ownModel) -> Item.Props $ isHidden parModel ownModel
 
     render :: HtmlT Model m ()
     render =
@@ -121,17 +119,17 @@ todosWidget yield = \case
           text "Mark all as completed"
         ul_ do
           "className" =: "todo-list"
-          dynList (moTodos . traversed) $ \idx unliftHtml ->
-            (Item.Render &) $ htmlFix $ itemWidget `composeHtml` \skip -> \case
-              Item.Destroy -> unliftHtml $ modify $ moTodos %~ deleteNth idx
-              other        -> skip other
+          itraverseInterleaveHtml (moTodos . traversed) $ \idx unlift ->
+            ($ Item.Render) $ htmlFix $ itemWidget `composeHtml` \super -> \case
+              Item.Destroy -> unlift $ modify $ moTodos %~ deleteNth idx
+              other        -> super other
 
     renderFilter :: Filter -> HtmlT Model m ()
     renderFilter x =
       li_ do
         a_ do
           dynClassList [ ("selected", (x ==) . Todos._moFilter) ]
-          "href" =: filterToUrl x
+          "href" =: review url2Filter x
           text $ fromString (show x)
 
     viewFooter :: HtmlT Model m ()
@@ -162,33 +160,34 @@ todosWidget yield = \case
           a_ ("Vlad Lagunov" <> "href" =: "https://github.com/lagunoff")
         p_ do text "Part of "; a_ ("TodoMVC" <> "href" =: "http://todomvc.com")
 
-    itemsLeft :: Model -> Int
-    itemsLeft model =
-      foldl (\acc (itemModel) -> if not (Item._moCompleted itemModel) then acc + 1 else acc) 0 (_moTodos model)
+itemsLeft :: Model -> Int
+itemsLeft model = foldl folder 0 (_moTodos model)
+  where
+    folder = \acc itemModel -> if not (Item._moCompleted itemModel) then acc + 1 else acc
 
-    isHidden :: Model -> Item.Model -> Bool
-    isHidden Model{_moFilter} Item.Model{_moCompleted} =
-      case (_moFilter, _moCompleted) of
-        (Active,    True)  -> True
-        (Completed, False) -> True
-        _                  -> False
+isHidden :: Model -> Item.Model -> Bool
+isHidden Model{_moFilter} Item.Model{_moCompleted} =
+  case (_moFilter, _moCompleted) of
+    (Active,    True)  -> True
+    (Completed, False) -> True
+    _                  -> False
 
-    pluralize :: Text -> Text -> Int -> Text
-    pluralize singular plural 0 = singular
-    pluralize singular plural _ = plural
+pluralize :: Text -> Text -> Int -> Text
+pluralize singular plural 0 = singular
+pluralize singular plural _ = plural
 
-filterFromUrl :: Text -> Maybe Filter
-filterFromUrl = \case
-  "#/"          -> Just All
-  "#/active"    -> Just Active
-  "#/completed" -> Just Completed
-  _             -> Nothing
-
-filterToUrl :: Filter -> Text
-filterToUrl = \case
-  All       -> "#/"
-  Active    -> "#/active"
-  Completed -> "#/completed"
+url2Filter :: Prism' Text Filter
+url2Filter = prism' build match
+  where
+    match = \case
+      "#/"          -> Just All
+      "#/active"    -> Just Active
+      "#/completed" -> Just Completed
+      _             -> Nothing
+    build = \case
+      All       -> "#/"
+      Active    -> "#/active"
+      Completed -> "#/completed"
 
 deleteNth :: Int -> [a] -> [a]
 deleteNth _ []     = []
