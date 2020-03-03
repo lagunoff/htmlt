@@ -28,26 +28,30 @@ type HtmlEval w s m = w ~> HtmlT s m
 
 type HtmlRec w s m = (w ~> HtmlT s m) -> w ~> HtmlT s m
 
-type HtmlLift s t a b m = HtmlT s m ~> HtmlT a m
+type HtmlUnLift s t a b m = HtmlT s m ~> HtmlT a m
 
 type HtmlInterleave s a m x = (HtmlT s m ~> HtmlT a m) -> HtmlT a m x
 
 data HtmlEnv s m = HtmlEnv
   { hteElement    :: ElementRef
   , hteModel      :: DynamicRef s s
-  , hteSubscriber :: SubscriberRef (Exist (HtmlT s m)) }
+  , hteSubscriber :: SubscriberRef (Exist (HtmlT s m))
+  }
 
 data ElementRef = ElementRef
   { relmRead  :: IO Element
-  , relmWrite :: Element -> IO () }
+  , relmWrite :: Maybe Element -> IO ()
+  }
 
 data SubscriberRef a = SubscriberRef
   { sbrefValue         :: Subscriber a
-  , sbrefSubscriptions :: IORef [IORef (IO ())] }
+  , sbrefSubscriptions :: IORef [IORef (IO ())]
+  }
 
 data Subscriber a = Subscriber
   { sbscrPrivate :: forall x. Event x -> (x -> IO ()) -> IO (IO ())
-  , sbscrPublic  :: Event a -> IO (IO ()) }
+  , sbscrPublic  :: Event a -> IO (IO ())
+  }
 
 data Exist (f :: * -> *) = forall x. Exist (f x)
 

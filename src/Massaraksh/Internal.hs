@@ -2,41 +2,48 @@ module Massaraksh.Internal where
 
 import Massaraksh.Types
 import Massaraksh.Event
+import Massaraksh.Dynamic
 import Language.Javascript.JSaddle
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
 import Data.IORef
 import Data.Maybe
+import Data.Foldable
 import Data.List
 
 newElementRef :: HtmlBase m => HtmlT s m ElementRef
 newElementRef = do
-  rootEl <- readElement
-  elRef <- liftIO (newIORef Nothing)
+  rootEl <- askElement
+  elementRef <- liftIO (newIORef Nothing)
   UnliftIO{..} <- lift askUnliftIO
   let
     initial   = error "Root element was accessed before it was initialized"
-    relmRead  = fromMaybe initial <$> readIORef elRef
-    relmWrite = \newEl -> do
-      readIORef elRef >>= \case
-        Nothing    -> unliftIO $ liftJSM (rootEl # "appendChild" $ newEl)
-        Just oldEl -> unliftIO $ liftJSM (rootEl # "replaceChild" $ (newEl, oldEl))
-      writeIORef elRef (Just newEl)
+    relmRead  = fromMaybe initial <$> readIORef elementRef
+    relmWrite = \new -> do
+      readIORef elementRef >>= \old -> case (old, new) of
+        (Nothing, Just newEl)    -> void $ unliftIO $ liftJSM
+          (rootEl # "appendChild" $ newEl)
+        (Just oldEl, Just newEl) -> void $ unliftIO $ liftJSM
+          (rootEl # "replaceChild" $ (newEl, oldEl))
+        (Just oldEl, Nothing)    -> void $ unliftIO $ liftJSM
+          (rootEl # "removeChild" $ oldEl)
+        (Nothing, Nothing)       -> pure ()
+      writeIORef elementRef new
   pure ElementRef{..}
 
-readElement :: HtmlBase m => HtmlT s m Element
-readElement =
-  asks (relmRead . hteElement) >>= liftIO
+askElement :: HtmlBase m => HtmlT s m Element
+askElement =
+  liftIO =<< asks (relmRead . hteElement)
 
 writeElement :: HtmlBase m => Element -> HtmlT s m ()
 writeElement el = do
   ElementRef{..} <- asks hteElement
-  liftIO (relmWrite el)
+  liftIO $ relmWrite (Just el)
 
 appendChild :: HtmlBase m => Node -> HtmlT s m ()
 appendChild elm = do
-  hteElement@ElementRef{..} <- newElementRef
-  liftIO (relmWrite elm)
+  hteElement <- newElementRef
+  liftIO $ relmWrite hteElement (Just elm)
 
 localElement
   :: HtmlBase m
@@ -44,8 +51,8 @@ localElement
   -> HtmlT s m a
   -> HtmlT s m a
 localElement elm child = do
-  hteElement@ElementRef{..} <- newElementRef
-  liftIO (relmWrite elm)
+  hteElement <- newElementRef
+  liftIO $ relmWrite hteElement (Just elm)
   local (\env -> env { hteElement }) child
 
 subscribePrivate
@@ -84,3 +91,24 @@ newSubscriberRef k = do
       pure $ modifyIORef sbrefSubscriptions (delete unRef)
     sbrefValue = Subscriber{..}
   pure SubscriberRef{..}
+
+askModel :: HtmlBase m => HtmlT s m s
+askModel = do
+  read <- asks (dynRead . drefValue . hteModel)
+  liftIO read
+
+htmlFinalize :: HtmlEnv s m -> IO ()
+htmlFinalize env = do
+  let subscriptionsRef = sbrefSubscriptions (hteSubscriber env)
+  xs <- atomicModifyIORef subscriptionsRef \xs -> ([], xs)
+  for_ xs $ readIORef >=> id
+
+subscribeUpdates
+  :: HtmlBase m
+  => (Update s -> HtmlT s m ())
+  -> HtmlT s m (IO ())
+subscribeUpdates f = do
+  hte <- ask
+  let updates = dynUpdates . drefValue . hteModel $ hte
+  updates `subscribePrivate` f
+
