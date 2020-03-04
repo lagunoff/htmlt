@@ -1,15 +1,15 @@
 module Massaraksh.Internal where
 
-import Massaraksh.Types
-import Massaraksh.Event
-import Massaraksh.Dynamic
-import Language.Javascript.JSaddle
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
-import Data.IORef
-import Data.Maybe
 import Data.Foldable
+import Data.IORef
 import Data.List
+import Data.Maybe
+import Language.Javascript.JSaddle
+import Massaraksh.Dynamic
+import Massaraksh.Event
+import Massaraksh.Types
 
 newElementRef :: HtmlBase m => HtmlT s m ElementRef
 newElementRef = do

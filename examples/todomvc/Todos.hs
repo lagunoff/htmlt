@@ -2,18 +2,18 @@ module Todos where
 
 import Control.Lens hiding ((#))
 import Control.Monad.State
-import Data.String (fromString)
 import Data.Foldable
+import Data.Maybe
+import Data.String (fromString)
 import Data.Text (Text)
 import GHC.Generics
+import Language.Javascript.JSaddle
 import Massaraksh
-import Utils
 import Text.RawString.QQ (r)
+import Utils
 import Utils (readTodos, writeTodos, readHash, writeHash)
 import qualified Data.Text as T
 import qualified Item as Item
-import Language.Javascript.JSaddle
-import Data.Maybe
 
 data Filter = All | Active | Completed
   deriving (Show, Eq, Generic)
@@ -38,7 +38,7 @@ data Msg a where
   BeforeUnload :: Msg ()
   EditingCommit :: Msg ()
 
-todosWidget :: forall m. HtmlBase m => HtmlRec Msg Model m
+todosWidget :: HtmlBase m => HtmlRec Msg Model m
 todosWidget yield = \case
   Init -> liftJSM do
     hash <- readHash
@@ -79,18 +79,16 @@ todosWidget yield = \case
     itemWidget = Item.itemWidget $ Item.Config _2
       \(parModel, ownModel) -> Item.Props $ isHidden parModel ownModel
 
-    render :: HtmlT Model m ()
     render =
       div_ do
         section_ do
           "className" =: "todoapp"
           renderHeader
           renderMain
-          viewFooter
-        footerInfo
+          renderFooter
+        viewFooterInfo
         el "style" do "type" =: "text/css"; text css
 
-    renderHeader :: HtmlT Model m ()
     renderHeader =
       header_ do
         "className" =: "header"
@@ -103,7 +101,6 @@ todosWidget yield = \case
           on "input" $ valueDecoder <&> yield . Edit
           on "keydown" $ keycodeDecoder <&> yield . KeyPress
 
-    renderMain :: HtmlT Model m ()
     renderMain =
       section_ do
         dynClassList
@@ -124,7 +121,6 @@ todosWidget yield = \case
               Item.Destroy -> unlift $ modify $ moTodos %~ deleteNth idx
               other        -> super other
 
-    renderFilter :: Filter -> HtmlT Model m ()
     renderFilter x =
       li_ do
         a_ do
@@ -132,8 +128,7 @@ todosWidget yield = \case
           "href" =: review url2Filter x
           text $ fromString (show x)
 
-    viewFooter :: HtmlT Model m ()
-    viewFooter =
+    renderFooter =
       footer_ do
         dynClassList
           [ ("footer", const True)
@@ -150,8 +145,7 @@ todosWidget yield = \case
           on' "click" $ yield ClearCompleted
           text "Clear completed"
 
-    footerInfo :: HtmlT Model m ()
-    footerInfo =
+    viewFooterInfo =
       footer_ do
         "className" =: "info"
         p_ "Double-click to edit a todo"
@@ -161,9 +155,10 @@ todosWidget yield = \case
         p_ do text "Part of "; a_ ("TodoMVC" <> "href" =: "http://todomvc.com")
 
 itemsLeft :: Model -> Int
-itemsLeft model = foldl folder 0 (_moTodos model)
+itemsLeft Model{..} = foldl folder 0 _moTodos
   where
-    folder = \acc itemModel -> if not (Item._moCompleted itemModel) then acc + 1 else acc
+    folder = \acc itemModel ->
+      if not (Item._moCompleted itemModel) then acc + 1 else acc
 
 isHidden :: Model -> Item.Model -> Bool
 isHidden Model{_moFilter} Item.Model{_moCompleted} =

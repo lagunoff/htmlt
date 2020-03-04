@@ -1,7 +1,4 @@
-{-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
 module Massaraksh.Types where
 
 import Control.Applicative
@@ -9,8 +6,11 @@ import Control.Lens hiding ((#))
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
 import Control.Monad.State
-import Control.Natural
+import Control.Natural hiding ((#))
 import Data.IORef
+import Data.Maybe
+import Data.String
+import Data.Text as T
 import Language.Javascript.JSaddle
 import Massaraksh.Dynamic
 import Massaraksh.Event
@@ -91,3 +91,37 @@ instance Contravariant SubscriberRef where
 instance MonadJSM m => MonadJSM (HtmlT s m) where
   liftJSM' = lift . liftJSM'
 #endif
+
+instance (x ~ (), HtmlBase m) => IsString (HtmlT s m x) where
+  fromString = text . T.pack
+    where
+      -- FIXME: Duplicated code from other modules
+      text :: HtmlBase m => Text -> HtmlT s m ()
+      text txt = do
+        textNode <- liftJSM $ jsg "document" # "createTextNode" $ txt
+        hteElement <- newElementRef
+        liftIO $ relmWrite hteElement (Just textNode)
+
+      askElement :: HtmlBase m => HtmlT s m Element
+      askElement =
+        liftIO =<< asks (relmRead . hteElement)
+
+      newElementRef :: HtmlBase m => HtmlT s m ElementRef
+      newElementRef = do
+        rootEl <- askElement
+        elementRef <- liftIO (newIORef Nothing)
+        UnliftIO{..} <- lift askUnliftIO
+        let
+          initial   = error "Root element was accessed before it was initialized"
+          relmRead  = fromMaybe initial <$> readIORef elementRef
+          relmWrite = \new -> do
+            readIORef elementRef >>= \old -> case (old, new) of
+              (Nothing, Just newEl)    -> void $ unliftIO $ liftJSM
+                (rootEl # "appendChild" $ newEl)
+              (Just oldEl, Just newEl) -> void $ unliftIO $ liftJSM
+                (rootEl # "replaceChild" $ (newEl, oldEl))
+              (Just oldEl, Nothing)    -> void $ unliftIO $ liftJSM
+                (rootEl # "removeChild" $ oldEl)
+              (Nothing, Nothing)       -> pure ()
+            writeIORef elementRef new
+        pure ElementRef{..}

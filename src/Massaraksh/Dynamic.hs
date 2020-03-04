@@ -18,12 +18,13 @@ data Dynamic a = Dynamic
   , dynUpdates :: Event (Update a) -- ^ Event that fires when the value changes
   }
 
--- | Result of running 'newDynamic'. Parameters 's' and 't' are
--- usually the same. Two parameters are needed for better
--- composability with lenses
+-- | A 'Dynamic' together with a function to modify value inside
+-- it. @s@ and @t@ are input and output parameters for composability
+-- with type-changing lenses, they are the same in most cases
 data DynamicRef s t = DynamicRef
   { drefValue  :: Dynamic s
-  , drefModify :: (s -> t) -> IO () }
+  , drefModify :: (s -> t) -> IO ()
+  }
 
 -- | Create new 'Dynamic' and a function to update the value
 newDynamicRef :: a -> IO (DynamicRef a a)

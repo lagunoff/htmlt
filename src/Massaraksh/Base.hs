@@ -8,7 +8,6 @@ import Data.Either
 import Data.Foldable
 import Data.IORef
 import Data.List as L
-import Data.String
 import Data.Text as T hiding (index)
 import Language.Javascript.JSaddle as JS
 import Massaraksh.Decode
@@ -307,6 +306,3 @@ eitherHtml lens left right = do
       readIORef rightEnvRef >>= flip for_ (htmlFinalize . lirHtmlEnv)
       writeIORef rightEnvRef Nothing
     lift $ setup updNew new
-
-instance (x ~ (), HtmlBase m) => IsString (HtmlT s m x) where
-  fromString = text . T.pack
