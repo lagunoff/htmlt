@@ -1,4 +1,4 @@
-{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE TupleSections #-}
 module Massaraksh.Dynamic where
 
 import Control.Lens
@@ -14,38 +14,40 @@ data Update a = Update { updOld :: a, updNew :: a }
 -- entities. The problem is that this name conflicts with @Dynamic@
 -- from base which is also used by this library
 data Dynamic a = Dynamic
-  { dynRead    :: IO a             -- ^ Read current value
-  , dynUpdates :: Event (Update a) -- ^ Event that fires when the value changes
+  { dynamicRead    :: IO a           -- ^ Read current value
+  , dynamicUpdates :: Event (Update a) -- ^ Event that fires when the value changes
   }
 
 -- | A 'Dynamic' together with a function to modify value inside
 -- it. @s@ and @t@ are input and output parameters for composability
 -- with type-changing lenses, they are the same in most cases
 data DynamicRef s t = DynamicRef
-  { drefValue  :: Dynamic s
-  , drefModify :: (s -> t) -> IO ()
+  { dynamicRefRead    :: IO s
+  , dynamicRefUpdates :: Event (Update s)
+  , dynamicRefModify  :: (s -> t) -> IO ()
   }
+
+type DynamicRef' s = DynamicRef s s
 
 -- | Create new 'Dynamic' and a function to update the value
 newDynamicRef :: a -> IO (DynamicRef a a)
 newDynamicRef initial = do
   ref <- newIORef initial
-  EventRef{..} <- newEventRef
+  e <- newEventRef
   let
-    drefValue  = Dynamic (readIORef ref) erefValue
-    drefModify = \f -> do
+    modify = \f -> do
       old <- readIORef ref
       let new = f old
       writeIORef ref new
-      erefTrigger (Update old new)
-  pure DynamicRef{..}
+      triggerEvent e (Update old new)
+  pure $ DynamicRef (readIORef ref) (getEvent e) modify
 
 mapMaybeD :: b -> (Update a -> Maybe b) -> Dynamic a -> IO (Dynamic b)
 mapMaybeD def f Dynamic{..} = do
   latestRef <- newIORef def
   let
-    read    = readIORef latestRef
-    updates = flip mapMaybeIOE dynUpdates \upd ->
+    read = readIORef latestRef
+    updates = flip mapMaybeE' dynamicUpdates \upd ->
       case f upd of
         Just new -> do
           old <- readIORef latestRef
@@ -57,15 +59,18 @@ mapMaybeD def f Dynamic{..} = do
 constDyn :: a -> Dynamic a
 constDyn a = Dynamic (pure a) never
 
-overDynamic :: Lens s t a b -> DynamicRef s t -> DynamicRef a b
-overDynamic stab DynamicRef{..} = DynamicRef value modify
-  where
-    value  = fmap (getConst . stab Const) drefValue
-    modify = \f -> drefModify (over stab f)
+fromDynamicRef :: DynamicRef s t -> Dynamic s
+fromDynamicRef (DynamicRef read updates _) = Dynamic read updates
+
+overDynamicRef :: Lens s t a b -> DynamicRef s t -> DynamicRef a b
+overDynamicRef stab DynamicRef{..} = DynamicRef read updates modify where
+  read    = fmap (getConst . stab Const) dynamicRefRead
+  updates = fmap (fmap (getConst . stab Const)) dynamicRefUpdates
+  modify  = \f -> dynamicRefModify (over stab f)
 
 instance Functor Dynamic where
   fmap f Dynamic{..} =
-    Dynamic (fmap f dynRead) (fmap (fmap f) dynUpdates)
+    Dynamic (fmap f dynamicRead) (fmap (fmap f) dynamicUpdates)
 
 instance Applicative Dynamic where
   pure = constDyn

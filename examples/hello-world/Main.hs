@@ -1,25 +1,27 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns #-}
 module Main where
 
 import Massaraksh
-import Control.Monad.State
+import Control.Monad.Reader
 import Text.RawString.QQ (r)
 import qualified Data.Text as T
 
 type Model = Int
 
-widget :: Html Model
-widget =
+widget :: HtmlBase m => HtmlT m ()
+widget = do
+  (model, modify) <- liftIO (newDynamicRef 0)
   div_ do
     "className" =: "root"
     h1_ do
-      "style" ~: headerStyle
-      on' "mouseenter" do modify (+ 1)
+      "style" ~: headerStyle <$> model
+      on' "mouseenter" do liftIO $ modify (+ 1)
       text "Hello, World!"
     el "style" do "type" =: "text/css"; text css
 
 headerStyle n =
- ("color: " :: T.Text) <> colors !! (n `mod` Prelude.length colors)
+ ("color: " :: T.Text) <> colors !! (n `mod` length colors)
 
 colors =
   [ "rgb(173,192,84)", "rgb(22,153,190)", "rgb(22,93,24)", "rgb(199,232,42)"
@@ -53,4 +55,4 @@ css = [r|
    padding: 8px 16px;
  } |]
 
-main = withJSM $ attachToBodySimple 0 widget
+main = withJSM $ attachToBodySimple widget

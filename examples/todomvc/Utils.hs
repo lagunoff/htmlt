@@ -8,7 +8,6 @@ import Control.Monad.Reader
 import Data.Maybe
 import Data.Text
 import Language.Javascript.JSaddle
-import Massaraksh
 import qualified Item as Item
 
 setup
@@ -46,7 +45,3 @@ readHash :: JSM Text
 readHash = do
   jsval <- jsg "location" ! "hash"
   fromMaybe mempty <$> fromJSVal jsval
-
-unsafeInit :: HtmlT s m x -> m x
-unsafeInit = flip runReaderT env . runHtmlT where
-  env = error "unsafeInit: Illegal usage of `HtmlEnv`"

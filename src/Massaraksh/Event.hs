@@ -8,38 +8,36 @@ import Data.List
 
 -- | @Event a@ is a stream of event occurences of type @a@
 newtype Event a = Event
-  { eventSubscribe :: (a -> IO ()) -> IO (IO ()) }
-
-subscribe :: Event a -> (a -> IO ()) -> IO (IO ())
-subscribe = eventSubscribe
+  { subscribe :: (a -> IO ()) -> IO (IO ()) }
 
 data EventRef a = EventRef
-  { erefValue   :: Event a
-  , erefTrigger :: a -> IO () }
+  { getEvent     :: Event a
+  , triggerEvent :: a -> IO ()
+  }
 
 -- | Create new event and a function to supply values to that event
 newEventRef :: IO (EventRef a)
 newEventRef = do
   subscribers <- newIORef []
   let
-    erefValue = Event \k -> do
+    event = Event \k -> do
       kRef <- newIORef k -- Need 'IORef' for an 'Eq' instance
       modifyIORef subscribers ((:) kRef)
       pure $ modifyIORef subscribers (delete kRef)
-    erefTrigger a = do
+    trigger = \a -> do
       callbacks <- readIORef subscribers
       for_ callbacks $ readIORef >=> ($ a)
-  pure EventRef{..}
+  pure (EventRef event trigger)
 
 -- | Filter and map occurences
 mapMaybeE :: (a -> Maybe b) -> Event a -> Event b
 mapMaybeE f Event{..} =
-  Event \k -> eventSubscribe $ maybe mempty k . f
+  Event \k -> subscribe $ maybe mempty k . f
 
 -- | Filter and map occurences with side effects
-mapMaybeIOE :: (a -> IO (Maybe b)) -> Event a -> Event b
-mapMaybeIOE f Event{..} =
-  Event \k -> eventSubscribe \a -> maybe mempty k =<< f a
+mapMaybeE' :: (a -> IO (Maybe b)) -> Event a -> Event b
+mapMaybeE' f Event{..} =
+  Event \k -> subscribe \a -> maybe mempty k =<< f a
 
 never :: Event a
 never = Event \_ -> mempty

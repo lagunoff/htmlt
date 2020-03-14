@@ -7,7 +7,6 @@ import Control.Monad.Reader
 import Control.Natural
 import Data.IORef
 import Language.Javascript.JSaddle
-import Massaraksh.Dynamic
 import Massaraksh.Internal
 import Massaraksh.Types
 
@@ -18,81 +17,73 @@ import System.Environment
 import Control.Exception
 #endif
 
-data RunningState s m a = RunningState
+data RunningState m a = RunningState
   { rsResult :: a
-  , rsEnv    :: HtmlEnv s m
-  , rsEval   :: HtmlT s m ~> IO
+  , rsEnv    :: HtmlEnv m
+  , rsEval   :: HtmlT m ~> IO
   }
 
 attach
-  :: forall m s x
+  :: forall m x
    . Monad m
   => Element     -- ^ Root DOM node
   -> (m ~> IO)   -- ^ Evaluate application effects in @m@
-  -> s           -- ^ Initial state
-  -> HtmlT s m x -- ^ Render action
-  -> JSM (RunningState s m x)
-attach rootEl runM init render = do
+  -> HtmlT m x -- ^ Render action
+  -> JSM (RunningState m x)
+attach rootEl runM render = do
   evalRef <- liftIO $ newIORef \_ -> pure ()
-  hteModel <- liftIO (newDynamicRef init)
-  hteSubscriber <- liftIO $ newSubscriberRef \e ->
-    readIORef evalRef >>= ($ e)
+  subscriber <- liftIO $ newSubscriberRef \e -> readIORef evalRef >>= ($ e)
   let
-    rsEval :: forall x. HtmlT s m x -> IO x
-    rsEval = runM . flip runReaderT rsEnv . runHtmlT
-    hteElement = ElementRef (pure rootEl) \_ -> pure ()
-    rsEnv = HtmlEnv{..}
-  liftIO $ writeIORef evalRef \(Exist h) -> void (rsEval h)
-  rsResult <- liftIO $ rsEval render
-  pure RunningState{..}
+    eval :: forall x. HtmlT m x -> IO x
+    eval  = runM . runHtmlT env
+    elRef = ElementRef (pure rootEl) \_ -> pure ()
+    env   = HtmlEnv elRef subscriber
+  liftIO $ writeIORef evalRef \(Exist h) -> void (eval h)
+  res <- liftIO $ eval render
+  pure (RunningState res env eval)
 
 attachToBody
   :: Monad m
   => (m ~> IO)   -- ^ Evaluate application effects in @m@
-  -> s           -- ^ Initial state
-  -> HtmlT s m x -- ^ Render action
-  -> JSM (RunningState s m x)
-attachToBody runM init render = do
+  -> HtmlT m x -- ^ Render action
+  -> JSM (RunningState m x)
+attachToBody runM render = do
   rootEl <- jsg "document" ! "body"
-  attach rootEl runM init render
+  attach rootEl runM render
 
 attachSimple
-  :: forall s x
+  :: forall x
    . Element       -- ^ Root DOM node
-  -> s             -- ^ Initial state
-  -> HtmlT s JSM x -- ^ Render action
-  -> JSM (RunningState s JSM x)
-attachSimple rootEl init render = do
-  UnliftIO{..} <- askUnliftIO
-  attach rootEl unliftIO init render
+  -> HtmlT JSM x -- ^ Render action
+  -> JSM (RunningState JSM x)
+attachSimple rootEl render = do
+  un <- askUnliftIO
+  attach rootEl (unliftIO un) render
 
 attachToBodySimple
-  :: s             -- ^ Initial state
-  -> HtmlT s JSM x -- ^ Render action
-  -> JSM (RunningState s JSM x)
-attachToBodySimple init render = do
-  UnliftIO{..} <- askUnliftIO
-  attachToBody unliftIO init render
+  :: HtmlT JSM x -- ^ Render action
+  -> JSM (RunningState JSM x)
+attachToBodySimple render = do
+  un <- askUnliftIO
+  attachToBody (unliftIO un) render
 
 attachIO
-  :: forall m s x
+  :: forall m x
    . Monad m
   => Element     -- ^ Root DOM node
   -> (m ~> IO)   -- ^ Evaluate application effects in @m@
-  -> s           -- ^ Initial state
-  -> HtmlT s m x -- ^ Render action
+  -> HtmlT m x -- ^ Render action
   -> IO ()
-attachIO rootEl runM init render =
-  withJSM $ attach rootEl runM init render
+attachIO rootEl runM render =
+  withJSM $ attach rootEl runM render
 
 attachToBodyIO
   :: Monad m
   => (m ~> IO)   -- ^ Evaluate application effects in @m@
-  -> s           -- ^ Initial state
-  -> HtmlT s m x -- ^ Render action
+  -> HtmlT m x -- ^ Render action
   -> IO ()
-attachToBodyIO runM init render =
-  withJSM $ attachToBody runM init render
+attachToBodyIO runM render =
+  withJSM $ attachToBody runM render
 
 withJSM :: JSM x -> IO ()
 #ifdef ghcjs_HOST_OS

@@ -1,16 +1,17 @@
+{-# LANGUAGE ViewPatterns #-}
 module Todos where
 
 import Control.Lens hiding ((#))
-import Control.Monad.State
+import Control.Monad.IO.Class
 import Data.Foldable
 import Data.Maybe
+import Data.Default
 import Data.String (fromString)
 import Data.Text (Text)
 import GHC.Generics
 import Language.Javascript.JSaddle
 import Massaraksh
 import Text.RawString.QQ (r)
-import Utils
 import Utils (readTodos, writeTodos, readHash, writeHash)
 import qualified Data.Text as T
 import qualified Item as Item
@@ -27,7 +28,6 @@ data Model = Model
 makeLenses ''Model
 
 data Msg a where
-  Init :: Msg Model
   Render :: Msg ()
   Edit :: Text -> Msg ()
   SetFilter :: Filter -> Msg ()
@@ -38,13 +38,46 @@ data Msg a where
   BeforeUnload :: Msg ()
   EditingCommit :: Msg ()
 
-todosWidget :: HtmlBase m => HtmlRec Msg Model m
-todosWidget yield = \case
-  Init -> liftJSM do
+init :: JSM Model
+init = do
     hash <- readHash
     todos <- readTodos
     let filter = fromMaybe All $ hash ^? url2Filter
     pure (Model "" todos filter)
+
+bindFuncs :: HtmlBase m => DynamicRef' a -> Funcs m a
+bindFuncs dyn = Funcs
+  (fromDynamicRef dyn)
+  (liftIO . dynamicRefModify dyn)
+  (<$> liftIO (dynamicRefRead dyn))
+  (dynText . (fromDynamicRef dyn <&>))
+  (\n -> (~:) n . (fromDynamicRef dyn <&>))
+  dyn
+
+data Funcs m a = Funcs
+  { model :: Dynamic a
+  , modify :: (a -> a) -> HtmlT m ()
+  , gets :: forall b. (a -> b) -> HtmlT m b
+  , dynText_ :: (a -> Text) -> HtmlT m ()
+  , (~~:) :: Text -> (a -> Text) -> HtmlT m ()
+  , dynRef :: DynamicRef' a
+  }
+
+itraverseWidget
+  :: forall s a m w c
+   . HtmlBase m
+  => IndexedTraversal' Int s a
+  -> DynamicRef' s
+  -> (c -> HtmlEmit w m)
+  -> w ()
+  -> (DynamicRef' (s, a) -> c)
+  -> (Int -> HtmlEmit w m)
+  -> HtmlT m ()
+itraverseWidget l d h w cfg i =
+  itraverseHtml l d \idx dyn -> fix1 (h (cfg dyn) `compose1` i idx) w
+
+todosWidget :: forall m. HtmlBase m => DynamicRef' Model -> HtmlEmit Msg m
+todosWidget (bindFuncs @m -> Funcs{..}) yield = \case
   Render -> do
     render
   Edit x ->
@@ -56,11 +89,11 @@ todosWidget yield = \case
   ClearCompleted ->
     modify $ moTodos %~ Prelude.filter (not . Item._moCompleted)
   EditingCommit -> do
-    model <- get
-    case T.strip (_moTitle model) of
+    txt <- gets (T.strip . _moTitle)
+    case txt of
       ""      -> pure ()
       trimmed -> do
-        newItem <- lift $ unsafeInit $ htmlFix itemWidget (Item.Init trimmed)
+        let newItem = def & Item.moTitle .~ trimmed
         modify $ moTodos %~ (<> [newItem])
         modify $ moTitle .~ ""
   KeyPress 13 ->
@@ -76,9 +109,6 @@ todosWidget yield = \case
     todos <- gets _moTodos
     liftJSM $ writeTodos todos
   where
-    itemWidget = Item.itemWidget $ Item.Config _2
-      \(parModel, ownModel) -> Item.Props $ isHidden parModel ownModel
-
     render =
       div_ do
         section_ do
@@ -97,15 +127,15 @@ todosWidget yield = \case
           "className" =: "new-todo"
           "placeholder" =: "What needs to be done?"
           "autofocus" =: "on"
-          "value" ~: _moTitle
+          "value" ~~: _moTitle
           on "input" $ valueDecoder <&> yield . Edit
           on "keydown" $ keycodeDecoder <&> yield . KeyPress
 
     renderMain =
       section_ do
         dynClassList
-          [ ("hidden", null . _moTodos)
-          , ("main", const True) ]
+          [ ("hidden", null . _moTodos <$> model)
+          , ("main", pure True) ]
         input_ do
           "type" =: "checkbox"
           "id" =: "toggle-all"
@@ -116,27 +146,27 @@ todosWidget yield = \case
           text "Mark all as completed"
         ul_ do
           "className" =: "todo-list"
-          itraverseInterleaveHtml (moTodos . traversed) $ \idx unlift ->
-            ($ Item.Render) $ htmlFix $ itemWidget `composeHtml` \super -> \case
-              Item.Destroy -> unlift $ modify $ moTodos %~ deleteNth idx
-              other        -> super other
+          let itemConfig = Item.Config _2 $ Item.Props . uncurry isHidden
+          itraverseWidget (moTodos . traversed) dynRef Item.itemWidget Item.Render itemConfig \idx super -> \case
+            Item.Destroy -> modify $ moTodos %~ deleteNth idx
+            other        -> super other
 
     renderFilter x =
       li_ do
         a_ do
-          dynClassList [ ("selected", (x ==) . Todos._moFilter) ]
+          dynClassList [ ("selected", (x ==) . Todos._moFilter  <$> model) ]
           "href" =: review url2Filter x
           text $ fromString (show x)
 
     renderFooter =
       footer_ do
         dynClassList
-          [ ("footer", const True)
-          , ("hidden", null . _moTodos) ]
+          [ ("footer", pure True)
+          , ("hidden", null . _moTodos  <$> model) ]
         span_ do
           "className" =: "todo-count"
-          strong_ do dynText (fromString . show . itemsLeft)
-          dynText $ pluralize " item left" " items left" . itemsLeft
+          strong_ do dynText_ (fromString . show . itemsLeft)
+          dynText_ $ pluralize " item left" " items left" . itemsLeft
         ul_ do
           "className" =: "filters"
           for_ [ All, Active, Completed ] renderFilter
