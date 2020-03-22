@@ -45,68 +45,37 @@ init = do
     let filter = fromMaybe All $ hash ^? url2Filter
     pure (Model "" todos filter)
 
-bindFuncs :: HtmlBase m => DynamicRef' a -> Funcs m a
-bindFuncs dyn = Funcs
-  (fromDynamicRef dyn)
-  (liftIO . dynamicRefModify dyn)
-  (<$> liftIO (dynamicRefRead dyn))
-  (dynText . (fromDynamicRef dyn <&>))
-  (\n -> (~:) n . (fromDynamicRef dyn <&>))
-  dyn
-
-data Funcs m a = Funcs
-  { model :: Dynamic a
-  , modify :: (a -> a) -> HtmlT m ()
-  , gets :: forall b. (a -> b) -> HtmlT m b
-  , dynText_ :: (a -> Text) -> HtmlT m ()
-  , (~~:) :: Text -> (a -> Text) -> HtmlT m ()
-  , dynRef :: DynamicRef' a
-  }
-
-itraverseWidget
-  :: forall s a m w c
-   . HtmlBase m
-  => IndexedTraversal' Int s a
-  -> DynamicRef' s
-  -> (c -> HtmlEmit w m)
-  -> w ()
-  -> (DynamicRef' (s, a) -> c)
-  -> (Int -> HtmlEmit w m)
-  -> HtmlT m ()
-itraverseWidget l d h w cfg i =
-  itraverseHtml l d \idx dyn -> fix1 (h (cfg dyn) `compose1` i idx) w
-
-todosWidget :: forall m. HtmlBase m => DynamicRef' Model -> HtmlEmit Msg m
-todosWidget (bindFuncs @m -> Funcs{..}) yield = \case
+todosWidget :: forall m. HtmlBase m => DynRef Model -> HtmlEmit Msg m
+todosWidget dynRef@(DynRef model modify) yield = \case
   Render -> do
     render
   Edit x ->
-    modify $ moTitle .~ x
+    liftIO $ modify $ moTitle .~ x
   SetFilter x ->
-    modify $ moFilter .~ x
+    liftIO $ modify $ moFilter .~ x
   ToggleAll check ->
-    modify $ moTodos %~ fmap (Item.moCompleted .~ check)
+    liftIO $ modify $ moTodos %~ fmap (Item.moCompleted .~ check)
   ClearCompleted ->
-    modify $ moTodos %~ Prelude.filter (not . Item._moCompleted)
+    liftIO $ modify $ moTodos %~ Prelude.filter (not . Item._moCompleted)
   EditingCommit -> do
-    txt <- gets (T.strip . _moTitle)
+    txt <- liftIO $ readDynRef dynRef <&> (T.strip . _moTitle)
     case txt of
       ""      -> pure ()
       trimmed -> do
         let newItem = def & Item.moTitle .~ trimmed
-        modify $ moTodos %~ (<> [newItem])
-        modify $ moTitle .~ ""
+        liftIO $ modify $ moTodos %~ (<> [newItem])
+        liftIO $ modify $ moTitle .~ ""
   KeyPress 13 ->
     yield EditingCommit
   KeyPress _ ->
     pure ()
   HashChange hash -> case hash ^? url2Filter of
-    Just x  -> modify $ moFilter .~ x
+    Just x  -> liftIO $ modify $ moFilter .~ x
     Nothing -> do
-      modify $ moFilter .~ All
+      liftIO $ modify $ moFilter .~ All
       liftJSM $ writeHash (review url2Filter All)
   BeforeUnload -> do
-    todos <- gets _moTodos
+    todos <- liftIO $ readDynRef dynRef <&> _moTodos
     liftJSM $ writeTodos todos
   where
     render =
@@ -127,7 +96,7 @@ todosWidget (bindFuncs @m -> Funcs{..}) yield = \case
           "className" =: "new-todo"
           "placeholder" =: "What needs to be done?"
           "autofocus" =: "on"
-          "value" ~~: _moTitle
+          "value" ~: (model <&> _moTitle)
           on "input" $ valueDecoder <&> yield . Edit
           on "keydown" $ keycodeDecoder <&> yield . KeyPress
 
@@ -146,10 +115,14 @@ todosWidget (bindFuncs @m -> Funcs{..}) yield = \case
           text "Mark all as completed"
         ul_ do
           "className" =: "todo-list"
-          let itemConfig = Item.Config _2 $ Item.Props . uncurry isHidden
-          itraverseWidget (moTodos . traversed) dynRef Item.itemWidget Item.Render itemConfig \idx super -> \case
-            Item.Destroy -> modify $ moTodos %~ deleteNth idx
-            other        -> super other
+          let
+            itemConfig = Item.Config _2 $ Item.Props . uncurry isHidden
+            mkItemWidget = \itemDyn (override :: HtmlBase m => HtmlEmit Item.Msg m) ->
+              fix1 (Item.itemWidget (itemConfig itemDyn) `compose1` override) Item.Render
+          itraverseHtml (moTodos . traversed) dynRef \idx dynA ->
+            mkItemWidget (roRef dynRef <**> dynA) \super -> \case
+              Item.Destroy -> liftIO $ modify $ moTodos %~ deleteNth idx
+              other        -> super other
 
     renderFilter x =
       li_ do
@@ -165,8 +138,8 @@ todosWidget (bindFuncs @m -> Funcs{..}) yield = \case
           , ("hidden", null . _moTodos  <$> model) ]
         span_ do
           "className" =: "todo-count"
-          strong_ do dynText_ (fromString . show . itemsLeft)
-          dynText_ $ pluralize " item left" " items left" . itemsLeft
+          strong_ do dynText $ model <&> fromString . show . itemsLeft
+          dynText $ model <&> pluralize " item left" " items left" . itemsLeft
         ul_ do
           "className" =: "filters"
           for_ [ All, Active, Completed ] renderFilter

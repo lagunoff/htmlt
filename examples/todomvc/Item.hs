@@ -15,7 +15,7 @@ import Massaraksh
 data Config s = Config
   { cfgModel :: Lens' s Model
   , cfgProps :: s -> Props
-  , cfgDynamic :: DynamicRef s s
+  , cfgDynamic :: DynRef s
   }
 
 data Props = Props
@@ -45,7 +45,7 @@ data Msg a where
   EditingCommit :: Msg ()
 
 itemWidget :: HtmlBase m => Config s -> HtmlEmit Msg m
-itemWidget Config{cfgDynamic = dynRef@(fromDynamicRef -> model), ..} yield = \case
+itemWidget Config{cfgDynamic = dynRef@(getDyn -> model), ..} yield = \case
   Render -> do
     li_ do
       dynClassList
@@ -72,7 +72,7 @@ itemWidget Config{cfgDynamic = dynRef@(fromDynamicRef -> model), ..} yield = \ca
         on' "blur" $ yield Blur
         on "keydown" $ keycodeDecoder <&> yield . KeyPress
   Completed x ->
-    liftIO $ dynamicRefModify dynRef $ cfgModel . moCompleted .~ x
+    liftIO $ modifyDynRef dynRef $ cfgModel . moCompleted .~ x
   Destroy ->
     pure ()
   Blur ->
@@ -82,8 +82,8 @@ itemWidget Config{cfgDynamic = dynRef@(fromDynamicRef -> model), ..} yield = \ca
        | code == 27 -> yield EditingCancel -- Escape
        | otherwise  -> pure ()
   EditingOn elm -> do
-    title <- liftIO $ (^. cfgModel . moTitle) <$> dynamicRead model
-    liftIO $ dynamicRefModify dynRef $ cfgModel . moEditing .~ Just title
+    title <- liftIO $ (^. cfgModel . moTitle) <$> readDyn model
+    liftIO $ modifyDynRef dynRef $ cfgModel . moEditing .~ Just title
     void $ liftJSM $ do
       -- FIXME: currentTarget doesn't work for @dblclick@ it gets
       -- assigned to null, @elm@ points to label inside div.view
@@ -93,10 +93,10 @@ itemWidget Config{cfgDynamic = dynRef@(fromDynamicRef -> model), ..} yield = \ca
         ("focus" :: Text) $ ([] :: [Int])
       jsg2 ("setTimeout" :: Text) cb (100 :: Int)
   EditInput x ->
-    liftIO $ dynamicRefModify dynRef $ cfgModel . moEditing %~ fmap (const x)
+    liftIO $ modifyDynRef dynRef $ cfgModel . moEditing %~ fmap (const x)
   EditingCancel -> do
-    liftIO $ dynamicRefModify dynRef $ cfgModel . moEditing .~ Nothing
-  EditingCommit -> liftIO ((^. cfgModel . moEditing) <$> dynamicRead model) >>= \case
+    liftIO $ modifyDynRef dynRef $ cfgModel . moEditing .~ Nothing
+  EditingCommit -> liftIO ((^. cfgModel . moEditing) <$> readDyn model) >>= \case
     Just "" -> yield Destroy
-    Just x  -> liftIO $ dynamicRefModify dynRef $ (cfgModel . moEditing .~ Nothing) . (cfgModel . moTitle .~ x)
+    Just x  -> liftIO $ modifyDynRef dynRef $ (cfgModel . moEditing .~ Nothing) . (cfgModel . moTitle .~ x)
     Nothing -> pure ()

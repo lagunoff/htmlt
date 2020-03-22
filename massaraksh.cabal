@@ -17,7 +17,6 @@ library
     Massaraksh
     Massaraksh.Base
     Massaraksh.Decode
-    Massaraksh.Dynamic
     Massaraksh.Element
     Massaraksh.Event
     Massaraksh.Internal

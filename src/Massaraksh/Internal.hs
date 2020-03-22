@@ -7,7 +7,6 @@ import Data.IORef
 import Data.List
 import Data.Maybe
 import Language.Javascript.JSaddle
-import Massaraksh.Dynamic
 import Massaraksh.Event
 import Massaraksh.Types
 
@@ -98,9 +97,9 @@ htmlFinalize env = do
 
 subscribeUpdates
   :: HtmlBase m
-  => Dynamic s
-  -> (Update s -> HtmlT m ())
+  => Dyn s
+  -> (s -> HtmlT m ())
   -> HtmlT m (IO ())
 subscribeUpdates d f = do
-  dynamicUpdates d `subscribePrivate` f
+  updates d `subscribePrivate` f
 

@@ -62,6 +62,7 @@ executable massaraksh-todomvc
   build-depends:
     base >=4.7 && <5,
     bytestring,
+    data-default,
     jsaddle,
     lens,
     massaraksh,

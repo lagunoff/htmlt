@@ -11,11 +11,11 @@ type Model = Int
 
 widget :: HtmlBase m => HtmlT m ()
 widget = do
-  (model, modify) <- liftIO (newDynamicRef 0)
+  DynRef dyn modify <- liftIO (newDynRef 0)
   div_ do
     "className" =: "root"
     h1_ do
-      "style" ~: headerStyle <$> model
+      "style" ~: headerStyle <$> dyn
       on' "mouseenter" do liftIO $ modify (+ 1)
       text "Hello, World!"
     el "style" do "type" =: "text/css"; text css
