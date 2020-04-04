@@ -5,6 +5,7 @@ module Massaraksh.Base where
 import Control.Lens hiding ((#))
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
+import Data.Coerce
 import Data.Either
 import Data.Foldable
 import Data.IORef
@@ -15,21 +16,27 @@ import Massaraksh.Decode
 import Massaraksh.Event
 import Massaraksh.Internal
 import Massaraksh.Types
+import Massaraksh.DOM
 
 el :: HtmlBase m => Text -> HtmlT m x -> HtmlT m x
 el tag child = do
-  elm <- liftJSM $ jsg "document" # "createElement" $ tag
+  elm <- fmap coerce $ liftJSM $ jsg "document" # "createElement" $ tag
   localElement elm child
+
+el' :: HtmlBase m => Text -> HtmlT m x -> HtmlT m Element
+el' tag child = do
+  elm <- fmap coerce $ liftJSM $ jsg "document" # "createElement" $ tag
+  elm <$ localElement elm child
 
 text :: HtmlBase m => Text -> HtmlT m ()
 text txt = do
   textNode <- liftJSM $ jsg "document" # "createTextNode" $ txt
-  appendChild textNode
+  appendChild (coerce textNode)
 
 dynText :: HtmlBase m => Dyn Text -> HtmlT m ()
 dynText d = do
   txt <- liftIO (readDyn d)
-  textNode <- liftJSM $ jsg "document" # "createTextNode" $ txt
+  textNode <- fmap coerce $ liftJSM $ jsg "document" # "createTextNode" $ txt
   updates d `subscribePrivate` \new -> do
     void $ liftJSM $ textNode <# "nodeValue" $ new
   appendChild textNode
@@ -77,6 +84,13 @@ dynAttr key dyn = do
 on :: HtmlBase m => Text -> Decoder (HtmlT m x) -> HtmlT m ()
 on name decoder = do
   el <- askElement
+  onEvent el name decoder
+
+on_ :: HtmlBase m => Text -> HtmlT m x -> HtmlT m ()
+on_ name w = on name (pure w)
+
+onEvent :: HtmlBase m => Element -> Text -> Decoder (HtmlT m x) -> HtmlT m ()
+onEvent elm name decoder = do
   un <- askUnliftIO
   let
     event = Event \k -> do
@@ -84,12 +98,12 @@ on name decoder = do
         runDecoder decoder event >>= \case
           Left err  -> pure ()
           Right val -> liftIO (k val)
-      unliftIO un $ liftJSM (el # "addEventListener" $ (name, cb))
-      pure $ unliftIO un $ void $ liftJSM $ el # "removeEventListener" $ (name, cb)
+      unliftIO un $ liftJSM (elm # "addEventListener" $ (name, cb))
+      pure $ unliftIO un $ void $ liftJSM $ elm # "removeEventListener" $ (name, cb)
   void $ subscribePublic event
 
-on' :: HtmlBase m => Text -> HtmlT m x -> HtmlT m ()
-on' name w = on name (pure w)
+onEvent' :: HtmlBase m => Element -> Text -> HtmlT m x -> HtmlT m ()
+onEvent' elm name w = onEvent elm name (pure w)
 
 dynClassList :: HtmlBase m => [(Text, Dyn Bool)] -> HtmlT m ()
 dynClassList xs = do

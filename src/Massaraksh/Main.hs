@@ -6,9 +6,11 @@ import Control.Monad.IO.Unlift
 import Control.Monad.Reader
 import Control.Natural
 import Data.IORef
+import Data.Coerce
 import Language.Javascript.JSaddle
 import Massaraksh.Internal
 import Massaraksh.Types
+import Massaraksh.DOM
 
 #ifndef ghcjs_HOST_OS
 import Control.Applicative ((<|>))
@@ -48,7 +50,7 @@ attachToBody
   -> HtmlT m x -- ^ Render action
   -> JSM (RunningState m x)
 attachToBody runM render = do
-  rootEl <- jsg "document" ! "body"
+  rootEl <- fmap coerce $ jsg "document" ! "body"
   attach rootEl runM render
 
 attachSimple

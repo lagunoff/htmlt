@@ -22,6 +22,8 @@ library
     Massaraksh.Internal
     Massaraksh.Main
     Massaraksh.Types
+    Massaraksh.DOM
+    Massaraksh.Decode.Internal
 
   other-modules:
     Paths_massaraksh

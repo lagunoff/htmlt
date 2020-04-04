@@ -6,9 +6,11 @@ import Data.Foldable
 import Data.IORef
 import Data.List
 import Data.Maybe
+import Data.Coerce
 import Language.Javascript.JSaddle
 import Massaraksh.Event
 import Massaraksh.Types
+import Massaraksh.DOM
 
 newElementRef :: HtmlBase m => HtmlT m ElementRef
 newElementRef = do
@@ -42,7 +44,7 @@ writeElement el = do
 appendChild :: HtmlBase m => Node -> HtmlT m ()
 appendChild elm = do
   elRef <- newElementRef
-  liftIO $ elementRefWrite elRef (Just elm)
+  liftIO $ elementRefWrite elRef (Just (coerce elm))
 
 localElement
   :: HtmlBase m
@@ -103,3 +105,7 @@ subscribeUpdates
 subscribeUpdates d f = do
   updates d `subscribePrivate` f
 
+forDyn :: HtmlBase m => Dyn a -> (a -> HtmlT m ()) -> HtmlT m (IO ())
+forDyn dyn k = do
+  liftIO (readDyn dyn) >>= k
+  subscribeUpdates dyn k

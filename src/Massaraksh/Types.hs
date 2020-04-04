@@ -9,9 +9,11 @@ import Control.Natural hiding ((#))
 import Data.IORef
 import Data.Maybe
 import Data.String
+import Data.Coerce
 import Data.Text as T
 import Language.Javascript.JSaddle
 import Massaraksh.Event
+import Massaraksh.DOM
 
 newtype HtmlT m a = HtmlT { runHtmlT' :: ReaderT (HtmlEnv m) m a }
   deriving (
@@ -44,10 +46,6 @@ type HtmlEmit w m = (w ~> HtmlT m) -> (w ~> HtmlT m)
 data Exist (f :: * -> *) = forall x. Exist (f x)
 
 type HtmlBase m = (MonadJSM m, MonadUnliftIO m, MonadFix m)
-
-type Node = JSVal
-
-type Element = JSVal
 
 runHtmlT :: HtmlEnv m -> HtmlT m x -> m x
 runHtmlT e = flip runReaderT e . runHtmlT'
@@ -97,7 +95,7 @@ instance (x ~ (), HtmlBase m) => IsString (HtmlT m x) where
       text txt = do
         textNode <- liftJSM $ jsg "document" # "createTextNode" $ txt
         hteElement <- newElementRef
-        liftIO $ elementRefWrite hteElement (Just textNode)
+        liftIO $ elementRefWrite hteElement (Just (coerce textNode))
 
       askElement :: HtmlBase m => HtmlT m Element
       askElement =

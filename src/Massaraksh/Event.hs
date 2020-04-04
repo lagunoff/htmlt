@@ -9,7 +9,7 @@ import Data.List
 
 -- | @Event a@ is a stream of event occurences of type @a@
 newtype Event a = Event
-  { event_subscribe :: (a -> IO ()) -> IO (IO ()) }
+  ((a -> IO ()) -> IO (IO ()))
 
 data EventRef a = EventRef
   { eventRef_event   :: Event a
@@ -27,7 +27,7 @@ data DynRef a = DynRef
   }
 
 subscribe :: Event a -> (a -> IO ()) -> IO (IO ())
-subscribe = event_subscribe
+subscribe (Event s) = s
 
 getEvent :: EventRef a -> Event a
 getEvent = eventRef_event

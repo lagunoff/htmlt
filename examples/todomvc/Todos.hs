@@ -97,8 +97,8 @@ todosWidget dynRef@(DynRef model modify) yield = \case
           "placeholder" =: "What needs to be done?"
           "autofocus" =: "on"
           "value" ~: (model <&> _moTitle)
-          on "input" $ valueDecoder <&> yield . Edit
-          on "keydown" $ keycodeDecoder <&> yield . KeyPress
+          on "input" $ dValue <&> yield . Edit
+          on "keydown" $ dKeyCode <&> yield . KeyPress
 
     renderMain =
       section_ do
@@ -109,7 +109,7 @@ todosWidget dynRef@(DynRef model modify) yield = \case
           "type" =: "checkbox"
           "id" =: "toggle-all"
           "className" =: "toggle-all"
-          on "click" $ checkedDecoder <&> yield . ToggleAll
+          on "click" $ dChecked <&> yield . ToggleAll
         label_ do
           attr "for" "toggle-all"
           text "Mark all as completed"
@@ -145,7 +145,7 @@ todosWidget dynRef@(DynRef model modify) yield = \case
           for_ [ All, Active, Completed ] renderFilter
         button_ do
           "className" =: "clear-completed"
-          on' "click" $ yield ClearCompleted
+          on_ "click" $ yield ClearCompleted
           text "Clear completed"
 
     viewFooterInfo =

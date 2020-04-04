@@ -8,7 +8,6 @@ import Data.Default
 import Data.Text as T
 import GHC.Generics (Generic)
 import GHCJS.Marshal
-import GHCJS.Types
 import Language.Javascript.JSaddle
 import Massaraksh
 
@@ -38,9 +37,8 @@ data Msg a where
   Completed :: Bool -> Msg ()
   Destroy :: Msg ()
   Blur :: Msg ()
-  EditingOn :: JSVal -> Msg ()
+  EditingOn :: SomeJVal -> Msg ()
   EditInput :: Text -> Msg ()
-  KeyPress :: Int -> Msg ()
   EditingCancel :: Msg ()
   EditingCommit :: Msg ()
 
@@ -54,40 +52,39 @@ itemWidget Config{cfgDynamic = dynRef@(getDyn -> model), ..} yield = \case
         , ("hidden", propHidden . cfgProps <$> model) ]
       div_ do
         "className" =: "view"
-        on "dblclick" $ targetDecoder <&> yield . EditingOn
+        on "dblclick" $ dTarget <&> yield . EditingOn
         input_ do
           "className" =: "toggle"
           "type"      =: "checkbox"
           "checked"   ~: (^. cfgModel . moCompleted) <$> model
-          on "change" $ checkedDecoder <&> yield . Completed
+          on "change" $ dChecked <&> yield . Completed
         label_ $ dynText $ (^. cfgModel . moTitle) <$> model
         button_ do
           "className" =: "destroy"
-          on' "click" do yield Destroy
+          on_ "click" do yield Destroy
       input_ do
         "className" =: "edit"
         "type"      =: "text"
         "value"     ~: (^. cfgModel . moEditing . to (fromMaybe "")) <$> model
-        on "input" $ valueDecoder <&> yield . EditInput
-        on' "blur" $ yield Blur
-        on "keydown" $ keycodeDecoder <&> yield . KeyPress
+        on "input" $ dValue <&> yield . EditInput
+        on_ "blur" $ yield Blur
+        on "keydown" $ dKeyCode <&> \case
+          13 -> yield EditingCommit -- Enter
+          27 -> yield EditingCancel -- Escape
+          _  -> pure ()
   Completed x ->
     liftIO $ modifyDynRef dynRef $ cfgModel . moCompleted .~ x
   Destroy ->
     pure ()
   Blur ->
     yield EditingCommit
-  KeyPress code -> do
-    if | code == 13 -> yield EditingCommit -- Enter
-       | code == 27 -> yield EditingCancel -- Escape
-       | otherwise  -> pure ()
   EditingOn elm -> do
     title <- liftIO $ (^. cfgModel . moTitle) <$> readDyn model
     liftIO $ modifyDynRef dynRef $ cfgModel . moEditing .~ Just title
     void $ liftJSM $ do
       -- FIXME: currentTarget doesn't work for @dblclick@ it gets
       -- assigned to null, @elm@ points to label inside div.view
-      input <- elm ! ("parentNode" :: Text) ! ("parentNode" :: Text)
+      input <- pToJSVal elm ! ("parentNode" :: Text) ! ("parentNode" :: Text)
         # ("querySelector" :: Text) $ ["input[type=text]" :: Text]
       cb <- function \_ _ _ -> void $ liftJSM $ input #
         ("focus" :: Text) $ ([] :: [Int])
