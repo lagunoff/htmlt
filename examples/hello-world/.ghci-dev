@@ -1,5 +1,0 @@
-:set -fno-break-on-exception
-:def! reload (const $ return "::reload\n:load hello-world/Main.hs\nmain")
-
-:load hello-world/Main.hs
-main

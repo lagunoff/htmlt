@@ -1,4 +1,4 @@
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE OverloadedStrings, DeriveAnyClass #-}
 module Item where
 
 import Control.Lens hiding ((#))
@@ -24,11 +24,11 @@ data Props = Props
 data Model = Model
   { _moTitle     :: Text
   , _moCompleted :: Bool
-  , _moEditing   :: Maybe Text
-  } deriving (Show, Eq, Generic, ToJSVal, FromJSVal)
+  , _moEditing   :: Maybe Text }
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (ToJSVal, FromJSVal)
 
-instance Default Model where
-  def = Model "" False Nothing
+instance Default Model where def = Model "" False Nothing
 
 makeLenses ''Model
 

@@ -16,7 +16,7 @@ widget = do
     "className" =: "root"
     h1_ do
       "style" ~: headerStyle <$> dyn
-      on' "mouseenter" do liftIO $ modify (+ 1)
+      on_ "mouseenter" do liftIO $ modify (+ 1)
       text "Hello, World!"
     el "style" do "type" =: "text/css"; text css
 

@@ -1,0 +1,65 @@
+cabal-version: 1.12
+
+name:           massaraksh-examples
+version:        0.1.0.0
+category:       Web
+homepage:       https://github.com/lagunoff/massaraksh
+author:         Vladislav Lagunov
+maintainer:     vlad.lagunov@gmail.com
+copyright:      2019 Vladislav Lagunov
+license:        BSD3
+build-type:     Simple
+
+executable massaraksh-todomvc
+  main-is: Main.hs
+  hs-source-dirs: . ../../src
+  ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -Wno-unused-do-bind -O0
+  build-depends:
+    array,
+    base >=4.7 && <5,
+    bytestring,
+    data-default,
+    jsaddle,
+    lens,
+    mtl,
+    natural-transformation,
+    raw-strings-qq,
+    text,
+    transformers,
+    unliftio-core
+
+  if impl(ghcjs)
+    ghc-options: -dedupe
+    build-depends: ghcjs-base
+  else
+    build-depends: jsaddle-warp
+  default-language: Haskell2010
+
+  default-extensions:
+    BlockArguments
+    ConstraintKinds
+    DataKinds
+    DeriveFunctor
+    DeriveGeneric
+    DerivingStrategies
+    DuplicateRecordFields
+    FlexibleContexts
+    FlexibleInstances
+    FunctionalDependencies
+    GADTs
+    GeneralizedNewtypeDeriving
+    LambdaCase
+    MultiParamTypeClasses
+    NamedFieldPuns
+    PolyKinds
+    QuasiQuotes
+    RankNTypes
+    RecordWildCards
+    ScopedTypeVariables
+    TemplateHaskell
+    TypeApplications
+    TypeFamilies
+    TypeOperators
+    TypeSynonymInstances
+    UndecidableInstances
+    ViewPatterns

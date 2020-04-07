@@ -6,17 +6,19 @@ import Control.Lens hiding ((#))
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
 import Data.Coerce
-import Data.Either
 import Data.Foldable
 import Data.IORef
 import Data.List as L
 import Data.Text as T hiding (index)
+import GHC.Exts hiding ((<#))
 import Language.Javascript.JSaddle as JS
+import Massaraksh.DOM
 import Massaraksh.Decode
 import Massaraksh.Event
 import Massaraksh.Internal
 import Massaraksh.Types
-import Massaraksh.DOM
+import Unsafe.Coerce
+import qualified Data.Array as A
 
 el :: HtmlBase m => Text -> HtmlT m x -> HtmlT m x
 el tag child = do
@@ -204,6 +206,62 @@ itraverseHtml l dynRef@(getDyn -> dyn) h = do
     lift $ setup new 0 refs (toListOf l old) (toListOf l new)
   pure ()
 
+unsafeDiscriminateHtml
+  :: forall s m
+   . HtmlBase m
+  => Lens' s (Int, Any)
+  -> DynRef s
+  -> A.Array Int (DynRef Any -> HtmlT m ())
+  -> HtmlT m ()
+unsafeDiscriminateHtml lens dynRef arr = do
+  unliftM <- lift askUnliftIO
+  env <- ask
+  initial <- liftIO (readDynRef dynRef)
+  elRef <- asks htmlEnvElement
+  childEnvRef <- liftIO $ newIORef Nothing
+  childSubscriber <- liftIO $ newSubscriberRef \(Exist h) -> do
+    mayLir <- readIORef childEnvRef
+    for_ (lirHtmlEnv <$> mayLir) \env ->
+      unliftIO unliftM $ runHtmlT env h
+  let
+    setup s (idx, any_) =
+      liftIO (readIORef childEnvRef) >>= \case
+        Nothing -> do
+          dynRef' <- liftIO $ newDynRef any_
+          let
+            hteModel = dynRef' {dynRef_modify = childModifier idx (getDyn dynRef')}
+            env      = HtmlEnv elRef childSubscriber
+          liftIO $ writeIORef childEnvRef $ Just $
+            ListItemRef env hteModel (modifyDynRef dynRef')
+          void $ runHtmlT env $ (arr A.! idx) hteModel
+        Just env -> liftIO do
+          lirModify env \_ -> any_
+
+    childModifier :: Int -> Dyn Any -> (Any -> Any) -> IO ()
+    childModifier idx dyn f = do
+      oldL <- readDyn dyn
+      modifyDynRef dynRef \oldS -> oldS & lens .~ (idx, f oldL)
+
+    -- FIXME: that limits usage of 'unsafeDiscriminateHtml' to the
+    -- cases when it is the only children of some HTML element because
+    -- all sibling will be removed when tag is switched. Alternative
+    -- way could be: keep track of the elements that were appended
+    -- during initialization and remove only them
+    removeAllChilds = askElement >>= \rootEl -> liftJSM do
+      length <- fromJSValUnchecked =<< rootEl ! "childNodes" ! "length"
+      for_ [0..length - 1] \idx -> do
+        childEl <- rootEl ! "childNodes" JS.!! idx
+        rootEl # "removeChild" $ [childEl]
+
+  lift $ setup initial (initial ^. lens)
+  updatesEv <- liftIO $ withOld initial (updates (getDyn dynRef))
+  void $ subscribePrivate updatesEv \(oldS, newS) -> do
+    let ((oldI, _), (newI, newA)) = (oldS ^. lens, newS ^. lens)
+    when (oldI /= newI) $ removeAllChilds *> liftIO do
+      readIORef childEnvRef >>= flip for_ (htmlFinalize . lirHtmlEnv)
+      writeIORef childEnvRef Nothing
+    lift $ setup newS (newI, newA)
+
 eitherHtml
   :: forall s l r m
    . HtmlBase m
@@ -212,75 +270,17 @@ eitherHtml
   -> (DynRef l -> HtmlT m ())
   -> (DynRef r -> HtmlT m ())
   -> HtmlT m ()
-eitherHtml lens dynRef@(getDyn -> dyn) left right = do
-  unliftM <- lift askUnliftIO
-  env <- ask
-  initial <- liftIO (readDynRef dynRef)
-  elRef <- asks htmlEnvElement
-  leftEnvRef <- liftIO $ newIORef Nothing
-  rightEnvRef <- liftIO $ newIORef Nothing
-  leftSubscriber <- liftIO $ newSubscriberRef \(Exist h) -> do
-    mayLir <- readIORef leftEnvRef
-    for_ (lirHtmlEnv <$> mayLir) \env ->
-      unliftIO unliftM $ runHtmlT env h
-  rightSubscriber <- liftIO $ newSubscriberRef \(Exist h) -> do
-    mayLir <- readIORef rightEnvRef
-    for_ (lirHtmlEnv <$> mayLir) \env ->
-      unliftIO unliftM $ runHtmlT env h
+eitherHtml lens dynRef left right = do
   let
-    setup s = \case
-      Left l -> liftIO (readIORef leftEnvRef) >>= \case
-        Nothing -> do
-          dynRef' <- liftIO $ newDynRef l
-          let
-            hteModel = dynRef' {dynRef_modify = leftModifier (getDyn dynRef')}
-            env      = HtmlEnv elRef leftSubscriber
-          liftIO $ writeIORef leftEnvRef $ Just $
-            ListItemRef env hteModel (modifyDynRef dynRef')
-          void $ runHtmlT env $ left hteModel
-        Just env -> liftIO do
-          lirModify env \_ -> l
-      Right r -> liftIO (readIORef rightEnvRef) >>= \case
-        Nothing -> do
-          dynRef' <- liftIO $ newDynRef r
-          let
-            hteModel = dynRef' {dynRef_modify = rightModifier (getDyn dynRef')}
-            env      = HtmlEnv elRef rightSubscriber
-          liftIO $ writeIORef rightEnvRef $ Just $
-            ListItemRef env hteModel (modifyDynRef dynRef')
-          void $ runHtmlT env $ right hteModel
-        Just env -> liftIO do
-          lirModify env \_ -> r
-
-    leftModifier :: Dyn l -> (l -> l) -> IO ()
-    leftModifier dyn f = do
-      oldL <- readDyn dyn
-      modifyDynRef dynRef \oldS -> oldS & lens .~ Left (f oldL)
-
-    rightModifier :: Dyn r -> (r -> r) -> IO ()
-    rightModifier dyn f = do
-      oldR <- readDyn dyn
-      modifyDynRef dynRef \oldS -> oldS & lens .~ Right (f oldR)
-
-    -- FIXME: that limits usage of 'eitherHtml' to the cases when it
-    -- is the only children of some HTML element because all sibling
-    -- will be removed when tag is switched. Alternative way could be:
-    -- keep track of the elements that were appended during
-    -- initialization and remove only them
-    removeAllChilds = askElement >>= \rootEl -> liftJSM do
-      length <- fromJSValUnchecked =<< rootEl ! "childNodes" ! "length"
-      for_ [0..length - 1] \idx -> do
-        childEl <- rootEl ! "childNodes" JS.!! idx
-        rootEl # "removeChild" $ [childEl]
-
-  lift $ setup initial (initial ^. lens)
-  eUpdates <- liftIO $ withOld initial (updates dyn)
-  void $ subscribePrivate eUpdates \(oldS, newS) -> do
-    let (old, new) = (oldS ^. lens, newS ^. lens)
-    when (isLeft old && isRight new) $ removeAllChilds *> liftIO do
-      readIORef leftEnvRef >>= flip for_ (htmlFinalize . lirHtmlEnv)
-      writeIORef leftEnvRef Nothing
-    when (isRight old && isLeft new) $ removeAllChilds *> liftIO do
-      readIORef rightEnvRef >>= flip for_ (htmlFinalize . lirHtmlEnv)
-      writeIORef rightEnvRef Nothing
-    lift $ setup newS new
+    unanied :: forall x. Iso' Any x
+    unanied = iso unsafeCoerce unsafeCoerce
+    to = \case
+      Left x  -> (0, unsafeCoerce @_ @Any x)
+      Right x -> (1, unsafeCoerce @_ @Any x)
+    from = \case
+      (0, x) -> Left (unsafeCoerce @_ @l x)
+      (1, x) -> Right (unsafeCoerce @_ @r x)
+      _      -> error "eitherHtml: invalid index"
+    childs = A.listArray (0, 1)
+      [left . lensMap unanied, right . lensMap unanied]
+  unsafeDiscriminateHtml (lens . iso to from) dynRef childs

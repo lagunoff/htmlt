@@ -25,15 +25,12 @@ library
     Massaraksh.DOM
     Massaraksh.Decode.Internal
 
-  other-modules:
-    Paths_massaraksh
-
-  hs-source-dirs:
-    src
-
-  ghc-options:
-    -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -Wno-unused-do-bind -O0
+  other-modules: Paths_massaraksh
+  hs-source-dirs: src
+  ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing
+               -Wno-unused-matches -Wno-unused-do-bind -O0
   build-depends:
+    array,
     base >=4.7 && <5,
     bytestring,
     jsaddle,

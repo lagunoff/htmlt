@@ -12,65 +12,18 @@ build-type:     Simple
 
 executable massaraksh-helloworld
   main-is: Main.hs
-  hs-source-dirs: hello-world
+  hs-source-dirs: . ../../src
   ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -Wno-unused-do-bind -O0
   build-depends:
+    array,
     base >=4.7 && <5,
     bytestring,
-    jsaddle,
-    massaraksh,
-    mtl,
-    raw-strings-qq,
-    text
-
-  if impl(ghcjs)
-    ghc-options: -dedupe
-    build-depends: ghcjs-base
-  else
-    build-depends: jsaddle-warp
-  default-language: Haskell2010
-
-  default-extensions:
-    BlockArguments
-    DataKinds
-    DeriveAnyClass
-    DeriveGeneric
-    DuplicateRecordFields
-    FlexibleContexts
-    FlexibleInstances
-    GADTs
-    LambdaCase
-    MultiParamTypeClasses
-    MultiWayIf
-    NamedFieldPuns
-    OverloadedStrings
-    PolyKinds
-    QuasiQuotes
-    RankNTypes
-    RecordWildCards
-    ScopedTypeVariables
-    StandaloneDeriving
-    TemplateHaskell
-    TypeApplications
-    TypeFamilies
-    TypeOperators
-
-executable massaraksh-todomvc
-  main-is: Main.hs
-  hs-source-dirs: todomvc
-  ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -Wno-unused-do-bind -O0
-  build-depends:
-    base >=4.7 && <5,
-    bytestring,
-    data-default,
     jsaddle,
     lens,
-    massaraksh,
     mtl,
     natural-transformation,
     raw-strings-qq,
     text,
-    transformers,
     unliftio-core
 
   if impl(ghcjs)
@@ -82,25 +35,29 @@ executable massaraksh-todomvc
 
   default-extensions:
     BlockArguments
+    ConstraintKinds
     DataKinds
-    DeriveAnyClass
+    DeriveFunctor
     DeriveGeneric
+    DerivingStrategies
     DuplicateRecordFields
     FlexibleContexts
     FlexibleInstances
+    FunctionalDependencies
     GADTs
+    GeneralizedNewtypeDeriving
     LambdaCase
     MultiParamTypeClasses
-    MultiWayIf
     NamedFieldPuns
-    OverloadedStrings
     PolyKinds
     QuasiQuotes
     RankNTypes
     RecordWildCards
     ScopedTypeVariables
-    StandaloneDeriving
     TemplateHaskell
     TypeApplications
     TypeFamilies
     TypeOperators
+    TypeSynonymInstances
+    UndecidableInstances
+    ViewPatterns

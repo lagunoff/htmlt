@@ -1,4 +1,3 @@
-{-# LANGUAGE NoOverloadedStrings #-}
 module Utils where
 
 import Control.Monad (void)
