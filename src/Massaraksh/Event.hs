@@ -123,6 +123,20 @@ lensMap stab dRef = DynRef (Dyn read upd) modify where
   upd    = fmap (getConst . stab Const) $ dynRefUpdates dRef
   modify = \f -> modifyDynRef dRef (over stab f)
 
+holdUniqDynBy :: (a -> a -> Bool) -> Dyn a -> IO (Dyn a)
+holdUniqDynBy f = holdUniqDynBy' \a b -> pure (f a b)
+
+holdUniqDynBy' :: (a -> a -> IO Bool) -> Dyn a -> IO (Dyn a)
+holdUniqDynBy' f (Dyn r u) = do
+  ref <- newIORef =<< r
+  let
+    updates = flip mapMaybeE' u \new -> do
+      old <- readIORef ref
+      f old new >>= \case
+        True  -> pure Nothing
+        False -> Just new <$ writeIORef ref new
+  pure (Dyn r updates)
+
 instance Functor Event where
   fmap f (Event s) = Event $ s . (. f)
 
@@ -173,4 +187,3 @@ roRef (DynRef (Dyn s _) _) = DynRef (Dyn s never) (\_ -> pure ())
     let (newA, newB) = f (oldA, oldB)
     modifyDynRef a \_ -> newA
     modifyDynRef b \_ -> newB
-
