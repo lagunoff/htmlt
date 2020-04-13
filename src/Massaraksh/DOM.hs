@@ -80,10 +80,10 @@ dKeyCode :: Decoder Int
 dKeyCode = parseAt ["keyCode"] decoder
 
 data KeyboardEvent = KeyboardEvent
-  { keys     :: Keys
-  , key      :: Maybe Text
-  , keyCode  :: Int
-  , repeat   :: Bool
+  { keys     :: !Keys
+  , key      :: !(Maybe Text)
+  , keyCode  :: !Int
+  , repeat   :: !Bool
   } deriving (Show, Eq)
 
 dKeyboard :: Decoder KeyboardEvent

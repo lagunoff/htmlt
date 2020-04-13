@@ -73,7 +73,7 @@ decoder :: HasDecoder a => Decoder a
 decoder = Decoder decoder'
 
 instance Functor Decoder where
-  fmap f (Decoder parse) = Decoder \v -> fmap (fmap f) (parse v)
+  fmap f (Decoder p) = Decoder (fmap (fmap f) . p)
 
 instance Applicative Decoder where
   pure a = Decoder \_ -> pure (pure a)
@@ -115,4 +115,4 @@ instance HasDecoder Object where
 instance HasDecoder a => HasDecoder (Maybe a) where
   decoder' = \case
     SomeJVal v@JNull{} -> pure (Right Nothing)
-    rest               -> decoder' rest
+    rest               -> fmap (fmap Just) (decoder' rest)

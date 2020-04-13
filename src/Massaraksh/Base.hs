@@ -19,7 +19,6 @@ import Massaraksh.Event
 import Massaraksh.Internal
 import Massaraksh.Types
 import Unsafe.Coerce
-import qualified Data.Array as A
 
 el :: HtmlBase m => Text -> HtmlT m x -> HtmlT m x
 el tag child = do
@@ -100,7 +99,9 @@ onEvent elm name decoder = do
       cb <- unliftIO un $ liftJSM $ function \_ _ [event] -> do
         runDecoder decoder event >>= either (\_ -> pure ()) (liftIO . k)
       unliftIO un $ liftJSM (elm # "addEventListener" $ (name, cb))
-      pure $ unliftIO un $ void $ liftJSM $ elm # "removeEventListener" $ (name, cb)
+      pure $ void $ unliftIO un $ liftJSM do
+        elm # "removeEventListener" $ (name, cb)
+        freeFunction cb
   void $ subscribePublic event
 
 onEvent' :: HtmlBase m => Element -> Text -> HtmlT m x -> HtmlT m ()

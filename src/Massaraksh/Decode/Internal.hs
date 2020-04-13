@@ -4,6 +4,7 @@ module Massaraksh.Decode.Internal where
 
 import Control.Monad.IO.Class
 import Control.Monad
+import Data.Foldable
 import Data.Text
 import GHC.IORef
 import GHCJS.Prim
@@ -22,9 +23,15 @@ case_js
 case_js onNull onBool onNumber onString onArray onObject val = do
   ioRef <- liftIO $ newIORef (error "case_json: none of the callbacks were called")
   let
-    wrapFunc :: (JSVal -> JSM a) -> JSM JSVal
-    wrapFunc f = toJSVal $ fun $
-      \_ _ [arg1] -> liftIO . writeIORef ioRef <=< f $ arg1
+    wrapF :: (JSVal -> JSM a) -> JSM Function
+    wrapF f = function $ \_ _ [arg1] -> liftIO . writeIORef ioRef <=< f $ arg1
+
+  onNullF <- wrapF onNull
+  onBoolF <- wrapF onBool
+  onNumberF <- wrapF onNumber
+  onStringF <- wrapF onString
+  onArrayF <- wrapF onArray
+  onObjectF <- wrapF onObject
 
   caseFunc <- eval @Text
     "(function(val, onNull, onBool, onNumber, onString, onArray, onObject) {\
@@ -37,13 +44,9 @@ case_js onNull onBool onNumber onString onArray onObject val = do
     })"
 
   call caseFunc global
-    [ pure val
-    , wrapFunc onNull
-    , wrapFunc onBool
-    , wrapFunc onNumber
-    , wrapFunc onString
-    , wrapFunc onArray
-    , wrapFunc onObject ]
+    [ pure val, toJSVal onNullF, toJSVal onBoolF, toJSVal onNumberF
+    , toJSVal onStringF, toJSVal onArrayF, toJSVal onObjectF ]
 
+  for_ [onNullF, onBoolF, onNumberF, onStringF, onArrayF, onObjectF] freeFunction
   syncPoint
   liftIO (readIORef ioRef)

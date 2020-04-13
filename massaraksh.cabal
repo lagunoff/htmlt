@@ -30,7 +30,6 @@ library
   ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing
                -Wno-unused-matches -Wno-unused-do-bind -O0
   build-depends:
-    array,
     base >=4.7 && <5,
     bytestring,
     jsaddle,
