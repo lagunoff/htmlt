@@ -45,7 +45,7 @@ init = do
     let filter = fromMaybe All $ hash ^? url2Filter
     pure (Model "" todos filter)
 
-todosWidget :: forall m. HtmlBase m => DynRef Model -> HtmlEmit Msg m
+todosWidget :: DynRef Model -> HtmlEmit Msg JSM
 todosWidget dynRef@(DynRef model modify) yield = \case
   Render -> do
     render
@@ -117,7 +117,7 @@ todosWidget dynRef@(DynRef model modify) yield = \case
           "className" =: "todo-list"
           let
             itemConfig = Item.Config _2 $ Item.Props . uncurry isHidden
-            mkItemWidget = \itemDyn (override :: HtmlBase m => HtmlEmit Item.Msg m) ->
+            mkItemWidget = \itemDyn (override :: HtmlEmit Item.Msg JSM) ->
               fix1 (Item.itemWidget (itemConfig itemDyn) `compose1` override) Item.Render
           itraverseHtml (moTodos . traversed) dynRef \idx dynA ->
             mkItemWidget (roRef dynRef <**> dynA) \super -> \case

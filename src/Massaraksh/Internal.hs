@@ -5,46 +5,56 @@ import Control.Monad.Reader
 import Data.Foldable
 import Data.IORef
 import Data.List
-import Data.Maybe
 import Data.Coerce
 import Language.Javascript.JSaddle
 import Massaraksh.Event
 import Massaraksh.Types
 import Massaraksh.DOM
 
-newElementRef :: HtmlBase m => HtmlT m ElementRef
-newElementRef = do
+newElementRef :: HtmlBase m => Element -> HtmlT m ElementRef
+newElementRef initial = do
   rootEl <- askElement
-  elementRef <- liftIO (newIORef Nothing)
+  rootFrag <- askFragment
+  frag <- liftJSM createDocumentFragment
+  elementRef <- liftIO (newIORef initial)
   un <- lift askUnliftIO
+  liftJSM (appendChild rootFrag initial)
   let
-    initial = error "Root element was accessed before it was initialized"
-    read    = fromMaybe initial <$> readIORef elementRef
-    write   = \new -> do
-      readIORef elementRef >>= \old -> case (old, new) of
-        (Nothing, Just newEl)    -> void $ unliftIO un $ liftJSM
-          (rootEl # "appendChild" $ newEl)
-        (Just oldEl, Just newEl) -> void $ unliftIO un $ liftJSM
-          (rootEl # "replaceChild" $ (newEl, oldEl))
-        (Just oldEl, Nothing)    -> void $ unliftIO un $ liftJSM
-          (rootEl # "removeChild" $ oldEl)
-        (Nothing, Nothing)       -> pure ()
-      writeIORef elementRef new
-  pure (ElementRef read write)
+    read = readIORef elementRef
+    readFrag = pure frag
+    replace newEl = do
+      oldEl <- readIORef elementRef
+      void $ unliftIO un $ liftJSM (replaceChild rootEl newEl oldEl)
+      writeIORef elementRef newEl
+  pure (ElementRef read readFrag replace)
 
 askElement :: HtmlBase m => HtmlT m Element
 askElement =
-  liftIO =<< asks (elementRefRead . htmlEnvElement)
+  liftIO =<< asks (er_read . he_element)
+{-# INLINE askElement #-}
+
+askFragment :: HtmlBase m => HtmlT m Fragment
+askFragment =
+  liftIO =<< asks (er_fragment . he_element)
+{-# INLINE askFragment #-}
 
 writeElement :: HtmlBase m => Element -> HtmlT m ()
 writeElement el = do
-  elRef <- asks htmlEnvElement
-  liftIO $ elementRefWrite elRef (Just el)
+  elRef <- asks he_element
+  liftIO $ er_write elRef el
+{-# INLINE writeElement #-}
 
-appendChild :: HtmlBase m => Node -> HtmlT m ()
-appendChild elm = do
-  elRef <- newElementRef
-  liftIO $ elementRefWrite elRef (Just (coerce elm))
+withNewChild :: HtmlBase m => Element -> HtmlT m ()
+withNewChild elm = do
+  void (newElementRef (coerce elm))
+{-# INLINE withNewChild #-}
+
+flushFragment :: HtmlBase m => HtmlT m ()
+flushFragment = do
+  rootEl <- askElement
+  rootFrag <- askFragment
+  liftJSM $ appendChild rootEl rootFrag
+{-# INLINE flushFragment #-}
 
 localElement
   :: HtmlBase m
@@ -52,9 +62,9 @@ localElement
   -> HtmlT m a
   -> HtmlT m a
 localElement elm child = do
-  elRef <- newElementRef
-  liftIO $ elementRefWrite elRef (Just elm)
-  local (\env -> env { htmlEnvElement = elRef }) child
+  elRef <- newElementRef elm
+  local (\env -> env { he_element = elRef }) child
+{-# INLINE localElement #-}
 
 subscribePrivate
   :: HtmlBase m
@@ -62,7 +72,7 @@ subscribePrivate
   -> (a -> HtmlT m ())
   -> HtmlT m (IO ())
 subscribePrivate e f = do
-  subscriber <- asks (subscriberRefPrivate . htmlEnvSubscriber)
+  subscriber <- asks (subscriberRefPrivate . he_subscriber)
   un <- askUnliftIO
   liftIO $ e `subscriber` (unliftIO un . f)
 
@@ -71,7 +81,7 @@ subscribePublic
   => Event (HtmlT m x)
   -> HtmlT m (IO ())
 subscribePublic e = do
-  subscriber <- asks (subscriberRefPublic . htmlEnvSubscriber)
+  subscriber <- asks (subscriberRefPublic . he_subscriber)
   liftIO (subscriber $ Exist <$> e)
 
 newSubscriberRef :: (a -> IO ()) -> IO (SubscriberRef a)
@@ -93,7 +103,7 @@ newSubscriberRef k = do
 
 htmlFinalize :: HtmlEnv m -> IO ()
 htmlFinalize env = do
-  let subscriptionsRef = subscriberRefSubscriptions (htmlEnvSubscriber env)
+  let subscriptionsRef = subscriberRefSubscriptions (he_subscriber env)
   xs <- atomicModifyIORef subscriptionsRef \xs -> ([], xs)
   for_ xs $ readIORef >=> id
 

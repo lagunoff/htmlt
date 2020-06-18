@@ -5,11 +5,12 @@ module Main where
 import Massaraksh
 import Control.Monad.Reader
 import Text.RawString.QQ (r)
+import Language.Javascript.JSaddle (JSM)
 import qualified Data.Text as T
 
 type Model = Int
 
-widget :: HtmlBase m => HtmlT m ()
+widget :: HtmlT JSM ()
 widget = do
   DynRef dyn modify <- liftIO (newDynRef 0)
   div_ do

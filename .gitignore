@@ -15,4 +15,8 @@
 **/.cabal-sandbox
 **/*.db
 **/.ghc.environment*
+/.*-env
 result
+dist
+out
+locals.nix

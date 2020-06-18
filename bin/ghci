@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+make --silent -f $DIR/env.mk $DIR/../.ghc-env || exit 1;
+source $DIR/../.ghc-env
+
+ghc $(cabal-cargs) -O0 --interactive "$@"

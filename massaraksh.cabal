@@ -12,25 +12,32 @@ build-type:          Simple
 extra-source-files:
   README.md
 
+Flag production
+  default: True
+  description: Adds optimisation
+
 library
   exposed-modules:
     Massaraksh
     Massaraksh.Base
+    Massaraksh.Base.Text
+    Massaraksh.DOM
     Massaraksh.Decode
+    Massaraksh.Decode.Internal
     Massaraksh.Element
     Massaraksh.Event
     Massaraksh.Internal
     Massaraksh.Main
+    Massaraksh.Text
     Massaraksh.Types
-    Massaraksh.DOM
-    Massaraksh.Decode.Internal
 
   other-modules: Paths_massaraksh
   hs-source-dirs: src
-  ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing
-               -Wno-unused-matches -Wno-unused-do-bind -O0
+  ghc-options:
+    -Wall -Wno-missing-signatures -Wno-name-shadowing
+    -Wno-unused-matches -Wno-unused-do-bind
   build-depends:
-    base >=4.7 && <5,
+    base,
     bytestring,
     jsaddle,
     lens,
@@ -41,11 +48,10 @@ library
     unliftio-core
 
   if impl(ghcjs)
-    hs-source-dirs: src-ghcjs
-    ghc-options: -dedupe
     build-depends: ghcjs-base, ghcjs-prim
+    if flag(production)
+      ghc-options: -dedupe -O2
   else
-    hs-source-dirs: src-ghc
     build-depends: jsaddle-warp
 
   default-extensions:
@@ -54,23 +60,28 @@ library
     DataKinds
     DeriveFunctor
     DeriveGeneric
+    DerivingStrategies
     DuplicateRecordFields
     FlexibleContexts
     FlexibleInstances
     FunctionalDependencies
     GADTs
     GeneralizedNewtypeDeriving
+    IncoherentInstances
     LambdaCase
     MultiParamTypeClasses
     NamedFieldPuns
     PolyKinds
+    QuasiQuotes
     RankNTypes
     RecordWildCards
     ScopedTypeVariables
+    TemplateHaskell
     TypeApplications
     TypeFamilies
     TypeOperators
     TypeSynonymInstances
     UndecidableInstances
-
+    ViewPatterns
+        
   default-language: Haskell2010

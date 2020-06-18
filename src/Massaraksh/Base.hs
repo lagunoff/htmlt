@@ -10,72 +10,74 @@ import Data.Coerce
 import Data.Foldable
 import Data.IORef
 import Data.List as L
-import Data.Text as T hiding (index)
-import GHC.Exts hiding ((<#))
+import Data.JSString as T hiding (index)
 import Language.Javascript.JSaddle as JS
 import Massaraksh.DOM
 import Massaraksh.Decode
 import Massaraksh.Event
 import Massaraksh.Internal
 import Massaraksh.Types
-import Unsafe.Coerce
 
-el :: HtmlBase m => Text -> HtmlT m x -> HtmlT m x
+
+el :: HtmlBase m => JSString -> HtmlT m x -> HtmlT m x
 el tag child = do
-  elm <- fmap coerce $ liftJSM $ jsg "document" # "createElement" $ tag
-  localElement elm child
+  elm <- liftJSM (createElement tag)
+  localElement elm child <* flushFragment
 
-el' :: HtmlBase m => Text -> HtmlT m x -> HtmlT m Element
+el' :: HtmlBase m => JSString -> HtmlT m x -> HtmlT m Element
 el' tag child = do
-  elm <- fmap coerce $ liftJSM $ jsg "document" # "createElement" $ tag
-  elm <$ localElement elm child
+  elm <- liftJSM (createElement tag)
+  elm <$ localElement elm child <* flushFragment
 
-text :: HtmlBase m => Text -> HtmlT m ()
+text :: HtmlBase m => JSString -> HtmlT m ()
 text txt = do
-  textNode <- liftJSM $ jsg "document" # "createTextNode" $ txt
-  appendChild (coerce textNode)
+  textNode <- liftJSM (createTextNode txt)
+  withNewChild textNode <* flushFragment
 
-dynText :: HtmlBase m => Dyn Text -> HtmlT m ()
+dynText :: HtmlBase m => Dyn JSString -> HtmlT m ()
 dynText d = do
   txt <- liftIO (readDyn d)
-  textNode <- fmap coerce $ liftJSM $ jsg "document" # "createTextNode" $ txt
+  textNode <- liftJSM (createTextNode txt)
   updates d `subscribePrivate` \new -> do
     void $ liftJSM $ textNode <# "nodeValue" $ new
-  appendChild textNode
+  withNewChild textNode <* flushFragment
 
-prop :: (HtmlBase m, ToJSVal v) => Text -> v -> HtmlT m ()
+prop :: (ToJSVal v, HtmlBase m) => JSString -> v -> HtmlT m ()
 prop key val = do
   rootEl <- askElement
-  liftJSM $ rootEl <# key $ val
+  liftJSM do
+    v <- toJSVal val
+    unsafeSetProp key v (coerce rootEl)
 
-(=:) :: HtmlBase m => Text -> Text -> HtmlT m ()
+(=:) :: HtmlBase m => JSString -> JSString -> HtmlT m ()
 (=:) = prop
 infixr 3 =:
 
 dynProp
   :: (HtmlBase m, ToJSVal v, FromJSVal v, Eq v)
-  => Text -> Dyn v -> HtmlT m ()
+  => JSString -> Dyn v -> HtmlT m ()
 dynProp key dyn = do
   txt <- liftIO (readDyn dyn)
   rootEl <- askElement
-  liftJSM (rootEl <# key $ txt)
+  liftJSM do
+    v <- toJSVal txt
+    unsafeSetProp key v (coerce rootEl)
   void $ updates dyn `subscribePrivate` \new -> liftJSM do
-    oldProp <- fromJSValUnchecked =<< rootEl ! key
-    when (new /= oldProp) $
-      liftJSM (rootEl <# key $ new)
+    v <- toJSVal new
+    unsafeSetProp key v (coerce rootEl)
 
 (~:)
   :: (HtmlBase m, ToJSVal v, FromJSVal v, Eq v)
-  => Text -> Dyn v -> HtmlT m ()
+  => JSString -> Dyn v -> HtmlT m ()
 (~:) = dynProp
 infixr 3 ~:
 
-attr :: HtmlBase m => Text -> Text -> HtmlT m ()
+attr :: HtmlBase m => JSString -> JSString -> HtmlT m ()
 attr key val = do
   rootEl <- askElement
   void $ liftJSM $ rootEl # "setAttribute" $ (key, val)
 
-dynAttr :: HtmlBase m => Text -> Dyn Text -> HtmlT m ()
+dynAttr :: HtmlBase m => JSString -> Dyn JSString -> HtmlT m ()
 dynAttr key dyn = do
   txt <- liftIO (readDyn dyn)
   rootEl <- askElement
@@ -83,15 +85,15 @@ dynAttr key dyn = do
   void $ updates dyn `subscribePrivate` \new ->
     void $ liftJSM $ rootEl # "setAttribute" $ (key, new)
 
-on :: HtmlBase m => Text -> Decoder (HtmlT m x) -> HtmlT m ()
+on :: HtmlBase m => JSString -> Decoder (HtmlT m x) -> HtmlT m ()
 on name decoder = do
   el <- askElement
   onEvent el name decoder
 
-on_ :: HtmlBase m => Text -> HtmlT m x -> HtmlT m ()
+on_ :: HtmlBase m => JSString -> HtmlT m x -> HtmlT m ()
 on_ name w = on name (pure w)
 
-onEvent :: HtmlBase m => Element -> Text -> Decoder (HtmlT m x) -> HtmlT m ()
+onEvent :: HtmlBase m => Element -> JSString -> Decoder (HtmlT m x) -> HtmlT m ()
 onEvent elm name decoder = do
   un <- askUnliftIO
   let
@@ -104,33 +106,34 @@ onEvent elm name decoder = do
         freeFunction cb
   void $ subscribePublic event
 
-onEvent' :: HtmlBase m => Element -> Text -> HtmlT m x -> HtmlT m ()
-onEvent' elm name w = onEvent elm name (pure w)
+onEvent_ :: HtmlBase m => Element -> JSString -> HtmlT m x -> HtmlT m ()
+onEvent_ elm name w = onEvent elm name (pure w)
 
-dynClassList :: HtmlBase m => [(Text, Dyn Bool)] -> HtmlT m ()
+dynClassList :: HtmlBase m => [(JSString, Dyn Bool)] -> HtmlT m ()
 dynClassList xs = do
   rootEl <- askElement
   let
     setup name = \case
-      True  -> void $ liftJSM (rootEl ! "classList" # "add" $ name)
-      False -> void $ liftJSM (rootEl ! "classList" # "remove" $ name)
+      True  -> void $ liftJSM (rootEl ! "classList" # "add" $ [name])
+      False -> void $ liftJSM (rootEl ! "classList" # "remove" $ [name])
   for_ xs \(name, dyn) -> do
     setup name =<< liftIO (readDyn dyn)
     subscribeUpdates dyn (setup name)
 
-classList :: HtmlBase m => [(Text, Bool)] -> HtmlT m ()
+classList :: HtmlBase m => [(JSString, Bool)] -> HtmlT m ()
 classList xs =
   prop (T.pack "className") $ T.unwords
     $ L.foldl' (\acc (cs, cond) -> bool acc (cs:acc) cond) [] xs
 
 localHtmlEnv
-  :: (HtmlEnv m -> HtmlEnv m)
+  :: HtmlBase m
+  => (HtmlEnv m -> HtmlEnv m)
   -> HtmlT m x
   -> HtmlT m x
 localHtmlEnv f (HtmlT (ReaderT h)) = HtmlT $ ReaderT (h . f)
 
 withDynamicRef
-  :: MonadIO m
+  :: HtmlBase m
   => s
   -> (DynRef s -> HtmlT m x)
   -> HtmlT m x
@@ -168,8 +171,8 @@ itraverseHtml l dynRef@(getDyn -> dyn) h = do
           void $ unliftIO unliftM $ runHtmlT newEnv h
         dynRef' <- liftIO $ newDynRef x
         let
-          model   = dynRef' {dynRef_modify = mkModifier idx (getDyn dynRef')}
-          newEnv  = HtmlEnv (htmlEnvElement hte) subscriber
+          model   = dynRef' {dr_modify = mkModifier idx (getDyn dynRef')}
+          newEnv  = HtmlEnv (he_element hte) subscriber
           itemRef = ChildHtmlRef newEnv model (modifyDynRef dynRef')
         runHtmlT newEnv $ h idx model
         liftIO (modifyIORef itemRefs (<> [itemRef]))
@@ -182,7 +185,7 @@ itraverseHtml l dynRef@(getDyn -> dyn) h = do
         liftIO (writeIORef itemRefs newRefs)
         for_ tailRefs \ChildHtmlRef{..} -> do
           subscriptions <- liftIO $ readIORef $
-            subscriberRefSubscriptions (htmlEnvSubscriber childHtmlRef_htmlEnv)
+            subscriberRefSubscriptions (he_subscriber childHtmlRef_htmlEnv)
           liftIO $ for_ subscriptions (readIORef >=> id)
           childEl <- liftJSM $ rootEl ! "childNodes" JS.!! idx
           liftJSM (rootEl # "removeChild" $ [childEl])
@@ -215,13 +218,13 @@ dynHtml dyn = do
     setup html = mdo
       oldEnv <- liftIO (readIORef childRef)
       for_ oldEnv \e -> liftIO do
-        let oldSubsRef = subscriberRefSubscriptions (htmlEnvSubscriber e)
+        let oldSubsRef = subscriberRefSubscriptions (he_subscriber e)
         subs <- readIORef oldSubsRef
         for_ subs (readIORef >=> id)
         writeIORef oldSubsRef []
       runHtmlT env removeAllChilds
       subscriber <- mkSubscriber newEnv
-      let newEnv = env {htmlEnvSubscriber=subscriber}
+      let newEnv = env {he_subscriber=subscriber}
       liftIO $ writeIORef childRef (Just newEnv)
       void (runHtmlT newEnv html)
 

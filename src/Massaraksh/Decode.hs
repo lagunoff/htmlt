@@ -3,7 +3,7 @@ module Massaraksh.Decode where
 
 import Control.Applicative
 import Control.Monad
-import Data.Text
+import Data.JSString
 import GHCJS.Prim
 import JavaScript.Array (JSArray)
 import JavaScript.Object (Object)
@@ -11,7 +11,7 @@ import Language.Javascript.JSaddle hiding (Result)
 import Massaraksh.Decode.Internal
 
 newtype Decoder a = Decoder
-  {runDecoder' :: SomeJVal -> JSM (Either Text a)}
+  {runDecoder' :: SomeJVal -> JSM (Either JSString a)}
 
 data JVal ty where
   JNull   :: JSVal -> JVal "null"
@@ -27,7 +27,7 @@ type family JS2Hask ty where
   JS2Hask "null"    = ()
   JS2Hask "boolean" = Bool
   JS2Hask "number"  = Double
-  JS2Hask "string"  = Text
+  JS2Hask "string"  = JSString
   JS2Hask "array"   = JSArray
   JS2Hask "object"  = Object
 
@@ -58,10 +58,10 @@ typeof = case_js
   (pure . SomeJVal . JNumber) (pure . SomeJVal . JString)
   (pure . SomeJVal . JArray) (pure . SomeJVal . JObject)
 
-runDecoder :: Decoder a -> JSVal -> JSM (Either Text a)
+runDecoder :: Decoder a -> JSVal -> JSM (Either JSString a)
 runDecoder d = runDecoder' d <=< typeof
 
-parseAt :: [Text] -> Decoder a -> Decoder a
+parseAt :: [JSString] -> Decoder a -> Decoder a
 parseAt keys (Decoder parse) = Decoder (go keys)
   where
     go []     obj = parse obj
@@ -80,9 +80,9 @@ instance Applicative Decoder where
   (<*>) (Decoder mf) (Decoder ma) = Decoder \v -> liftA2 (<*>) (mf v) (ma v)
 
 class HasDecoder a where
-  decoder' :: SomeJVal -> JSM (Either Text a)
+  decoder' :: SomeJVal -> JSM (Either JSString a)
 
-instance HasDecoder Text where
+instance HasDecoder JSString where
   decoder' = \case
     SomeJVal v@JString{} -> fmap Right (js2Hask v)
     SomeJVal _           -> pure (Left "Expected a string")

@@ -4,7 +4,7 @@ module Massaraksh.Main where
 
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
-import Control.Natural
+import Control.Natural hiding ((#))
 import Data.IORef
 import Data.Coerce
 import Language.Javascript.JSaddle
@@ -19,11 +19,11 @@ import System.Environment
 import Control.Exception
 #endif
 
-data RunningState m a = RunningState
-  { rsResult :: a
-  , rsEnv    :: HtmlEnv m
-  , rsEval   :: HtmlT m ~> IO
-  }
+data RunningState m a = RunningState {
+  rsResult :: a,
+  rsEnv    :: HtmlEnv m,
+  rsEval   :: HtmlT m ~> IO
+}
 
 attach
   :: forall m x
@@ -35,13 +35,15 @@ attach
 attach rootEl runM render = do
   evalRef <- liftIO $ newIORef \_ -> pure ()
   subscriber <- liftIO $ newSubscriberRef \e -> readIORef evalRef >>= ($ e)
+  frag <- fmap coerce $ jsg "document" # "createDocumentFragment" $ ()
   let
     eval :: forall x. HtmlT m x -> IO x
     eval  = runM . runHtmlT env
-    elRef = ElementRef (pure rootEl) \_ -> pure ()
+    elRef = ElementRef (pure rootEl) (pure frag) \_ -> pure ()
     env   = HtmlEnv elRef subscriber
   liftIO $ writeIORef evalRef \(Exist h) -> void (eval h)
   res <- liftIO $ eval render
+  rootEl # "appendChild" $ frag
   pure (RunningState res env eval)
 
 attachToBody

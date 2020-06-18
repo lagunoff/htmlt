@@ -22,8 +22,8 @@ data Dyn a = Dyn
   }
 
 data DynRef a = DynRef
-  { dynRef_dyn    :: Dyn a
-  , dynRef_modify :: (a -> a) -> IO ()
+  { dr_dyn    :: Dyn a
+  , dr_modify :: (a -> a) -> IO ()
   }
 
 subscribe :: Event a -> (a -> IO ()) -> IO (IO ())
@@ -42,16 +42,16 @@ updates :: Dyn a -> Event a
 updates = dyn_updates
 
 getDyn :: DynRef a -> Dyn a
-getDyn = dynRef_dyn
+getDyn = dr_dyn
 
 modifyDynRef :: DynRef a -> (a -> a) -> IO ()
-modifyDynRef = dynRef_modify
+modifyDynRef = dr_modify
 
 readDynRef :: DynRef a -> IO a
-readDynRef = dyn_read . dynRef_dyn
+readDynRef = dyn_read . dr_dyn
 
 dynRefUpdates :: DynRef a -> Event a
-dynRefUpdates = dyn_updates . dynRef_dyn
+dynRefUpdates = dyn_updates . dr_dyn
 
 -- | Create new event and a function to supply values to that event
 newEventRef :: IO (EventRef a)

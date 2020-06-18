@@ -42,7 +42,7 @@ data Msg a where
   EditingCancel :: Msg ()
   EditingCommit :: Msg ()
 
-itemWidget :: HtmlBase m => Config s -> HtmlEmit Msg m
+itemWidget :: Config s -> HtmlEmit Msg JSM
 itemWidget Config{cfgDynamic = dynRef@(getDyn -> model), ..} yield = \case
   Render -> do
     li_ do

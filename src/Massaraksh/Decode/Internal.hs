@@ -5,7 +5,7 @@ module Massaraksh.Decode.Internal where
 import Control.Monad.IO.Class
 import Control.Monad
 import Data.Foldable
-import Data.Text
+import Data.JSString
 import GHC.IORef
 import GHCJS.Prim
 import Language.Javascript.JSaddle hiding (Result)
@@ -33,7 +33,7 @@ case_js onNull onBool onNumber onString onArray onObject val = do
   onArrayF <- wrapF onArray
   onObjectF <- wrapF onObject
 
-  caseFunc <- eval @Text
+  caseFunc <- eval @JSString
     "(function(val, onNull, onBool, onNumber, onString, onArray, onObject) {\
       if (typeof(val) === 'boolean') { onBool(val); return; }\
       if (typeof(val) === 'number') { onNumber(val); return; }\

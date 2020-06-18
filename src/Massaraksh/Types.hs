@@ -1,3 +1,5 @@
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE ImplicitParams #-}
 {-# LANGUAGE CPP #-}
 module Massaraksh.Types where
 
@@ -6,40 +8,40 @@ import Control.Lens hiding ((#))
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
 import Control.Natural hiding ((#))
-import Data.IORef
-import Data.Maybe
-import Data.String
 import Data.Coerce
-import Data.Text as T
+import Data.IORef
+import Data.JSString as T
+import Data.String
 import Language.Javascript.JSaddle
-import Massaraksh.Event
 import Massaraksh.DOM
+import Massaraksh.Event
 
 newtype HtmlT m a = HtmlT { runHtmlT' :: ReaderT (HtmlEnv m) m a }
-  deriving (
-    Functor, Applicative, Monad, MonadIO, MonadReader (HtmlEnv m), MonadFix
+  deriving stock Functor
+  deriving newtype (
+    Applicative, Monad, MonadIO, MonadReader (HtmlEnv m), MonadFix
   )
 
+type HtmlM = HtmlT JSM
+type Html = HtmlM ()
+
 data HtmlEnv m = HtmlEnv
-  { htmlEnvElement    :: ElementRef
-  , htmlEnvSubscriber :: SubscriberRef (Exist (HtmlT m))
-  }
+  { he_element    :: ElementRef
+  , he_subscriber :: SubscriberRef (Exist (HtmlT m)) }
 
 data ElementRef = ElementRef
-  { elementRefRead  :: IO Element
-  , elementRefWrite :: Maybe Element -> IO ()
-  }
+  { er_read     :: IO Element
+  , er_fragment :: IO Fragment
+  , er_write    :: Element -> IO () }
 
 data Subscriber a = Subscriber
   { subscriberPrivate :: forall x. Event x -> (x -> IO ()) -> IO (IO ())
-  , subscriberPublic  :: Event a -> IO (IO ())
-  }
+  , subscriberPublic  :: Event a -> IO (IO ()) }
 
 data SubscriberRef a = SubscriberRef
   { subscriberRefPrivate       :: forall x. Event x -> (x -> IO ()) -> IO (IO ())
   , subscriberRefPublic        :: Event a -> IO (IO ())
-  , subscriberRefSubscriptions :: IORef [IORef (IO ())]
-  }
+  , subscriberRefSubscriptions :: IORef [IORef (IO ())] }
 
 type HtmlEmit w m = (w ~> HtmlT m) -> (w ~> HtmlT m)
 
@@ -91,32 +93,32 @@ instance (x ~ (), HtmlBase m) => IsString (HtmlT m x) where
   fromString = text . T.pack
     where
       -- FIXME: Duplicated code from other modules
-      text :: HtmlBase m => Text -> HtmlT m ()
+      text :: HtmlBase m => JSString -> HtmlT m ()
       text txt = do
-        textNode <- liftJSM $ jsg "document" # "createTextNode" $ txt
-        hteElement <- newElementRef
-        liftIO $ elementRefWrite hteElement (Just (coerce textNode))
+        textNode <- liftJSM $ jsg "document" # "createTextNode" $ [txt]
+        void $ newElementRef (coerce textNode)
+
+      newElementRef :: HtmlBase m => Element -> HtmlT m ElementRef
+      newElementRef initial = do
+        rootEl <- askElement
+        rootFrag <- askFragment
+        frag <- fmap coerce $ liftJSM $ jsg "document" # "createDocumentFragment" $ ()
+        elementRef <- liftIO (newIORef initial)
+        un <- lift askUnliftIO
+        liftJSM $ rootFrag # "appendChild" $ initial
+        let
+          read = readIORef elementRef
+          readFrag = pure frag
+          replace newEl = do
+            oldEl <- readIORef elementRef
+            void $ unliftIO un $ liftJSM (rootEl # "replaceChild" $ (newEl, oldEl))
+            writeIORef elementRef newEl
+        pure (ElementRef read readFrag replace)
 
       askElement :: HtmlBase m => HtmlT m Element
       askElement =
-        liftIO =<< asks (elementRefRead . htmlEnvElement)
+        liftIO =<< asks (er_read . he_element)
 
-      newElementRef :: HtmlBase m => HtmlT m ElementRef
-      newElementRef = do
-        rootEl <- askElement
-        elementRef <- liftIO (newIORef Nothing)
-        un <- lift askUnliftIO
-        let
-          initial = error "Root element was accessed before it was initialized"
-          read    = fromMaybe initial <$> readIORef elementRef
-          write   = \new -> do
-            readIORef elementRef >>= \old -> case (old, new) of
-              (Nothing, Just newEl)    -> void $ unliftIO un $ liftJSM
-                (rootEl # "appendChild" $ newEl)
-              (Just oldEl, Just newEl) -> void $ unliftIO un $ liftJSM
-                (rootEl # "replaceChild" $ (newEl, oldEl))
-              (Just oldEl, Nothing)    -> void $ unliftIO un $ liftJSM
-                (rootEl # "removeChild" $ oldEl)
-              (Nothing, Nothing)       -> pure ()
-            writeIORef elementRef new
-        pure (ElementRef read write)
+      askFragment :: HtmlBase m => HtmlT m Fragment
+      askFragment =
+        liftIO =<< asks (er_fragment . he_element)

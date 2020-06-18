@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+make --silent -f $DIR/env.mk $DIR/../.ghc-env || exit 1;
+source $DIR/../.ghc-env
+
+runghc $(for a in $(cabal-cargs); do echo "--ghc-arg=$a"; done) -O0 "$@"

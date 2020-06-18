@@ -6,6 +6,7 @@ module Massaraksh.Element where
 
 import Massaraksh.Types
 import Massaraksh.Base
+import Language.Javascript.JSaddle
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/div
 div_ :: HtmlBase m => HtmlT m x -> HtmlT m x
