@@ -10,7 +10,7 @@ import Data.String (fromString)
 import Data.Text (Text)
 import GHC.Generics
 import Language.Javascript.JSaddle
-import Massaraksh
+import Massaraksh.Text
 import Text.RawString.QQ (r)
 import Utils (readTodos, writeTodos, readHash, writeHash)
 import qualified Data.Text as T
@@ -46,36 +46,36 @@ init = do
     pure (Model "" todos filter)
 
 todosWidget :: DynRef Model -> HtmlEmit Msg JSM
-todosWidget dynRef@(DynRef model modify) yield = \case
+todosWidget dynRef@(model, modify) yield = \case
   Render -> do
     render
   Edit x ->
-    liftIO $ modify $ moTitle .~ x
+    liftIO $ sync $ modify $ moTitle .~ x
   SetFilter x ->
-    liftIO $ modify $ moFilter .~ x
+    liftIO $ sync $ modify $ moFilter .~ x
   ToggleAll check ->
-    liftIO $ modify $ moTodos %~ fmap (Item.moCompleted .~ check)
+    liftIO $ sync $ modify $ moTodos %~ fmap (Item.moCompleted .~ check)
   ClearCompleted ->
-    liftIO $ modify $ moTodos %~ Prelude.filter (not . Item._moCompleted)
+    liftIO $ sync $ modify $ moTodos %~ Prelude.filter (not . Item._moCompleted)
   EditingCommit -> do
-    txt <- liftIO $ readDynRef dynRef <&> (T.strip . _moTitle)
+    txt <- liftIO $ dyn_read model <&> (T.strip . _moTitle)
     case txt of
       ""      -> pure ()
       trimmed -> do
         let newItem = def & Item.moTitle .~ trimmed
-        liftIO $ modify $ moTodos %~ (<> [newItem])
-        liftIO $ modify $ moTitle .~ ""
+        liftIO $ sync $ modify $ moTodos %~ (<> [newItem])
+        liftIO $ sync $ modify $ moTitle .~ ""
   KeyPress 13 ->
     yield EditingCommit
   KeyPress _ ->
     pure ()
   HashChange hash -> case hash ^? url2Filter of
-    Just x  -> liftIO $ modify $ moFilter .~ x
+    Just x  -> liftIO $ sync $ modify $ moFilter .~ x
     Nothing -> do
-      liftIO $ modify $ moFilter .~ All
+      liftIO $ sync $ modify $ moFilter .~ All
       liftJSM $ writeHash (review url2Filter All)
   BeforeUnload -> do
-    todos <- liftIO $ readDynRef dynRef <&> _moTodos
+    todos <- liftIO $ dyn_read model <&> _moTodos
     liftJSM $ writeTodos todos
   where
     render =
@@ -120,8 +120,8 @@ todosWidget dynRef@(DynRef model modify) yield = \case
             mkItemWidget = \itemDyn (override :: HtmlEmit Item.Msg JSM) ->
               fix1 (Item.itemWidget (itemConfig itemDyn) `compose1` override) Item.Render
           itraverseHtml (moTodos . traversed) dynRef \idx dynA ->
-            mkItemWidget (roRef dynRef <**> dynA) \super -> \case
-              Item.Destroy -> liftIO $ modify $ moTodos %~ deleteNth idx
+            mkItemWidget (dynRef <**> dynA) \super -> \case
+              Item.Destroy -> liftIO $ sync $ modify $ moTodos %~ deleteNth idx
               other        -> super other
 
     renderFilter x =

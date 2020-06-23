@@ -13,6 +13,10 @@ el :: HtmlBase m => Text -> HtmlT m x -> HtmlT m x
 el tag = H.el (JSS.textToJSString tag)
 {-# INLINE el #-}
 
+elNS :: HtmlBase m => Maybe Text -> Text -> HtmlT m x -> HtmlT m x
+elNS ns tag = H.elNS (fmap JSS.textToJSString ns) (JSS.textToJSString tag)
+{-# INLINE elNS #-}
+
 el' :: HtmlBase m => Text -> HtmlT m x -> HtmlT m Element
 el' tag = H.el' (JSS.textToJSString tag)
 {-# INLINE el' #-}

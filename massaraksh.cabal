@@ -22,9 +22,11 @@ library
     Massaraksh.Base
     Massaraksh.Base.Text
     Massaraksh.DOM
+    Massaraksh.DOM.Text
     Massaraksh.Decode
     Massaraksh.Decode.Internal
     Massaraksh.Element
+    Massaraksh.Element.Text
     Massaraksh.Event
     Massaraksh.Internal
     Massaraksh.Main
@@ -39,12 +41,14 @@ library
   build-depends:
     base,
     bytestring,
+    containers,
     jsaddle,
     lens,
     mtl,
     natural-transformation,
     text,
     transformers,
+--    raw-strings-qq, generic-lens, data-default,
     unliftio-core
 
   if impl(ghcjs)
@@ -76,6 +80,7 @@ library
     RankNTypes
     RecordWildCards
     ScopedTypeVariables
+    StrictData
     TemplateHaskell
     TypeApplications
     TypeFamilies

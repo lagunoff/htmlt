@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
-make --silent -f $DIR/env.mk $DIR/../.ghc-env || exit 1;
-source $DIR/../.ghc-env
+CABAL_ARGS=$(cabal-cargs -c $DIR/../massaraksh.cabal)
+FORWARD_ARGS=$@
 
-ghc $(cabal-cargs -c $DIR/../massaraksh.cabal || exit 1) "$@"
+cached-nix-shell $DIR/../default.nix -A shells.ghc --run "ghc $CABAL_ARGS $FORWARD_ARGS"

@@ -38,7 +38,9 @@ createDocumentFragment :: JSM Fragment
 createDocumentFragment = do
   fmap coerce $ jsg ("document" :: JSString) # ("createDocumentFragment" :: JSString) $ ()
 #else
-foreign import javascript unsafe "document.createDocumentFragment()" createDocumentFragment :: JSM Fragment
+foreign import javascript unsafe
+  "document.createDocumentFragment()"
+  createDocumentFragment :: JSM Fragment
 #endif
 
 #ifndef ghcjs_HOST_OS
@@ -54,7 +56,19 @@ createElement :: JSString -> JSM Element
 createElement tag = do
   fmap coerce $ jsg ("document" :: JSString) # ("createElement" :: JSString) $ [tag]
 #else
-foreign import javascript unsafe "document.createElement($1)" createElement :: JSString -> JSM Element
+foreign import javascript unsafe
+  "document.createElement($1)"
+  createElement :: JSString -> JSM Element
+#endif
+
+#ifndef ghcjs_HOST_OS
+createElementNS :: JSString -> JSString -> JSM Element
+createElementNS ns tag = do
+  fmap coerce $ jsg ("document" :: JSString) # ("createElementNS" :: JSString) $ [ns, tag]
+#else
+foreign import javascript unsafe
+  "document.createElementNS($1, $2)"
+  createElementNS :: JSString -> JSString -> JSM Element
 #endif
 
 #ifndef ghcjs_HOST_OS
@@ -62,7 +76,9 @@ createTextNode :: JSString -> JSM Element
 createTextNode tag = do
   fmap coerce $ jsg ("document" :: JSString) # ("createTextNode" :: JSString) $ [tag]
 #else
-foreign import javascript unsafe "document.createTextNode($1)" createTextNode :: JSString -> JSM Element
+foreign import javascript unsafe
+  "document.createTextNode($1)"
+  createTextNode :: JSString -> JSM Element
 #endif
 
 

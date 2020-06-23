@@ -2,7 +2,6 @@ module Massaraksh.Internal where
 
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
-import Data.Foldable
 import Data.IORef
 import Data.List
 import Data.Coerce
@@ -66,56 +65,35 @@ localElement elm child = do
   local (\env -> env { he_element = elRef }) child
 {-# INLINE localElement #-}
 
-subscribePrivate
+htmlSubscribe
   :: HtmlBase m
   => Event a
-  -> (a -> HtmlT m ())
+  -> (a -> Reactive ())
   -> HtmlT m (IO ())
-subscribePrivate e f = do
-  subscriber <- asks (subscriberRefPrivate . he_subscriber)
-  un <- askUnliftIO
-  liftIO $ e `subscriber` (unliftIO un . f)
+htmlSubscribe e k = do
+  subscriber <- asks (sub_unsubscriber . he_subscribe)
+  liftIO $ sync (subscriber e k)
 
-subscribePublic
-  :: HtmlBase m
-  => Event (HtmlT m x)
-  -> HtmlT m (IO ())
-subscribePublic e = do
-  subscriber <- asks (subscriberRefPublic . he_subscriber)
-  liftIO (subscriber $ Exist <$> e)
-
-newSubscriberRef :: (a -> IO ()) -> IO (SubscriberRef a)
-newSubscriberRef k = do
+newSubscriber :: IO (Subscriber, Subscriptions)
+newSubscriber = do
   subs <- newIORef []
   let
-    private :: forall x. Event x -> (x -> IO ()) -> IO (IO ())
-    private = \e f -> do
+    subscriber = Subscriber \e f -> do
       unsub <- e `subscribe` f
-      unRef <- newIORef unsub
-      modifyIORef subs ((:) unRef)
-      pure $ modifyIORef subs (delete unRef)
-    public = \e -> do
-      unsub <- e `subscribe` k
-      unRef <- newIORef unsub
-      modifyIORef subs ((:) unRef)
-      pure $ modifyIORef subs (delete unRef)
-  pure (SubscriberRef private public subs)
-
-htmlFinalize :: HtmlEnv m -> IO ()
-htmlFinalize env = do
-  let subscriptionsRef = subscriberRefSubscriptions (he_subscriber env)
-  xs <- atomicModifyIORef subscriptionsRef \xs -> ([], xs)
-  for_ xs $ readIORef >=> id
+      unRef <- liftIO (newIORef unsub)
+      liftIO $ modifyIORef subs ((:) unRef)
+      pure $ liftIO $ modifyIORef subs (delete unRef)
+  pure (subscriber, subs)
 
 subscribeUpdates
   :: HtmlBase m
   => Dyn s
-  -> (s -> HtmlT m ())
+  -> Callback s
   -> HtmlT m (IO ())
 subscribeUpdates d f = do
-  updates d `subscribePrivate` f
+  dyn_updates d `htmlSubscribe` f
 
-forDyn :: HtmlBase m => Dyn a -> (a -> HtmlT m ()) -> HtmlT m (IO ())
+forDyn :: HtmlBase m => Dyn a -> Callback a -> HtmlT m (IO ())
 forDyn dyn k = do
-  liftIO (readDyn dyn) >>= k
+  liftIO (dyn_read dyn) >>= liftIO . sync . k
   subscribeUpdates dyn k

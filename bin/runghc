@@ -1,5 +1,6 @@
 #!/usr/bin/env sh
-make --silent -f $DIR/env.mk $DIR/../.ghc-env || exit 1;
-source $DIR/../.ghc-env
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
-runghc $(for a in $(cabal-cargs); do echo "--ghc-arg=$a"; done) -O0 "$@"
+args=$(for a in $(cabal-cargs -c $DIR/../massaraksh.cabal); do echo "--ghc-arg=$a"; done | tr '\r\n' ' ')
+
+cached-nix-shell $DIR/../default.nix -A shells.ghc --run "runghc $args $@"

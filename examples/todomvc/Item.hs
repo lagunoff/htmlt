@@ -9,7 +9,7 @@ import Data.Text as T
 import GHC.Generics (Generic)
 import GHCJS.Marshal
 import Language.Javascript.JSaddle
-import Massaraksh
+import Massaraksh.Text
 
 data Config s = Config
   { cfgModel :: Lens' s Model
@@ -43,7 +43,7 @@ data Msg a where
   EditingCommit :: Msg ()
 
 itemWidget :: Config s -> HtmlEmit Msg JSM
-itemWidget Config{cfgDynamic = dynRef@(getDyn -> model), ..} yield = \case
+itemWidget Config{cfgDynamic = dynRef@(model, modify), ..} yield = \case
   Render -> do
     li_ do
       dynClassList
@@ -73,14 +73,14 @@ itemWidget Config{cfgDynamic = dynRef@(getDyn -> model), ..} yield = \case
           27 -> yield EditingCancel -- Escape
           _  -> pure ()
   Completed x ->
-    liftIO $ modifyDynRef dynRef $ cfgModel . moCompleted .~ x
+    liftIO $ sync $ modify $ cfgModel . moCompleted .~ x
   Destroy ->
     pure ()
   Blur ->
     yield EditingCommit
   EditingOn elm -> do
-    title <- liftIO $ (^. cfgModel . moTitle) <$> readDyn model
-    liftIO $ modifyDynRef dynRef $ cfgModel . moEditing .~ Just title
+    title <- liftIO $ (^. cfgModel . moTitle) <$> dyn_read model
+    liftIO $ sync $ modify $ cfgModel . moEditing .~ Just title
     void $ liftJSM $ do
       -- FIXME: currentTarget doesn't work for @dblclick@ it gets
       -- assigned to null, @elm@ points to label inside div.view
@@ -90,10 +90,10 @@ itemWidget Config{cfgDynamic = dynRef@(getDyn -> model), ..} yield = \case
         ("focus" :: Text) $ ([] :: [Int])
       jsg2 ("setTimeout" :: Text) cb (100 :: Int)
   EditInput x ->
-    liftIO $ modifyDynRef dynRef $ cfgModel . moEditing %~ fmap (const x)
+    liftIO $ sync $ modify $ cfgModel . moEditing %~ fmap (const x)
   EditingCancel -> do
-    liftIO $ modifyDynRef dynRef $ cfgModel . moEditing .~ Nothing
-  EditingCommit -> liftIO ((^. cfgModel . moEditing) <$> readDyn model) >>= \case
+    liftIO $ sync $ modify $ cfgModel . moEditing .~ Nothing
+  EditingCommit -> liftIO ((^. cfgModel . moEditing) <$> dyn_read model) >>= \case
     Just "" -> yield Destroy
-    Just x  -> liftIO $ modifyDynRef dynRef $ (cfgModel . moEditing .~ Nothing) . (cfgModel . moTitle .~ x)
+    Just x  -> liftIO $ sync $ modify $ (cfgModel . moEditing .~ Nothing) . (cfgModel . moTitle .~ x)
     Nothing -> pure ()

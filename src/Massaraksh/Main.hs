@@ -1,4 +1,5 @@
 {-# LANGUAGE RecursiveDo #-}
+{-# LANGUAGE NoOverloadedStrings #-}
 {-# LANGUAGE CPP #-}
 module Massaraksh.Main where
 
@@ -34,7 +35,7 @@ attach
   -> JSM (RunningState m x)
 attach rootEl runM render = do
   evalRef <- liftIO $ newIORef \_ -> pure ()
-  subscriber <- liftIO $ newSubscriberRef \e -> readIORef evalRef >>= ($ e)
+  (subscriber, subscriptions) <- liftIO newSubscriber
   frag <- fmap coerce $ jsg "document" # "createDocumentFragment" $ ()
   let
     eval :: forall x. HtmlT m x -> IO x

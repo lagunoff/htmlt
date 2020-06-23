@@ -1,10 +1,8 @@
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE NoOverloadedStrings #-}
 {-# LANGUAGE CPP #-}
 module Massaraksh.Types where
 
 import Control.Applicative
-import Control.Lens hiding ((#))
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
 import Control.Natural hiding ((#))
@@ -16,7 +14,7 @@ import Language.Javascript.JSaddle
 import Massaraksh.DOM
 import Massaraksh.Event
 
-newtype HtmlT m a = HtmlT { runHtmlT' :: ReaderT (HtmlEnv m) m a }
+newtype HtmlT m a = HtmlT (ReaderT (HtmlEnv m) m a)
   deriving stock Functor
   deriving newtype (
     Applicative, Monad, MonadIO, MonadReader (HtmlEnv m), MonadFix
@@ -26,22 +24,19 @@ type HtmlM = HtmlT JSM
 type Html = HtmlM ()
 
 data HtmlEnv m = HtmlEnv
-  { he_element    :: ElementRef
-  , he_subscriber :: SubscriberRef (Exist (HtmlT m)) }
+  { he_element   :: ElementRef
+  , he_subscribe :: Subscriber }
+
+newtype Subscriber = Subscriber
+  { sub_unsubscriber ::  forall a. Event a -> Callback a -> Reactive Canceller
+  }
+
+type Subscriptions = IORef [IORef (IO ())]
 
 data ElementRef = ElementRef
   { er_read     :: IO Element
   , er_fragment :: IO Fragment
   , er_write    :: Element -> IO () }
-
-data Subscriber a = Subscriber
-  { subscriberPrivate :: forall x. Event x -> (x -> IO ()) -> IO (IO ())
-  , subscriberPublic  :: Event a -> IO (IO ()) }
-
-data SubscriberRef a = SubscriberRef
-  { subscriberRefPrivate       :: forall x. Event x -> (x -> IO ()) -> IO (IO ())
-  , subscriberRefPublic        :: Event a -> IO (IO ())
-  , subscriberRefSubscriptions :: IORef [IORef (IO ())] }
 
 type HtmlEmit w m = (w ~> HtmlT m) -> (w ~> HtmlT m)
 
@@ -50,7 +45,7 @@ data Exist (f :: * -> *) = forall x. Exist (f x)
 type HtmlBase m = (MonadJSM m, MonadUnliftIO m, MonadFix m)
 
 runHtmlT :: HtmlEnv m -> HtmlT m x -> m x
-runHtmlT e = flip runReaderT e . runHtmlT'
+runHtmlT e (HtmlT h) = runReaderT h e
 
 fix1 :: (w ~> m -> w ~> m) -> w ~> m
 fix1 f = f (fix1 f)
@@ -63,9 +58,9 @@ compose1 a b wm = a (b wm)
 {-# INLINE compose1 #-}
 
 instance MonadUnliftIO m => MonadUnliftIO (HtmlT m) where
-  askUnliftIO = HtmlT do
+  askUnliftIO = HtmlT $ ReaderT \e -> do
     un <- askUnliftIO
-    pure $ UnliftIO (unliftIO un . runHtmlT')
+    pure $ UnliftIO (unliftIO un . runHtmlT e)
 
 instance MonadTrans HtmlT where
   lift = HtmlT . lift
@@ -76,13 +71,6 @@ instance (Semigroup a, Applicative m) => Semigroup (HtmlT m a) where
 instance (Monoid a, Applicative m) => Monoid (HtmlT m a) where
   mempty = HtmlT $ ReaderT \_ -> pure mempty
 
-instance Contravariant Subscriber where
-  contramap g (Subscriber priv pub) =
-    Subscriber priv (pub . fmap g)
-
-instance Contravariant SubscriberRef where
-  contramap g (SubscriberRef priv pub subs) =
-    SubscriberRef priv (pub . fmap g) subs
 
 #ifndef ghcjs_HOST_OS
 instance MonadJSM m => MonadJSM (HtmlT m) where

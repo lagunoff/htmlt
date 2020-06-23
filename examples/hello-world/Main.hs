@@ -12,12 +12,12 @@ type Model = Int
 
 widget :: HtmlT JSM ()
 widget = do
-  DynRef dyn modify <- liftIO (newDynRef 0)
+  (dyn, modify) <- liftIO (newDyn 0)
   div_ do
     "className" =: "root"
     h1_ do
       "style" ~: headerStyle <$> dyn
-      on_ "mouseenter" do liftIO $ modify (+ 1)
+      on_ "mouseenter" do liftIO $ sync $ modify (+ 1)
       text "Hello, World!"
     el "style" do "type" =: "text/css"; text css
 
