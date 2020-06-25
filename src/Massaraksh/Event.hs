@@ -156,8 +156,18 @@ lensMap stab (d, m) = (Dyn read upd, modify) where
   upd    = fmap (getConst . stab Const) $ dyn_updates d
   modify = \f -> m (over stab f)
 
-holdUniqDynBy :: (a -> a -> Bool) -> Dyn a -> IO (Dyn a)
-holdUniqDynBy f = holdUniqDynBy' \a b -> pure (f a b)
+holdUniqDyn :: Eq a => Dyn a -> Dyn a
+holdUniqDyn = holdUniqDynBy (==)
+
+holdUniqDynBy :: (a -> a -> Bool) -> Dyn a -> Dyn a
+holdUniqDynBy equal (Dyn r (Event s)) = Dyn r (mapMaybeE id u') where
+  u' = Event \x k -> do
+    old <- liftIO r
+    oldRef <- liftIO (newIORef old)
+    s x \new -> do
+      old <- liftIO (readIORef oldRef)
+      liftIO $ writeIORef oldRef new
+      k if old `equal` new then Nothing else Just new
 
 holdUniqDynBy' :: (a -> a -> IO Bool) -> Dyn a -> IO (Dyn a)
 holdUniqDynBy' f (Dyn r u) = do
@@ -188,13 +198,13 @@ traceDynWith show' tag d = d {dyn_updates = e} where
   e = traceEventWith show' tag (dyn_updates d)
 {-# INLINE traceDynWith #-}
 
-withOld :: a -> Event a -> IO (Event (a, a))
-withOld initial (Event s) = do
-  oldRef <- newIORef initial
-  pure $ Event \x k -> s x \a -> do
-    old <- liftIO (readIORef oldRef)
-    liftIO $ writeIORef oldRef a
-    k (old, a)
+withOld :: a -> Event a -> Event (a, a)
+withOld initial (Event s) = Event \x k -> do
+    oldRef <- liftIO (newIORef initial)
+    s x \a -> do
+      old <- liftIO (readIORef oldRef)
+      liftIO $ writeIORef oldRef a
+      k (old, a)
 
 instance Functor Event where
   fmap f (Event s) = Event \sel k -> s sel . (. f) $ k

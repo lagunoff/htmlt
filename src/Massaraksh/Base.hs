@@ -136,6 +136,9 @@ classList xs =
   prop (T.pack "className") $ T.unwords
     $ L.foldl' (\acc (cs, cond) -> bool acc (cs:acc) cond) [] xs
 
+-- TODO: consider alternative to dynClassList
+-- toggleClass :: HtmlBase m => JSString -> Dyn Bool -> HtmlT m ()
+
 blank :: Applicative m => m ()
 blank = pure ()
 {-# INLINE blank #-}
@@ -209,7 +212,7 @@ itraverseHtml l dynRef@(dyn, _) h = do
         oldS & iover l \i x -> if i == idx then f oldA else x
 
   lift $ setup s 0 [] [] (toListOf l s)
-  eUpdates <- liftIO $ withOld s (dyn_updates dyn)
+  let eUpdates = withOld s (dyn_updates dyn)
   htmlSubscribe eUpdates \(old, new) -> do
     refs <- liftIO (readIORef itemRefs)
     liftIO $ unliftIO unliftM $ setup new 0 refs (toListOf l old) (toListOf l new)
