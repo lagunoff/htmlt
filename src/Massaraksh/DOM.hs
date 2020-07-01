@@ -48,7 +48,9 @@ replaceChild :: Element -> Element -> Element -> JSM ()
 replaceChild root new old = do
   void (root # ("replaceChild" :: JSString) $ (new, old))
 #else
-foreign import javascript unsafe "$1.replaceChild($2, $3)" replaceChild :: Element -> Element -> Element -> JSM ()
+foreign import javascript unsafe
+  "$1.replaceChild($2, $3)"
+  replaceChild :: Element -> Element -> Element -> JSM ()
 #endif
 
 #ifndef ghcjs_HOST_OS
@@ -81,6 +83,13 @@ foreign import javascript unsafe
   createTextNode :: JSString -> JSM Element
 #endif
 
+addEventListener :: JSVal -> JSString -> (JSVal -> JSM ()) -> JSM (JSM ())
+addEventListener target name f = do
+  cb <- function \_ _ [event] -> f event
+  target # ("addEventListener" :: JSString) $ (name, cb)
+  pure do
+    target # ("removeEventListener" :: JSString) $ (name, cb)
+    freeFunction cb
 
 dUnit :: Decoder ()
 dUnit = Decoder \_ -> pure (pure ())
@@ -150,10 +159,10 @@ dKeyCode :: Decoder Int
 dKeyCode = parseAt ["keyCode"] decoder
 
 data KeyboardEvent = KeyboardEvent
-  { keys     :: !Keys
-  , key      :: !(Maybe JSString)
-  , keyCode  :: !Int
-  , repeat   :: !Bool
+  { keys    :: Keys
+  , key     :: Maybe JSString
+  , keyCode :: Int
+  , repeat  :: Bool
   } deriving (Show, Eq)
 
 dKeyboard :: Decoder KeyboardEvent

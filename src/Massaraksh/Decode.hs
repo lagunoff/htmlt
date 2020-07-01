@@ -110,7 +110,7 @@ instance HasDecoder JSArray where
 instance HasDecoder Object where
   decoder' = \case
     SomeJVal v@JObject{} -> fmap Right (js2Hask v)
-    SomeJVal _          -> pure (Left "Expected an object")
+    SomeJVal _           -> pure (Left "Expected an object")
 
 instance HasDecoder a => HasDecoder (Maybe a) where
   decoder' = \case

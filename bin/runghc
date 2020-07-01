@@ -1,6 +1,8 @@
 #!/usr/bin/env sh
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
-args=$(for a in $(cabal-cargs -c $DIR/../massaraksh.cabal); do echo "--ghc-arg=$a"; done | tr '\r\n' ' ')
+DIR="$(dirname "${BASH_SOURCE[0]}")"
+FORWARD_ARGS=$@
+source $DIR/config.sh
+RUNGHC_ARGS=$(for a in $CABAL_ARGS; do echo "--ghc-arg=$a"; done | tr '\r\n' ' ')
 
-cached-nix-shell $DIR/../default.nix -A shells.ghc --run "runghc $args $@"
+cached-nix-shell $DIR/../default.nix -A shells.ghc --run "runghc $RUNGHC_ARGS $FORWARD_ARGS"

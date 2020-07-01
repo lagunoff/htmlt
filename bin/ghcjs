@@ -1,4 +1,6 @@
 #!/usr/bin/env sh
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
-cached-nix-shell $DIR/../default.nix -A shells.ghcjs --run "ghcjs $(cabal-cargs | sed 's/-package=jsaddle-warp//g' || exit 1) $@"
+DIR="$(dirname "${BASH_SOURCE[0]}")"
+source $DIR/config.sh
+FORWARD_ARGS=$@
+cached-nix-shell $DIR/../default.nix -A shells.ghc --run "ghcjs $CABAL_ARGS $OUT_ARGS $FORWARD_ARGS"

@@ -18,7 +18,6 @@ import Massaraksh.Decode
 import Massaraksh.Event
 import Massaraksh.Internal
 import Massaraksh.Types
-import Debug.Trace
 
 el :: HtmlBase m => JSString -> HtmlT m x -> HtmlT m x
 el tag child = do
@@ -40,7 +39,7 @@ text txt = do
   textNode <- liftJSM (createTextNode txt)
   withNewChild textNode <* flushFragment
 
-dynText :: HtmlBase m => Dyn JSString -> HtmlT m ()
+dynText :: HtmlBase m => Dynamic JSString -> HtmlT m ()
 dynText d = do
   txt <- liftIO (dyn_read d)
   un <- askUnliftIO
@@ -62,7 +61,7 @@ infixr 3 =:
 
 dynProp
   :: (HtmlBase m, ToJSVal v, FromJSVal v, Eq v)
-  => JSString -> Dyn v -> HtmlT m ()
+  => JSString -> Dynamic v -> HtmlT m ()
 dynProp key dyn = do
   txt <- liftIO (dyn_read dyn)
   rootEl <- askElement
@@ -76,7 +75,7 @@ dynProp key dyn = do
 
 (~:)
   :: (HtmlBase m, ToJSVal v, FromJSVal v, Eq v)
-  => JSString -> Dyn v -> HtmlT m ()
+  => JSString -> Dynamic v -> HtmlT m ()
 (~:) = dynProp
 infixr 3 ~:
 
@@ -85,7 +84,7 @@ attr key val = do
   rootEl <- askElement
   void $ liftJSM $ rootEl # "setAttribute" $ (key, val)
 
-dynAttr :: HtmlBase m => JSString -> Dyn JSString -> HtmlT m ()
+dynAttr :: HtmlBase m => JSString -> Dynamic JSString -> HtmlT m ()
 dynAttr key dyn = do
   txt <- liftIO (dyn_read dyn)
   rootEl <- askElement
@@ -107,10 +106,11 @@ onEvent :: HtmlBase m => Element -> JSString -> Decoder (HtmlT m x) -> HtmlT m (
 onEvent elm name decoder = do
   un <- askUnliftIO
   let
-    event = Event \s k -> do
-      cb <- liftIO $ unliftIO un $ liftJSM $ function \_ _ [event] -> do
+    event = Event \s k -> liftIO $ unliftIO un $ liftJSM do
+      cb <- function $ fun \_ _ [event] -> do
         runDecoder decoder event >>= either (\_ -> pure ()) (liftIO . sync . k)
-      liftIO $ unliftIO un $ liftJSM (elm # "addEventListener" $ (name, cb))
+      -- f <- eval ("function(t,n,c) {t.addEventListener(n, function(e){ e.preventDefault(); c(e):)}"::JSString)
+      (elm # "addEventListener" $ (name, cb))
       pure $ void $ liftIO $ unliftIO un $ liftJSM do
         elm # "removeEventListener" $ (name, cb)
         freeFunction cb
@@ -119,7 +119,7 @@ onEvent elm name decoder = do
 onEvent_ :: HtmlBase m => Element -> JSString -> HtmlT m x -> HtmlT m ()
 onEvent_ elm name w = onEvent elm name (pure w)
 
-dynClassList :: HtmlBase m => [(JSString, Dyn Bool)] -> HtmlT m ()
+dynClassList :: HtmlBase m => [(JSString, Dynamic Bool)] -> HtmlT m ()
 dynClassList xs = do
   rootEl <- askElement
   un <- askUnliftIO
@@ -137,7 +137,7 @@ classList xs =
     $ L.foldl' (\acc (cs, cond) -> bool acc (cs:acc) cond) [] xs
 
 -- TODO: consider alternative to dynClassList
--- toggleClass :: HtmlBase m => JSString -> Dyn Bool -> HtmlT m ()
+-- toggleClass :: HtmlBase m => JSString -> Dynamic Bool -> HtmlT m ()
 
 blank :: Applicative m => m ()
 blank = pure ()
@@ -152,7 +152,7 @@ htmlLocal f (HtmlT (ReaderT h)) = HtmlT $ ReaderT (h . f)
 
 data ChildHtmlRef s m = ChildHtmlRef
   { childHtmlRef_htmlEnv :: HtmlEnv m
-  , childHtmlRef_dynRef  :: DynRef s
+  , childHtmlRef_dynRef  :: DynamicRef s
   , childHtmlRef_subscriptions :: IORef [IORef (IO ())]
   , childHtmlRef_modify  :: Modifier s
   }
@@ -161,8 +161,8 @@ itraverseHtml
   :: forall s a m
    . HtmlBase m
   => IndexedTraversal' Int s a
-  -> DynRef s
-  -> (Int -> DynRef a -> HtmlT m ())
+  -> DynamicRef s
+  -> (Int -> DynamicRef a -> HtmlT m ())
   -> HtmlT m ()
 itraverseHtml l dynRef@(dyn, _) h = do
   unliftH <- askUnliftIO
@@ -182,7 +182,7 @@ itraverseHtml l dynRef@(dyn, _) h = do
         dynRef' <- liftIO (newDyn x)
         let
           model   = (fst dynRef', mkModifier idx (fst dynRef'))
-          newEnv  = HtmlEnv (he_element hte) subscriber
+          newEnv  = HtmlEnv (he_element hte) subscriber (error "post hook not implemented")
           itemRef = ChildHtmlRef newEnv model subscriptions (snd dynRef')
         runHtmlT newEnv $ h idx model
         liftIO (modifyIORef itemRefs (<> [itemRef]))
@@ -205,7 +205,7 @@ itraverseHtml l dynRef@(dyn, _) h = do
       (_, _, _)      -> do
         error "dynList: Incoherent internal state"
 
-    mkModifier :: Int -> Dyn a -> (a -> a) -> Reactive ()
+    mkModifier :: Int -> Dynamic a -> (a -> a) -> Reactive ()
     mkModifier idx dyn f = do
       oldA <- liftIO $ dyn_read dyn
       snd dynRef \oldS ->
@@ -218,7 +218,7 @@ itraverseHtml l dynRef@(dyn, _) h = do
     liftIO $ unliftIO unliftM $ setup new 0 refs (toListOf l old) (toListOf l new)
   pure ()
 
-dynHtml :: HtmlBase m => Dyn (HtmlT m ()) -> HtmlT m ()
+dynHtml :: HtmlBase m => Dynamic (HtmlT m ()) -> HtmlT m ()
 dynHtml dyn = do
   un <- lift askUnliftIO
   env <- ask
@@ -231,9 +231,11 @@ dynHtml dyn = do
         for_ subs (readIORef >=> id)
         writeIORef s []
       (subscriber, subscriptions) <- liftIO newSubscriber
-      let newEnv = env {he_subscribe = subscriber}
+      postHooks <- liftIO $ newIORef []
+      let newEnv = env {he_subscribe=subscriber, he_post_build=postHooks}
       liftIO $ writeIORef childRef (Just (newEnv, subscriptions))
-      void (runHtmlT newEnv (html <* removeAllChilds <* flushFragment))
+      runHtmlT newEnv (html <* removeAllChilds <* flushFragment)
+      liftIO (readIORef postHooks) >>= mapM_ (runHtmlT newEnv)
 
     -- FIXME: that limits usage of 'dynHtml' to the cases when it is
     -- the only children of some HTML element because all sibling will

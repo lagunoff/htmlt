@@ -1,7 +1,6 @@
 #!/usr/bin/env sh
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
-CABAL_ARGS=$(cabal-cargs -c $DIR/../massaraksh.cabal)
+DIR="$(dirname "${BASH_SOURCE[0]}")"
+source $DIR/config.sh
 FORWARD_ARGS=$@
-
-cached-nix-shell $DIR/../default.nix -A shells.ghc --run "ghc $CABAL_ARGS $FORWARD_ARGS"
+cached-nix-shell $DIR/../default.nix -A shells.ghc --run "ghc $CABAL_ARGS $OUT_ARGS $FORWARD_ARGS"

@@ -1,3 +1,4 @@
+
 module Massaraksh.DOM.Text where
 
 import Data.Text

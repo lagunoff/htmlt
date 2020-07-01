@@ -87,13 +87,13 @@ newSubscriber = do
 
 subscribeUpdates
   :: HtmlBase m
-  => Dyn s
+  => Dynamic s
   -> Callback s
   -> HtmlT m (IO ())
 subscribeUpdates d f = do
   dyn_updates d `htmlSubscribe` f
 
-forDyn :: HtmlBase m => Dyn a -> Callback a -> HtmlT m (IO ())
+forDyn :: HtmlBase m => Dynamic a -> Callback a -> HtmlT m (IO ())
 forDyn dyn k = do
   liftIO (dyn_read dyn) >>= liftIO . sync . k
   subscribeUpdates dyn k

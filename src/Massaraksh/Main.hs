@@ -37,14 +37,17 @@ attach rootEl runM render = do
   evalRef <- liftIO $ newIORef \_ -> pure ()
   (subscriber, subscriptions) <- liftIO newSubscriber
   frag <- fmap coerce $ jsg "document" # "createDocumentFragment" $ ()
+  postHooks <- liftIO $ newIORef []
   let
     eval :: forall x. HtmlT m x -> IO x
     eval  = runM . runHtmlT env
+    {-# INLINE eval #-}
     elRef = ElementRef (pure rootEl) (pure frag) \_ -> pure ()
-    env   = HtmlEnv elRef subscriber
+    env   = HtmlEnv elRef subscriber postHooks
   liftIO $ writeIORef evalRef \(Exist h) -> void (eval h)
   res <- liftIO $ eval render
   rootEl # "appendChild" $ frag
+  liftIO (readIORef postHooks >>= mapM_ eval)
   pure (RunningState res env eval)
 
 attachToBody

@@ -24,8 +24,9 @@ type HtmlM = HtmlT JSM
 type Html = HtmlM ()
 
 data HtmlEnv m = HtmlEnv
-  { he_element   :: ElementRef
-  , he_subscribe :: Subscriber }
+  { he_element    :: ElementRef
+  , he_subscribe  :: Subscriber
+  , he_post_build :: IORef [HtmlT m ()] }
 
 newtype Subscriber = Subscriber
   { sub_unsubscriber ::  forall a. Event a -> Callback a -> Reactive Canceller

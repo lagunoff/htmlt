@@ -25,7 +25,7 @@ text :: HtmlBase m => Text -> HtmlT m ()
 text = H.text . JSS.textToJSString
 {-# INLINE text #-}
 
-dynText :: HtmlBase m => Dyn Text -> HtmlT m ()
+dynText :: HtmlBase m => Dynamic Text -> HtmlT m ()
 dynText = H.dynText . fmap JSS.textToJSString
 {-# INLINE dynText #-}
 
@@ -40,12 +40,12 @@ infixr 3 =:
 
 dynProp
   :: (HtmlBase m, ToJSVal v, FromJSVal v, Eq v)
-  => Text -> Dyn v -> HtmlT m ()
+  => Text -> Dynamic v -> HtmlT m ()
 dynProp key = H.dynProp (JSS.textToJSString key)
 {-# INLINE dynProp #-}
 
 (~:)
-  :: (HtmlBase m, ToJSVal v, FromJSVal v, Eq v) => Text -> Dyn v -> HtmlT m ()
+  :: (HtmlBase m, ToJSVal v, FromJSVal v, Eq v) => Text -> Dynamic v -> HtmlT m ()
 (~:) = dynProp
 {-# INLINE (~:) #-}
 infixr 3 ~:
@@ -54,7 +54,7 @@ attr :: HtmlBase m => Text -> Text -> HtmlT m ()
 attr key val = H.attr (JSS.textToJSString key) (JSS.textToJSString val)
 {-# INLINE attr #-}
 
-dynAttr :: HtmlBase m => Text -> Dyn Text -> HtmlT m ()
+dynAttr :: HtmlBase m => Text -> Dynamic Text -> HtmlT m ()
 dynAttr key dyn = H.dynAttr (JSS.textToJSString key)
   (fmap JSS.textToJSString dyn)
 {-# INLINE dynAttr #-}
@@ -75,7 +75,7 @@ onEvent_ :: HtmlBase m => Element -> Text -> HtmlT m x -> HtmlT m ()
 onEvent_ elm name = H.onEvent_ elm (JSS.textToJSString name)
 {-# INLINE onEvent_ #-}
 
-dynClassList :: HtmlBase m => [(Text, Dyn Bool)] -> HtmlT m ()
+dynClassList :: HtmlBase m => [(Text, Dynamic Bool)] -> HtmlT m ()
 dynClassList = H.dynClassList . fmap \(k, v) -> (JSS.textToJSString k, v)
 {-# INLINE dynClassList #-}
 
