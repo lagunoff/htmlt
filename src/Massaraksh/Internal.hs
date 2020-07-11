@@ -3,73 +3,68 @@ module Massaraksh.Internal where
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
 import Data.IORef
+import Data.Foldable
+import Data.Bool
 import Data.List
-import Data.Coerce
 import Language.Javascript.JSaddle
 import Massaraksh.Event
 import Massaraksh.Types
 import Massaraksh.DOM
 
-newElementRef :: HtmlBase m => Element -> HtmlT m ElementRef
+newElementRef :: Element -> Html ElementRef
 newElementRef initial = do
+  jsCtx <- asks he_js_context
   rootEl <- askElement
-  rootFrag <- askFragment
-  frag <- liftJSM createDocumentFragment
-  elementRef <- liftIO (newIORef initial)
-  un <- lift askUnliftIO
-  liftJSM (appendChild rootFrag initial)
+  elmRef <- liftIO (newIORef initial)
+  liftJSM (appendChild rootEl initial)
   let
-    read = readIORef elementRef
-    readFrag = pure frag
-    replace newEl = do
-      oldEl <- readIORef elementRef
-      void $ unliftIO un $ liftJSM (replaceChild rootEl newEl oldEl)
-      writeIORef elementRef newEl
-  pure (ElementRef read readFrag replace)
+    read = readIORef elmRef
+    write newEl = do
+      oldEl <- readIORef elmRef
+      runJSM (replaceChild rootEl newEl oldEl) jsCtx
+      writeIORef elmRef newEl
+  pure (ElementRef read write)
 
-askElement :: HtmlBase m => HtmlT m Element
+newElementRef' :: ElementRef -> JSM (ElementRef, IO ())
+newElementRef' elRef = do
+  flushedRef <- liftIO (newIORef False)
+  frag <- liftJSM createDocumentFragment
+  un <- askUnliftIO
+  let
+    read = readIORef flushedRef
+      >>= bool (pure frag) (er_read elRef)
+    write newEl = readIORef flushedRef
+      >>= bool (pure ()) (er_write elRef newEl)
+    flush = do
+      writeIORef flushedRef True
+      rootEl <- er_read elRef
+      void $ unliftIO un $ liftJSM $ appendChild rootEl frag
+  pure (ElementRef read write, flush)
+
+askElement :: Html Element
 askElement =
   liftIO =<< asks (er_read . he_element)
 {-# INLINE askElement #-}
 
-askFragment :: HtmlBase m => HtmlT m Fragment
-askFragment =
-  liftIO =<< asks (er_fragment . he_element)
-{-# INLINE askFragment #-}
+newtype RunJSM = RunJSM {unRunJSM :: forall x. JSM x -> IO x}
 
-writeElement :: HtmlBase m => Element -> HtmlT m ()
+askRunJSM :: Html RunJSM
+askRunJSM =  asks (\e -> RunJSM (\j -> runJSM j (he_js_context e)))
+{-# INLINE askRunJSM #-}
+
+writeElement :: Element -> Html ()
 writeElement el = do
   elRef <- asks he_element
   liftIO $ er_write elRef el
 {-# INLINE writeElement #-}
 
-withNewChild :: HtmlBase m => Element -> HtmlT m ()
-withNewChild elm = do
-  void (newElementRef (coerce elm))
-{-# INLINE withNewChild #-}
-
-flushFragment :: HtmlBase m => HtmlT m ()
-flushFragment = do
-  rootEl <- askElement
-  rootFrag <- askFragment
-  liftJSM $ appendChild rootEl rootFrag
-{-# INLINE flushFragment #-}
-
-localElement
-  :: HtmlBase m
-  => Element
-  -> HtmlT m a
-  -> HtmlT m a
+localElement :: Element -> Html a -> Html a
 localElement elm child = do
   elRef <- newElementRef elm
   local (\env -> env { he_element = elRef }) child
 {-# INLINE localElement #-}
 
-htmlSubscribe
-  :: HtmlBase m
-  => Event a
-  -> (a -> Reactive ())
-  -> HtmlT m (IO ())
+htmlSubscribe :: Event a -> (a -> Reactive ()) -> Html (IO ())
 htmlSubscribe e k = do
   subscriber <- asks (sub_unsubscriber . he_subscribe)
   liftIO $ sync (subscriber e k)
@@ -85,15 +80,11 @@ newSubscriber = do
       pure $ liftIO $ modifyIORef subs (delete unRef)
   pure (subscriber, subs)
 
-subscribeUpdates
-  :: HtmlBase m
-  => Dynamic s
-  -> Callback s
-  -> HtmlT m (IO ())
-subscribeUpdates d f = do
-  dyn_updates d `htmlSubscribe` f
+subscribeUpdates :: Dynamic s -> Callback s -> Html (IO ())
+subscribeUpdates d f = dyn_updates d `htmlSubscribe` f
+{-# INLINE subscribeUpdates #-}
 
-forDyn :: HtmlBase m => Dynamic a -> Callback a -> HtmlT m (IO ())
+forDyn :: Dynamic a -> Callback a -> Html (IO ())
 forDyn dyn k = do
   liftIO (dyn_read dyn) >>= liftIO . sync . k
   subscribeUpdates dyn k

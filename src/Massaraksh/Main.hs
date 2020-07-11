@@ -20,78 +20,35 @@ import System.Environment
 import Control.Exception
 #endif
 
-data RunningState m a = RunningState {
+data RunningState a = RunningState {
   rsResult :: a,
-  rsEnv    :: HtmlEnv m,
-  rsEval   :: HtmlT m ~> IO
+  rsEnv    :: HtmlEnv
 }
 
 attach
-  :: forall m x
-   . Monad m
-  => Element     -- ^ Root DOM node
-  -> (m ~> IO)   -- ^ Evaluate application effects in @m@
-  -> HtmlT m x -- ^ Render action
-  -> JSM (RunningState m x)
-attach rootEl runM render = do
+  :: Element -- ^ Root DOM node
+  -> Html x  -- ^ Render action
+  -> JSM (RunningState x)
+attach rootEl render = do
+  js <- askJSM
   evalRef <- liftIO $ newIORef \_ -> pure ()
   (subscriber, subscriptions) <- liftIO newSubscriber
-  frag <- fmap coerce $ jsg "document" # "createDocumentFragment" $ ()
-  postHooks <- liftIO $ newIORef []
-  let
-    eval :: forall x. HtmlT m x -> IO x
-    eval  = runM . runHtmlT env
-    {-# INLINE eval #-}
-    elRef = ElementRef (pure rootEl) (pure frag) \_ -> pure ()
-    env   = HtmlEnv elRef subscriber postHooks
-  liftIO $ writeIORef evalRef \(Exist h) -> void (eval h)
-  res <- liftIO $ eval render
-  rootEl # "appendChild" $ frag
-  liftIO (readIORef postHooks >>= mapM_ eval)
-  pure (RunningState res env eval)
+  postHooks <- liftIO (newIORef [])
+  let rootRef = ElementRef (pure rootEl) (\_ -> pure ())
+  (elRef, flush) <- newElementRef' rootRef
+  let env   = HtmlEnv elRef subscriber postHooks js
+  liftIO $ writeIORef evalRef \(Exist h) -> void (runHtml env h)
+  res <- liftIO $ runHtml env render
+  liftIO flush
+  liftIO (readIORef postHooks >>= mapM_ (runHtml env))
+  pure (RunningState res env)
 
 attachToBody
-  :: Monad m
-  => (m ~> IO)   -- ^ Evaluate application effects in @m@
-  -> HtmlT m x -- ^ Render action
-  -> JSM (RunningState m x)
-attachToBody runM render = do
+  :: Html x -- ^ Render action
+  -> JSM (RunningState x)
+attachToBody render = do
   rootEl <- fmap coerce $ jsg "document" ! "body"
-  attach rootEl runM render
-
-attachSimple
-  :: forall x
-   . Element       -- ^ Root DOM node
-  -> HtmlT JSM x -- ^ Render action
-  -> JSM (RunningState JSM x)
-attachSimple rootEl render = do
-  un <- askUnliftIO
-  attach rootEl (unliftIO un) render
-
-attachToBodySimple
-  :: HtmlT JSM x -- ^ Render action
-  -> JSM (RunningState JSM x)
-attachToBodySimple render = do
-  un <- askUnliftIO
-  attachToBody (unliftIO un) render
-
-attachIO
-  :: forall m x
-   . Monad m
-  => Element     -- ^ Root DOM node
-  -> (m ~> IO)   -- ^ Evaluate application effects in @m@
-  -> HtmlT m x -- ^ Render action
-  -> IO ()
-attachIO rootEl runM render =
-  withJSM $ attach rootEl runM render
-
-attachToBodyIO
-  :: Monad m
-  => (m ~> IO)   -- ^ Evaluate application effects in @m@
-  -> HtmlT m x -- ^ Render action
-  -> IO ()
-attachToBodyIO runM render =
-  withJSM $ attachToBody runM render
+  attach rootEl render
 
 withJSM :: JSM x -> IO ()
 #ifdef ghcjs_HOST_OS

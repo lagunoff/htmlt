@@ -6,27 +6,22 @@ import Control.Applicative
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
 import Control.Natural hiding ((#))
-import Data.Coerce
 import Data.IORef
-import Data.JSString as T
+import Data.JSString as JSS
 import Data.String
 import Language.Javascript.JSaddle
 import Massaraksh.DOM
 import Massaraksh.Event
 
-newtype HtmlT m a = HtmlT (ReaderT (HtmlEnv m) m a)
-  deriving stock Functor
-  deriving newtype (
-    Applicative, Monad, MonadIO, MonadReader (HtmlEnv m), MonadFix
-  )
+newtype Html a = Html {unHtml :: ReaderT HtmlEnv IO a}
+  deriving newtype
+    ( Functor, Applicative, Monad, MonadIO, MonadReader HtmlEnv, MonadFix )
 
-type HtmlM = HtmlT JSM
-type Html = HtmlM ()
-
-data HtmlEnv m = HtmlEnv
+data HtmlEnv = HtmlEnv
   { he_element    :: ElementRef
   , he_subscribe  :: Subscriber
-  , he_post_build :: IORef [HtmlT m ()] }
+  , he_post_build :: IORef [Html ()]
+  , he_js_context :: JSContextRef }
 
 newtype Subscriber = Subscriber
   { sub_unsubscriber ::  forall a. Event a -> Callback a -> Reactive Canceller
@@ -35,18 +30,14 @@ newtype Subscriber = Subscriber
 type Subscriptions = IORef [IORef (IO ())]
 
 data ElementRef = ElementRef
-  { er_read     :: IO Element
-  , er_fragment :: IO Fragment
-  , er_write    :: Element -> IO () }
-
-type HtmlEmit w m = (w ~> HtmlT m) -> (w ~> HtmlT m)
+  { er_read  :: IO Element
+  , er_write :: Element -> IO () }
 
 data Exist (f :: * -> *) = forall x. Exist (f x)
 
-type HtmlBase m = (MonadJSM m, MonadUnliftIO m, MonadFix m)
-
-runHtmlT :: HtmlEnv m -> HtmlT m x -> m x
-runHtmlT e (HtmlT h) = runReaderT h e
+runHtml :: HtmlEnv -> Html x -> IO x
+runHtml e = flip runReaderT e . unHtml
+{-# INLINE runHtml #-}
 
 fix1 :: (w ~> m -> w ~> m) -> w ~> m
 fix1 f = f (fix1 f)
@@ -58,56 +49,20 @@ compose1
 compose1 a b wm = a (b wm)
 {-# INLINE compose1 #-}
 
-instance MonadUnliftIO m => MonadUnliftIO (HtmlT m) where
-  askUnliftIO = HtmlT $ ReaderT \e -> do
-    un <- askUnliftIO
-    pure $ UnliftIO (unliftIO un . runHtmlT e)
-
-instance MonadTrans HtmlT where
-  lift = HtmlT . lift
-
-instance (Semigroup a, Applicative m) => Semigroup (HtmlT m a) where
+instance Semigroup a => Semigroup (Html a) where
   (<>) = liftA2 (<>)
 
-instance (Monoid a, Applicative m) => Monoid (HtmlT m a) where
-  mempty = HtmlT $ ReaderT \_ -> pure mempty
-
+instance Monoid a => Monoid (Html a) where
+  mempty = Html $ ReaderT \_ -> pure mempty
 
 #ifndef ghcjs_HOST_OS
-instance MonadJSM m => MonadJSM (HtmlT m) where
-  liftJSM' = lift . liftJSM'
+instance MonadJSM Html where
+  liftJSM' jsm = Html $ ReaderT \HtmlEnv{..} -> runReaderT (unJSM jsm) he_js_context
 #endif
 
-instance (x ~ (), HtmlBase m) => IsString (HtmlT m x) where
-  fromString = text . T.pack
-    where
-      -- FIXME: Duplicated code from other modules
-      text :: HtmlBase m => JSString -> HtmlT m ()
-      text txt = do
-        textNode <- liftJSM $ jsg "document" # "createTextNode" $ [txt]
-        void $ newElementRef (coerce textNode)
-
-      newElementRef :: HtmlBase m => Element -> HtmlT m ElementRef
-      newElementRef initial = do
-        rootEl <- askElement
-        rootFrag <- askFragment
-        frag <- fmap coerce $ liftJSM $ jsg "document" # "createDocumentFragment" $ ()
-        elementRef <- liftIO (newIORef initial)
-        un <- lift askUnliftIO
-        liftJSM $ rootFrag # "appendChild" $ initial
-        let
-          read = readIORef elementRef
-          readFrag = pure frag
-          replace newEl = do
-            oldEl <- readIORef elementRef
-            void $ unliftIO un $ liftJSM (rootEl # "replaceChild" $ (newEl, oldEl))
-            writeIORef elementRef newEl
-        pure (ElementRef read readFrag replace)
-
-      askElement :: HtmlBase m => HtmlT m Element
-      askElement =
-        liftIO =<< asks (er_read . he_element)
-
-      askFragment :: HtmlBase m => HtmlT m Fragment
-      askFragment =
-        liftIO =<< asks (er_fragment . he_element)
+instance (x ~ ()) => IsString (Html x) where
+  fromString = text . JSS.pack where
+    text txt = do
+      elm <- liftIO =<< asks (er_read . he_element)
+      textNode <- liftJSM (createTextNode txt)
+      liftJSM (appendChild elm textNode)
