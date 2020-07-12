@@ -2,6 +2,8 @@ module Massaraksh.Internal where
 
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
+import Control.Monad.Catch
+import qualified Control.Exception as E
 import Data.IORef
 import Data.Foldable
 import Data.Bool
@@ -46,18 +48,6 @@ askElement =
   liftIO =<< asks (er_read . he_element)
 {-# INLINE askElement #-}
 
-newtype RunJSM = RunJSM {unRunJSM :: forall x. JSM x -> IO x}
-
-askRunJSM :: Html RunJSM
-askRunJSM =  asks (\e -> RunJSM (\j -> runJSM j (he_js_context e)))
-{-# INLINE askRunJSM #-}
-
-writeElement :: Element -> Html ()
-writeElement el = do
-  elRef <- asks he_element
-  liftIO $ er_write elRef el
-{-# INLINE writeElement #-}
-
 localElement :: Element -> Html a -> Html a
 localElement elm child = do
   elRef <- newElementRef elm
@@ -66,8 +56,11 @@ localElement elm child = do
 
 htmlSubscribe :: Event a -> (a -> Reactive ()) -> Html (IO ())
 htmlSubscribe e k = do
-  subscriber <- asks (sub_unsubscriber . he_subscribe)
-  liftIO $ sync (subscriber e k)
+  s <- asks (unSubscriber . he_subscribe)
+  h <- asks he_catch_interactive
+  let k' x = k x `catchSync` (liftIO . h)
+  liftIO $ sync (s e k')
+{-# INLINE htmlSubscribe #-}
 
 newSubscriber :: IO (Subscriber, Subscriptions)
 newSubscriber = do
@@ -88,3 +81,9 @@ forDyn :: Dynamic a -> Callback a -> Html (IO ())
 forDyn dyn k = do
   liftIO (dyn_read dyn) >>= liftIO . sync . k
   subscribeUpdates dyn k
+
+catchSync :: (MonadCatch m, MonadThrow m) => m a -> (SomeException -> m a) -> m a
+catchSync io h = io `catch` \e ->
+  case E.fromException e of
+    Just (E.SomeAsyncException _) -> throwM e
+    Nothing                       -> h e

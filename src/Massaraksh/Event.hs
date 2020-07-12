@@ -4,6 +4,7 @@ module Massaraksh.Event where
 
 import Control.Applicative
 import Control.Monad.State
+import Control.Monad.Catch
 import Control.Lens (Lens', over)
 import Data.Foldable
 import Data.IORef
@@ -57,8 +58,9 @@ newActId :: IO ActId
 newActId = atomicModifyIORef actIdSupply \x -> (succ x, succ x)
 
 newtype Reactive a = Reactive (StateT ReactiveState IO a)
-  deriving stock Functor
-  deriving newtype (Applicative, Monad, MonadIO, MonadFix)
+  deriving newtype
+    ( Functor, Applicative, Monad, MonadIO, MonadFix, MonadCatch, MonadThrow
+    , MonadMask )
 
 instance Semigroup x => Semigroup (Reactive x) where
   (<>) = liftA2 (<>)

@@ -200,7 +200,9 @@ itraverseHtml l dynRef@(dyn, _) h = do
         dynRef' <- liftIO (newDyn x)
         let
           model   = (fst dynRef', mkModifier idx (fst dynRef'))
-          newEnv  = HtmlEnv (he_element hte) subscriber (error "post hook not implemented") (he_js_context hte)
+          newEnv  = hte
+            { he_subscribe  = subscriber
+            , he_post_build = error "post hook not implemented" }
           itemRef = ChildHtmlRef newEnv model subscriptions (snd dynRef')
         runHtml newEnv $ h idx model
         liftIO (modifyIORef itemRefs (<> [itemRef]))

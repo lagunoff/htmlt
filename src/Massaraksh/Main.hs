@@ -5,6 +5,7 @@ module Massaraksh.Main where
 
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
+import Control.Exception
 import Control.Natural hiding ((#))
 import Data.IORef
 import Data.Coerce
@@ -17,7 +18,6 @@ import Massaraksh.DOM
 import Control.Applicative ((<|>))
 import qualified Language.Javascript.JSaddle.Warp as Warp
 import System.Environment
-import Control.Exception
 #endif
 
 data RunningState a = RunningState {
@@ -36,8 +36,8 @@ attach rootEl render = do
   postHooks <- liftIO (newIORef [])
   let rootRef = ElementRef (pure rootEl) (\_ -> pure ())
   (elRef, flush) <- newElementRef' rootRef
-  let env   = HtmlEnv elRef subscriber postHooks js
-  liftIO $ writeIORef evalRef \(Exist h) -> void (runHtml env h)
+  let env = HtmlEnv elRef subscriber postHooks js throwIO
+  Liftio $ writeIORef evalRef \(Exist h) -> void (runHtml env h)
   res <- liftIO $ runHtml env render
   liftIO flush
   liftIO (readIORef postHooks >>= mapM_ (runHtml env))

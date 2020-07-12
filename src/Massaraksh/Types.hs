@@ -3,7 +3,7 @@
 module Massaraksh.Types where
 
 import Control.Applicative
-import Control.Monad.IO.Unlift
+import Control.Monad.Catch
 import Control.Monad.Reader
 import Control.Natural hiding ((#))
 import Data.IORef
@@ -15,17 +15,18 @@ import Massaraksh.Event
 
 newtype Html a = Html {unHtml :: ReaderT HtmlEnv IO a}
   deriving newtype
-    ( Functor, Applicative, Monad, MonadIO, MonadReader HtmlEnv, MonadFix )
+    ( Functor, Applicative, Monad, MonadIO, MonadReader HtmlEnv, MonadFix
+    , MonadCatch, MonadThrow, MonadMask )
 
 data HtmlEnv = HtmlEnv
-  { he_element    :: ElementRef
-  , he_subscribe  :: Subscriber
-  , he_post_build :: IORef [Html ()]
-  , he_js_context :: JSContextRef }
+  { he_element           :: ElementRef
+  , he_subscribe         :: Subscriber
+  , he_post_build        :: IORef [Html ()]
+  , he_js_context        :: JSContextRef
+  , he_catch_interactive :: SomeException -> IO () }
 
 newtype Subscriber = Subscriber
-  { sub_unsubscriber ::  forall a. Event a -> Callback a -> Reactive Canceller
-  }
+  {unSubscriber :: forall a. Event a -> Callback a -> Reactive Canceller}
 
 type Subscriptions = IORef [IORef (IO ())]
 
