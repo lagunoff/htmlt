@@ -1,52 +1,57 @@
+{-# LANGUAGE TupleSections #-}
 module Massaraksh.Internal where
 
+import Control.Monad.Catch
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
-import Control.Monad.Catch
-import qualified Control.Exception as E
-import Data.IORef
-import Data.Foldable
 import Data.Bool
+import Data.Foldable
+import Data.IORef
 import Data.List
 import Language.Javascript.JSaddle
+import Massaraksh.DOM
 import Massaraksh.Event
 import Massaraksh.Types
-import Massaraksh.DOM
+import qualified Control.Exception as E
+import qualified Data.Sequence as Seq
 
 newElementRef :: Element -> Html ElementRef
-newElementRef initial = do
+newElementRef elm = do
   jsCtx <- asks he_js_context
-  rootEl <- askElement
-  elmRef <- liftIO (newIORef initial)
-  liftJSM (appendChild rootEl initial)
+  mutateRoot (flip appendChild elm)
   let
-    read = readIORef elmRef
-    write newEl = do
-      oldEl <- readIORef elmRef
-      runJSM (replaceChild rootEl newEl oldEl) jsCtx
-      writeIORef elmRef newEl
-  pure (ElementRef read write)
+    read = pure elm
+    mutate m = runJSM (m elm) jsCtx
+  pure (ElementRef read mutate)
 
 newElementRef' :: ElementRef -> JSM (ElementRef, IO ())
-newElementRef' elRef = do
+newElementRef' ElementRef{..} = do
   flushedRef <- liftIO (newIORef False)
-  frag <- liftJSM createDocumentFragment
+  queueRef <- liftIO (newIORef Seq.empty)
   un <- askUnliftIO
   let
-    read = readIORef flushedRef
-      >>= bool (pure frag) (er_read elRef)
-    write newEl = readIORef flushedRef
-      >>= bool (pure ()) (er_write elRef newEl)
+    mutate m = readIORef flushedRef
+      >>= bool (modifyIORef queueRef (Seq.>< Seq.singleton m))
+        (er_queue_mutation m)
     flush = do
       writeIORef flushedRef True
-      rootEl <- er_read elRef
-      void $ unliftIO un $ liftJSM $ appendChild rootEl frag
-  pure (ElementRef read write, flush)
+      queue <- atomicModifyIORef' queueRef (Seq.empty,)
+      er_queue_mutation \rootEl -> for_ queue ($ rootEl)
+  pure (ElementRef er_read mutate, flush)
 
 askElement :: Html Element
 askElement =
   liftIO =<< asks (er_read . he_element)
 {-# INLINE askElement #-}
+
+mutateRoot :: (Element -> JSM ()) -> Html ()
+mutateRoot f =
+  liftIO =<< asks (($ f). er_queue_mutation . he_element)
+{-# INLINE mutateRoot #-}
+
+askMutateRoot :: Html ((Element -> JSM ()) -> IO ())
+askMutateRoot = asks (er_queue_mutation . he_element)
+{-# INLINE askMutateRoot #-}
 
 localElement :: Element -> Html a -> Html a
 localElement elm child = do

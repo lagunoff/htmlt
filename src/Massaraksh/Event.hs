@@ -3,15 +3,15 @@
 module Massaraksh.Event where
 
 import Control.Applicative
-import Control.Monad.State
-import Control.Monad.Catch
 import Control.Lens (Lens', over)
+import Control.Monad.Catch
+import Control.Monad.State
 import Data.Foldable
 import Data.IORef
 import Data.List
-import qualified Data.Map as M
 import Debug.Trace
 import System.IO.Unsafe
+import qualified Data.Map as M
 
 -- | @Event a@ is a stream of event occurences of type @a@
 newtype Event a = Event (Stage -> Callback a -> Reactive Canceller)

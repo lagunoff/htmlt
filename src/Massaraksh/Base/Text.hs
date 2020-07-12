@@ -13,8 +13,8 @@ el :: Text -> Html x -> Html x
 el tag = H.el (JSS.textToJSString tag)
 {-# INLINE el #-}
 
-elNS :: Maybe Text -> Text -> Html x -> Html x
-elNS ns tag = H.elNS (fmap JSS.textToJSString ns) (JSS.textToJSString tag)
+elNS :: Text -> Text -> Html x -> Html x
+elNS ns tag = H.elNS (JSS.textToJSString ns) (JSS.textToJSString tag)
 {-# INLINE elNS #-}
 
 el' :: Text -> Html x -> Html Element
@@ -74,11 +74,3 @@ onEvent elm name = H.onEvent elm (JSS.textToJSString name)
 onEvent_ :: Element -> Text -> Html x -> Html ()
 onEvent_ elm name = H.onEvent_ elm (JSS.textToJSString name)
 {-# INLINE onEvent_ #-}
-
-dynClassList :: [(Text, Dynamic Bool)] -> Html ()
-dynClassList = H.dynClassList . fmap \(k, v) -> (JSS.textToJSString k, v)
-{-# INLINE dynClassList #-}
-
-classList :: [(Text, Bool)] -> Html ()
-classList = H.classList . fmap \(k, v) -> (JSS.textToJSString k, v)
-{-# INLINE classList #-}

@@ -5,7 +5,6 @@ module Massaraksh.Base where
 import Control.Lens hiding ((#))
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
-import Data.Bool
 import Data.Coerce
 import Unsafe.Coerce
 import Data.Foldable
@@ -24,81 +23,70 @@ el tag child = do
   elm <- liftJSM (createElement tag)
   localElement elm child
 
-elNS :: Maybe JSString -> JSString -> Html x -> Html x
-elNS ns tag child = do
-  elm <- liftJSM $ maybe (createElement tag) (flip createElementNS tag) ns
-  localElement elm child
-
 el' :: JSString -> Html x -> Html Element
 el' tag child = do
   elm <- liftJSM (createElement tag)
   elm <$ localElement elm child
 
+elNS :: JSString -> JSString -> Html x -> Html x
+elNS ns tag child = do
+  elm <- liftJSM $ createElementNS ns tag
+  localElement elm child
+
 text :: JSString -> Html ()
 text txt = do
-  elm <- askElement
   textNode <- liftJSM (createTextNode txt)
-  liftJSM (appendChild elm textNode)
+  mutateRoot (flip appendChild textNode)
 
 dynText :: Dynamic JSString -> Html ()
 dynText d = do
   txt <- liftIO (dyn_read d)
   js <- askJSM
-  elm <- askElement
   textNode <- liftJSM (createTextNode txt)
-  dyn_updates d `htmlSubscribe` \new -> do
-    void $ liftIO $ flip runJSM js $ textNode <# "nodeValue" $ new
-  liftJSM (appendChild elm textNode)
+  dyn_updates d `htmlSubscribe` \new -> void $ liftIO do
+    flip runJSM js $ textNode <# "nodeValue" $ new
+  mutateRoot (flip appendChild textNode)
 
 prop :: ToJSVal v => JSString -> v -> Html ()
-prop key val = do
-  rootEl <- askElement
-  liftJSM do
-    v <- toJSVal val
-    unsafeSetProp key v (coerce rootEl)
+prop key val = mutateRoot \rootEl -> do
+  v <- toJSVal val
+  unsafeSetProp key v (coerce rootEl)
 
 (=:) :: JSString -> JSString -> Html ()
 (=:) = prop
 infixr 3 =:
+{-# INLINE (=:) #-}
 
-dynProp
-  :: (ToJSVal v, FromJSVal v, Eq v)
-  => JSString -> Dynamic v -> Html ()
+dynProp :: (ToJSVal v, FromJSVal v, Eq v) => JSString -> Dynamic v -> Html ()
 dynProp key dyn = do
-  txt <- liftIO (dyn_read dyn)
-  rootEl <- askElement
-  liftJSM do
-    v <- toJSVal txt
-    unsafeSetProp key v (coerce rootEl)
-  js <- askJSM
-  void $ dyn_updates dyn `htmlSubscribe` \new -> void $ liftIO $ flip runJSM js do
-    v <- toJSVal new
-    unsafeSetProp key v (coerce rootEl)
+  mutate <- askMutateRoot
+  let
+    setup txt rootEl = toJSVal txt
+      >>= flip (unsafeSetProp key) (coerce rootEl)
+  void $ forDyn dyn (liftIO . mutate . setup)
 
-(~:)
-  :: (ToJSVal v, FromJSVal v, Eq v)
-  => JSString -> Dynamic v -> Html ()
+(~:) :: (ToJSVal v, FromJSVal v, Eq v) => JSString -> Dynamic v -> Html ()
 (~:) = dynProp
 infixr 3 ~:
+{-# INLINE (~:) #-}
 
 attr :: JSString -> JSString -> Html ()
-attr key val = do
-  rootEl <- askElement
-  void $ liftJSM $ rootEl # "setAttribute" $ (key, val)
+attr key val = mutateRoot \rootEl -> do
+  void $ rootEl # "setAttribute" $ (key, val)
 
 dynAttr :: JSString -> Dynamic JSString -> Html ()
 dynAttr key dyn = do
-  txt <- liftIO (dyn_read dyn)
-  rootEl <- askElement
-  liftJSM (rootEl <# key $ txt)
-  js <- askJSM
-  void $ dyn_updates dyn `htmlSubscribe` \new ->
-    void $ liftIO $ flip runJSM js $ rootEl # "setAttribute" $ (key, new)
+  mutate <- askMutateRoot
+  let
+    setup val rootEl =
+      void $ rootEl # "setAttribute" $ (key, val)
+  void $ forDyn dyn (liftIO . mutate . setup)
 
 on :: JSString -> Decoder (Html x) -> Html ()
 on name decoder = do
-  el <- askElement
-  onEvent el name decoder
+  env <- ask
+  mutateRoot \rootEl ->
+    liftIO $ runHtml env $ onEvent rootEl name decoder
 
 on_ :: JSString -> Html x -> Html ()
 on_ name w = on name (pure w)
@@ -124,44 +112,23 @@ onEvent elm name decoder = do
 onEvent_ :: Element -> JSString -> Html x -> Html ()
 onEvent_ elm name w = onEvent elm name (pure w)
 
-dynClassList :: [(JSString, Dynamic Bool)] -> Html ()
-dynClassList xs = do
-  rootEl <- askElement
-  js <- askJSM
-  let
-    setup name = \case
-      True  -> void $ flip runJSM js (rootEl ! "classList" # "add" $ [name])
-      False -> void $ flip runJSM js (rootEl ! "classList" # "remove" $ [name])
-  for_ xs \(name, dyn) -> do
-    liftIO (setup name =<< dyn_read dyn)
-    subscribeUpdates dyn (liftIO . setup name)
-
-classList :: [(JSString, Bool)] -> Html ()
-classList xs =
-  prop (T.pack "className") $ T.unwords
-    $ L.foldl' (\acc (cs, cond) -> bool acc (cs:acc) cond) [] xs
-
 toggleClass :: JSString -> Dynamic Bool -> Html ()
 toggleClass cs dyn = do
-  rootEl <- askElement
-  js <- askJSM
+  mutate <- askMutateRoot
   let
-    setup name = \case
-      True  -> void $ flip runJSM js (rootEl ! "classList" # "add" $ [name])
-      False -> void $ flip runJSM js (rootEl ! "classList" # "remove" $ [name])
-  liftIO (setup cs =<< dyn_read dyn)
-  void $ subscribeUpdates dyn (liftIO . setup cs)
+    setup name enable rootEl = case enable of
+      True  -> void $ rootEl ! "classList" # "add" $ [name]
+      False -> void $ rootEl ! "classList" # "remove" $ [name]
+  void $ forDyn dyn (liftIO . mutate . setup cs)
 
 toggleAttr :: JSString -> Dynamic Bool -> Html ()
 toggleAttr cs dyn = do
-  rootEl <- askElement
-  js <- askJSM
+  mutate <- askMutateRoot
   let
-    setup name = \case
-      True  -> void $ flip runJSM js (rootEl # "setAttribute" $ (name, "on"))
-      False -> void $ flip runJSM js  (rootEl # "removeAttribute" $ [name])
-  liftIO (dyn_read dyn >>= setup cs)
-  void $ subscribeUpdates dyn (liftIO . setup cs)
+    setup name enable rootEl = case enable of
+      True  -> void $ rootEl # "setAttribute" $ (name, "on")
+      False -> void $ rootEl # "removeAttribute" $ [name]
+  void $ forDyn dyn (liftIO . mutate . setup cs)
 
 blank :: Applicative m => m ()
 blank = pure ()
@@ -248,10 +215,11 @@ dynHtml' dyn = do
   env <- ask
   js <- askJSM
   childRef <- liftIO (newIORef Nothing)
+  mutate <- askMutateRoot
   let
-    setup html = mdo
-      postHooks <- liftIO (newIORef [])
-      (subscriber, subscriptions) <- liftIO newSubscriber
+    setup html rootEl = liftIO mdo
+      postHooks <- newIORef []
+      (subscriber, subscriptions) <- newSubscriber
       (elmRef, flush) <- flip runJSM js $ newElementRef' (he_element env)
       let
         unsub = liftIO do
@@ -268,15 +236,13 @@ dynHtml' dyn = do
           commit::Html X = unsafeCoerce ()
             <$ unsub
             <* (sequence_ =<< liftIO (readIORef postHooks))
-            <* removeAllChilds env
-            <* liftIO flush
+            <* liftIO (removeAllChilds env)
+            <* liftIO (liftIO flush)
           revert::Html X = unsafeCoerce () <$ pure ()
         html commit revert
-    removeAllChilds env = liftIO (er_read (he_element env))
-      >>= \rootEl -> liftJSM do
+    removeAllChilds env = mutate \rootEl -> do
       length <- fromJSValUnchecked =<< rootEl ! "childNodes" ! "length"
       for_ [0..length - 1] \idx -> do
         childEl <- rootEl ! "childNodes" JS.!! (length - idx - 1)
         rootEl # "removeChild" $ [childEl]
-  liftIO (dyn_read dyn >>= setup)
-  void $ subscribeUpdates dyn (void . liftIO . setup)
+  void $ forDyn dyn (liftIO . mutate . (void .) . setup)

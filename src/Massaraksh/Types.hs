@@ -31,8 +31,8 @@ newtype Subscriber = Subscriber
 type Subscriptions = IORef [IORef (IO ())]
 
 data ElementRef = ElementRef
-  { er_read  :: IO Element
-  , er_write :: Element -> IO () }
+  { er_read           :: IO Element
+  , er_queue_mutation :: (Element -> JSM ()) -> IO () }
 
 data Exist (f :: * -> *) = forall x. Exist (f x)
 
