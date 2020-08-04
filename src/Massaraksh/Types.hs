@@ -15,8 +15,8 @@ import Massaraksh.Event
 
 newtype Html a = Html {unHtml :: ReaderT HtmlEnv IO a}
   deriving newtype
-    ( Functor, Applicative, Monad, MonadIO, MonadReader HtmlEnv, MonadFix
-    , MonadCatch, MonadThrow, MonadMask )
+    ( Functor, Applicative, Monad, MonadIO, MonadReader HtmlEnv
+    , MonadFix, MonadCatch, MonadThrow, MonadMask )
 
 data HtmlEnv = HtmlEnv
   { he_element           :: ElementRef

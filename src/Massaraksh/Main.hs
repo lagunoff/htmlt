@@ -3,26 +3,25 @@
 {-# LANGUAGE CPP #-}
 module Massaraksh.Main where
 
+import Control.Exception
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
-import Data.IORef
 import Data.Coerce
+import Data.IORef
 import Language.Javascript.JSaddle
+import Massaraksh.DOM
 import Massaraksh.Internal
 import Massaraksh.Types
-import Massaraksh.DOM
 
 #ifndef ghcjs_HOST_OS
 import Control.Applicative ((<|>))
 import qualified Language.Javascript.JSaddle.Warp as Warp
 import System.Environment
-import Control.Exception
 #endif
 
-data RunningState a = RunningState {
-  rsResult :: a,
-  rsEnv    :: HtmlEnv
-}
+data RunningState a = RunningState
+  { rs_result :: a
+  , rs_env    :: HtmlEnv }
 
 attach
   :: Element -- ^ Root DOM node

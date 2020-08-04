@@ -41,6 +41,7 @@ library
   build-depends:
     base,
     bytestring,
+    exceptions,
     containers,
     jsaddle,
     lens,
