@@ -1,9 +1,10 @@
 #!/usr/bin/env sh
 
 DIR="$(dirname "${BASH_SOURCE[0]}")"
-EXTRA_ARGS="-j -outputdir=$DIR/../out"
+OUT_ARGS="-outputdir=$DIR/../out"
 make --silent -f $DIR/envrc.mk $DIR/../.envrc || exit 1;
 source $DIR/../.envrc
 CABAL_ARGS=$(cd $DIR/../; cabal-cargs || exit 1)
+RUNGHC_ARGS=$(for a in $CABAL_ARGS; do echo "--optghc=$a"; done | tr '\r\n' ' ')
 
-ghc $CABAL_ARGS $EXTRA_ARGS "$@"
+haddock $RUNGHC_ARGS $@

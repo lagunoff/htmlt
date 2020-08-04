@@ -1,6 +1,10 @@
 #!/usr/bin/env sh
 
 DIR="$(dirname "${BASH_SOURCE[0]}")"
-source $DIR/config.sh
-FORWARD_ARGS=$@
-cached-nix-shell $DIR/../default.nix -A shells.ghc --run "ghcjs $CABAL_ARGS $OUT_ARGS $FORWARD_ARGS"
+OUT_ARGS="-outputdir=$DIR/../out"
+make --silent -f $DIR/envrc.mk $DIR/../.ghcjs.envrc || exit 1;
+source $DIR/../.ghcjs.envrc
+CABAL_ARGS=$(cd $DIR/../; cabal-cargs || exit 1)
+CABAL_ARGS_GHCJS=$(echo $CABAL_ARGS | sed 's/-package=\(jsaddle-warp\|tagsoup\|aeson\|lens-regex\|regex-tdfa\|tagsoup-lens\|warp\|wai\|wai-app-static\|wai-extra\|jsaddle-warp\|wreq\)//g' | sed 's/-isrc-ghc//g'|| exit 1)
+
+ghcjs -isrc-ghcjs $CABAL_ARGS_GHCJS $OUT_ARGS $@
