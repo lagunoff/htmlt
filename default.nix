@@ -13,6 +13,7 @@ in reflex-platform.project({ pkgs, ... }:{
 
   packages = {
     massaraksh = ./.;
+    massaraksh-todomvc = ./examples/todomvc;
   };
 
   shells = {

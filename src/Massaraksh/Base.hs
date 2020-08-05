@@ -86,13 +86,13 @@ on :: JSString -> Decoder (Html x) -> Html ()
 on name decoder = do
   env <- ask
   mutateRoot \rootEl ->
-    liftIO $ runHtml env $ onEvent rootEl name decoder
+    liftIO $ runHtml env $ domEvent rootEl name decoder
 
 on_ :: JSString -> Html x -> Html ()
 on_ name w = on name (pure w)
 
-onEvent :: Element -> JSString -> Decoder (Html x) -> Html ()
-onEvent elm name decoder = do
+domEvent :: Element -> JSString -> Decoder (Html x) -> Html ()
+domEvent elm name decoder = do
   env <- ask
   js <- askJSM
   let
@@ -109,8 +109,8 @@ onEvent elm name decoder = do
         void (freeFunction cb)
   void $ htmlSubscribe event (liftIO . runHtml env)
 
-onEvent_ :: Element -> JSString -> Html x -> Html ()
-onEvent_ elm name w = onEvent elm name (pure w)
+domEvent_ :: Element -> JSString -> Html x -> Html ()
+domEvent_ e n act = domEvent e n (pure act)
 
 toggleClass :: JSString -> Dynamic Bool -> Html ()
 toggleClass cs dyn = do

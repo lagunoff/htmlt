@@ -5,7 +5,6 @@ module Massaraksh.Types where
 import Control.Applicative
 import Control.Monad.Catch
 import Control.Monad.Reader
-import Control.Natural hiding ((#))
 import Data.IORef
 import Data.JSString as JSS
 import Data.String
@@ -39,16 +38,6 @@ data Exist (f :: * -> *) = forall x. Exist (f x)
 runHtml :: HtmlEnv -> Html x -> IO x
 runHtml e = flip runReaderT e . unHtml
 {-# INLINE runHtml #-}
-
-fix1 :: (w ~> m -> w ~> m) -> w ~> m
-fix1 f = f (fix1 f)
-
-compose1
-  :: (w ~> m -> w ~> m)
-  -> (w ~> m -> w ~> m)
-  -> w ~> m -> w ~> m
-compose1 a b wm = a (b wm)
-{-# INLINE compose1 #-}
 
 instance Semigroup a => Semigroup (Html a) where
   (<>) = liftA2 (<>)

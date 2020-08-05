@@ -19,14 +19,7 @@ import qualified Language.Javascript.JSaddle.Warp as Warp
 import System.Environment
 #endif
 
-data RunningState a = RunningState
-  { rs_result :: a
-  , rs_env    :: HtmlEnv }
-
-attach
-  :: Element -- ^ Root DOM node
-  -> Html x  -- ^ Render action
-  -> JSM (RunningState x)
+attach :: Element -> Html a -> JSM (a, HtmlEnv)
 attach rootEl render = do
   js <- askJSM
   evalRef <- liftIO $ newIORef \_ -> pure ()
@@ -39,11 +32,9 @@ attach rootEl render = do
   res <- liftIO $ runHtml env render
   liftIO flush
   liftIO (readIORef postHooks >>= mapM_ (runHtml env))
-  pure (RunningState res env)
+  pure (res, env)
 
-attachToBody
-  :: Html x -- ^ Render action
-  -> JSM (RunningState x)
+attachToBody :: Html a -> JSM (a, HtmlEnv)
 attachToBody render = do
   rootEl <- fmap coerce $ jsg "document" ! "body"
   attach rootEl render

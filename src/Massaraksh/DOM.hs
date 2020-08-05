@@ -17,8 +17,6 @@ newtype Node = Node {unNode :: JSVal}
 newtype Element = Element {unElement :: JSVal}
   deriving newtype (MakeArgs, MakeObject, ToJSVal)
 
-type Fragment = Element
-
 toNode :: Element -> Node
 toNode = coerce
 {-# INLINE toNode #-}
@@ -31,16 +29,6 @@ appendChild root child = do
 foreign import javascript unsafe
   "$1.appendChild($2)"
   appendChild :: Element -> Element -> JSM ()
-#endif
-
-#ifndef ghcjs_HOST_OS
-createDocumentFragment :: JSM Fragment
-createDocumentFragment = do
-  fmap coerce $ jsg ("document" :: JSString) # ("createDocumentFragment" :: JSString) $ ()
-#else
-foreign import javascript unsafe
-  "document.createDocumentFragment()"
-  createDocumentFragment :: JSM Fragment
 #endif
 
 #ifndef ghcjs_HOST_OS
@@ -91,83 +79,77 @@ addEventListener target name f = do
     target # ("removeEventListener" :: JSString) $ (name, cb)
     freeFunction cb
 
-dUnit :: Decoder ()
-dUnit = Decoder \_ -> pure (pure ())
+target :: Decoder JSVal
+target = decodeAt ["target"] decodeJSVal
 
-dId :: Decoder SomeJVal
-dId = Decoder $ pure . pure
+value :: Decoder JSString
+value = decodeAt ["target", "value"] decoder
 
-dTarget :: Decoder SomeJVal
-dTarget = parseAt ["target"] dId
+currentTarget :: Decoder JSVal
+currentTarget = decodeAt ["currentTarget"] decodeJSVal
 
-dValue :: Decoder JSString
-dValue = parseAt ["target", "value"] decoder
+checked :: Decoder Bool
+checked = decodeAt ["target", "checked"] decoder
 
-dCurrentTarget :: Decoder SomeJVal
-dCurrentTarget = parseAt ["currentTarget"] dId
+data DeltaMouse = DeltaMouse
+  { deltaX :: Int
+  , deltaY :: Int
+  , deltaZ :: Int }
+  deriving stock (Eq, Show, Generic)
 
-dChecked :: Decoder Bool
-dChecked = parseAt ["target", "checked"] decoder
+deltaMouse :: Decoder DeltaMouse
+deltaMouse = DeltaMouse
+  <$> decodeAt ["deltaX"] decoder
+  <*> decodeAt ["deltaY"] decoder
+  <*> decodeAt ["deltaZ"] decoder
 
-data DeltaMouse = DeltaMouse {
-  deltaX :: Int,
-  deltaY :: Int,
-  deltaZ :: Int
-} deriving (Eq, Show, Generic)
+data Position = Position
+  { x :: Int
+  , y :: Int }
+  deriving stock (Eq, Show, Ord, Generic)
 
-dDelta :: Decoder DeltaMouse
-dDelta = DeltaMouse
-  <$> parseAt ["deltaX"] decoder
-  <*> parseAt ["deltaY"] decoder
-  <*> parseAt ["deltaZ"] decoder
+clientXY :: Decoder Position
+clientXY = Position
+  <$> decodeAt ["clientX"] decoder
+  <*> decodeAt ["clientY"] decoder
 
-data Position = Position {
-  x :: Int,
-  y :: Int
-} deriving (Eq, Show, Ord, Generic)
+offsetXY :: Decoder Position
+offsetXY = Position
+  <$> decodeAt ["offsetX"] decoder
+  <*> decodeAt ["offsetY"] decoder
 
-dClientPos :: Decoder Position
-dClientPos = Position
-  <$> parseAt ["clientX"] decoder
-  <*> parseAt ["clientY"] decoder
+pageXY :: Decoder Position
+pageXY = Position
+  <$> decodeAt ["pageX"] decoder
+  <*> decodeAt ["pageX"] decoder
 
-dOffsetPos :: Decoder Position
-dOffsetPos = Position
-  <$> parseAt ["offsetX"] decoder
-  <*> parseAt ["offsetY"] decoder
+data Keys = Keys
+  { altKey   :: Bool
+  , ctrlKey  :: Bool
+  , metaKey  :: Bool
+  , shiftKey :: Bool }
+  deriving stock (Eq, Show, Generic)
 
-dPagePos :: Decoder Position
-dPagePos = Position
-  <$> parseAt ["pageX"] decoder
-  <*> parseAt ["pageX"] decoder
+keys :: Decoder Keys
+keys = Keys
+  <$> decodeAt ["altKey"] decoder
+  <*> decodeAt ["ctrlKey"] decoder
+  <*> decodeAt ["metaKey"] decoder
+  <*> decodeAt ["shiftKey"] decoder
 
-data Keys = Keys {
-  altKey   :: Bool,
-  ctrlKey  :: Bool,
-  metaKey  :: Bool,
-  shiftKey :: Bool
-} deriving (Eq, Show, Generic)
-
-dKeys :: Decoder Keys
-dKeys = Keys
-  <$> parseAt ["altKey"] decoder
-  <*> parseAt ["ctrlKey"] decoder
-  <*> parseAt ["metaKey"] decoder
-  <*> parseAt ["shiftKey"] decoder
-
-dKeyCode :: Decoder Int
-dKeyCode = parseAt ["keyCode"] decoder
+keyCode :: Decoder Int
+keyCode = decodeAt ["keyCode"] decoder
 
 data KeyboardEvent = KeyboardEvent
-  { keys    :: Keys
-  , key     :: Maybe JSString
-  , keyCode :: Int
-  , repeat  :: Bool
-  } deriving (Show, Eq)
+  { keys_    :: Keys
+  , key      :: Maybe JSString
+  , keyCode_ :: Int
+  , repeat   :: Bool }
+  deriving stock (Eq, Show, Generic)
 
-dKeyboard :: Decoder KeyboardEvent
-dKeyboard = KeyboardEvent
-  <$> dKeys
-  <*> parseAt ["key"] decoder
-  <*> parseAt ["keyCode"] decoder
-  <*> parseAt ["repeat"] decoder
+keyboardEvent :: Decoder KeyboardEvent
+keyboardEvent = KeyboardEvent
+  <$> keys
+  <*> decodeAt ["key"] decoder
+  <*> decodeAt ["keyCode"] decoder
+  <*> decodeAt ["repeat"] decoder

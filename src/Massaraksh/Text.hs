@@ -5,7 +5,7 @@ import Massaraksh.Base as X hiding
   , on_, onEvent, onEvent_, dynClassList, classList
   )
 import Massaraksh.Base.Text as X
-import Massaraksh.DOM as X hiding (dValue)
+import Massaraksh.DOM as X hiding (value)
 import Massaraksh.DOM.Text as X
 import Massaraksh.Decode as X
 import Massaraksh.Element as X hiding
@@ -115,4 +115,3 @@ import Massaraksh.Element.Text as X
 import Massaraksh.Event as X
 import Massaraksh.Main as X
 import Massaraksh.Types as X
-

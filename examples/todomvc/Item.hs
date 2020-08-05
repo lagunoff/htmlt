@@ -14,7 +14,7 @@ import Massaraksh.Text
 data Config s = Config
   { cfgModel :: Lens' s Model
   , cfgProps :: s -> Props
-  , cfgDynamic :: DynRef s
+  , cfgDynamic :: DynamicRef s
   }
 
 data Props = Props
@@ -37,7 +37,7 @@ data Msg a where
   Completed :: Bool -> Msg ()
   Destroy :: Msg ()
   Blur :: Msg ()
-  EditingOn :: SomeJVal -> Msg ()
+  EditingOn :: JSVal -> Msg ()
   EditInput :: Text -> Msg ()
   EditingCancel :: Msg ()
   EditingCommit :: Msg ()
