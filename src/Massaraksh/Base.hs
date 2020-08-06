@@ -29,8 +29,8 @@ el' tag child = do
   elm <- liftJSM (createElement tag)
   elm <$ localElement elm child
 
-elNS :: Text -> Text -> Html x -> Html x
-elNS ns tag child = do
+nsEl :: Text -> Text -> Html x -> Html x
+nsEl ns tag child = do
   elm <- liftJSM $ createElementNS ns tag
   localElement elm child
 
@@ -45,7 +45,7 @@ dynText d = do
   js <- askJSM
   textNode <- liftJSM (createTextNode txt)
   dyn_updates d `htmlSubscribe` \new -> void $ liftIO do
-    flip runJSM js $ textNode <# "nodeValue" $ new
+    flip runJSM js $ setTextValue textNode new
   mutateRoot (flip appendChild textNode)
 
 prop :: ToJSVal v => Text -> v -> Html ()
@@ -72,16 +72,13 @@ infixr 3 ~:
 {-# INLINE (~:) #-}
 
 attr :: Text -> Text -> Html ()
-attr key val = mutateRoot \rootEl -> do
-  void $ rootEl # "setAttribute" $ (key, val)
+attr k v = mutateRoot \e -> setAttribute e k v
 
 dynAttr :: Text -> Dynamic Text -> Html ()
-dynAttr key dyn = do
+dynAttr k d = do
   mutate <- askMutateRoot
-  let
-    setup val rootEl =
-      void $ rootEl # "setAttribute" $ (key, val)
-  void $ forDyn dyn (liftIO . mutate . setup)
+  let setup v e = setAttribute e k v
+  void $ forDyn d (liftIO . mutate . setup)
 
 on :: Text -> Decoder (Html x) -> Html ()
 on name decoder = do
@@ -117,19 +114,19 @@ toggleClass :: Text -> Dynamic Bool -> Html ()
 toggleClass cs dyn = do
   mutate <- askMutateRoot
   let
-    setup name enable rootEl = case enable of
-      True  -> void $ rootEl ! "classList" # "add" $ [name]
-      False -> void $ rootEl ! "classList" # "remove" $ [name]
+    setup cs enable rootEl = case enable of
+      True  -> classListAdd rootEl cs
+      False -> classListRemove rootEl cs
   void $ forDyn dyn (liftIO . mutate . setup cs)
 
 toggleAttr :: Text -> Dynamic Bool -> Html ()
-toggleAttr cs dyn = do
+toggleAttr att dyn = do
   mutate <- askMutateRoot
   let
     setup name enable rootEl = case enable of
-      True  -> void $ rootEl # "setAttribute" $ (name, "on")
-      False -> void $ rootEl # "removeAttribute" $ [name]
-  void $ forDyn dyn (liftIO . mutate . setup cs)
+      True  -> setAttribute rootEl name (T.pack "on")
+      False -> removeAttribute rootEl name
+  void $ forDyn dyn (liftIO . mutate . setup att)
 
 blank :: Applicative m => m ()
 blank = pure ()
@@ -184,8 +181,8 @@ itraverseHtml l dynRef@(dyn, _) h = do
         for_ tailRefs \ChildHtmlRef{..} -> do
           subscriptions <- liftIO $ readIORef childHtmlRef_subscriptions
           liftIO $ for_ subscriptions (readIORef >=> id)
-          childEl <- flip runJSM js $ rootEl ! "childNodes" JS.!! idx
-          flip runJSM js (rootEl # "removeChild" $ [childEl])
+          childEl <- flip runJSM js $ getChildNode rootEl idx
+          flip runJSM js (removeChild rootEl childEl)
       (r:rs, x:xs, y:ys) -> do
         -- Update child elemens along the way
         liftIO $ sync $ childHtmlRef_modify r \_ -> y
@@ -242,8 +239,8 @@ dynHtml' dyn = do
           revert::Html X = unsafeCoerce () <$ pure ()
         html commit revert
     removeAllChilds env = mutate \rootEl -> do
-      length <- fromJSValUnchecked =<< rootEl ! "childNodes" ! "length"
+      length <- childLength rootEl
       for_ [0..length - 1] \idx -> do
-        childEl <- rootEl ! "childNodes" JS.!! (length - idx - 1)
-        rootEl # "removeChild" $ [childEl]
+        childEl <- getChildNode rootEl (length - idx - 1)
+        removeChild rootEl childEl
   void $ forDyn dyn (liftIO . mutate . (void .) . setup)
