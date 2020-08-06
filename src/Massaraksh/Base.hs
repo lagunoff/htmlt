@@ -23,7 +23,7 @@ el tag child = do
   elm <- liftJSM (createElement tag)
   localElement elm child
 
-el' :: JSString -> Html x -> Html Element
+el' :: JSString -> Html x -> Html Node
 el' tag child = do
   elm <- liftJSM (createElement tag)
   elm <$ localElement elm child
@@ -91,7 +91,7 @@ on name decoder = do
 on_ :: JSString -> Html x -> Html ()
 on_ name w = on name (pure w)
 
-domEvent :: Element -> JSString -> Decoder (Html x) -> Html ()
+domEvent :: Node -> JSString -> Decoder (Html x) -> Html ()
 domEvent elm name decoder = do
   env <- ask
   js <- askJSM
@@ -109,7 +109,7 @@ domEvent elm name decoder = do
         void (freeFunction cb)
   void $ htmlSubscribe event (liftIO . runHtml env)
 
-domEvent_ :: Element -> JSString -> Html x -> Html ()
+domEvent_ :: Node -> JSString -> Html x -> Html ()
 domEvent_ e n act = domEvent e n (pure act)
 
 toggleClass :: JSString -> Dynamic Bool -> Html ()

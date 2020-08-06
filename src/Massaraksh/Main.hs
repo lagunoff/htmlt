@@ -19,7 +19,7 @@ import qualified Language.Javascript.JSaddle.Warp as Warp
 import System.Environment
 #endif
 
-attach :: Element -> Html a -> JSM (a, HtmlEnv)
+attach :: Node -> Html a -> JSM (a, HtmlEnv)
 attach rootEl render = do
   js <- askJSM
   evalRef <- liftIO $ newIORef \_ -> pure ()

@@ -15,7 +15,7 @@ import Massaraksh.Types
 import qualified Control.Exception as E
 import qualified Data.Sequence as Seq
 
-newElementRef :: Element -> Html ElementRef
+newElementRef :: Node -> Html ElementRef
 newElementRef elm = do
   jsCtx <- asks he_js_context
   mutateRoot (flip appendChild elm)
@@ -39,21 +39,21 @@ newElementRef' ElementRef{..} = do
       er_queue_mutation \rootEl -> for_ queue ($ rootEl)
   pure (ElementRef er_read mutate, flush)
 
-askElement :: Html Element
+askElement :: Html Node
 askElement =
   liftIO =<< asks (er_read . he_element)
 {-# INLINE askElement #-}
 
-mutateRoot :: (Element -> JSM ()) -> Html ()
+mutateRoot :: (Node -> JSM ()) -> Html ()
 mutateRoot f =
   liftIO =<< asks (($ f). er_queue_mutation . he_element)
 {-# INLINE mutateRoot #-}
 
-askMutateRoot :: Html ((Element -> JSM ()) -> IO ())
+askMutateRoot :: Html ((Node -> JSM ()) -> IO ())
 askMutateRoot = asks (er_queue_mutation . he_element)
 {-# INLINE askMutateRoot #-}
 
-localElement :: Element -> Html a -> Html a
+localElement :: Node -> Html a -> Html a
 localElement elm child = do
   elRef <- newElementRef elm
   local (\env -> env { he_element = elRef }) child

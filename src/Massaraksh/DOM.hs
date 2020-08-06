@@ -1,6 +1,5 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE JavaScriptFFI #-}
-{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Massaraksh.DOM where
 
@@ -14,61 +13,54 @@ import Massaraksh.Decode
 newtype Node = Node {unNode :: JSVal}
   deriving newtype (MakeArgs, MakeObject, ToJSVal)
 
-newtype Element = Element {unElement :: JSVal}
-  deriving newtype (MakeArgs, MakeObject, ToJSVal)
-
-toNode :: Element -> Node
-toNode = coerce
-{-# INLINE toNode #-}
-
 #ifndef ghcjs_HOST_OS
-appendChild :: Element -> Element -> JSM ()
+appendChild :: Node -> Node -> JSM ()
 appendChild root child = do
   void (root # ("appendChild" :: JSString) $ child)
 #else
 foreign import javascript unsafe
   "$1.appendChild($2)"
-  appendChild :: Element -> Element -> JSM ()
+  appendChild :: Node -> Node -> JSM ()
 #endif
 
 #ifndef ghcjs_HOST_OS
-replaceChild :: Element -> Element -> Element -> JSM ()
+replaceChild :: Node -> Node -> Node -> JSM ()
 replaceChild root new old = do
   void (root # ("replaceChild" :: JSString) $ (new, old))
 #else
 foreign import javascript unsafe
   "$1.replaceChild($2, $3)"
-  replaceChild :: Element -> Element -> Element -> JSM ()
+  replaceChild :: Node -> Node -> Node -> JSM ()
 #endif
 
 #ifndef ghcjs_HOST_OS
-createElement :: JSString -> JSM Element
+createElement :: JSString -> JSM Node
 createElement tag = do
   fmap coerce $ jsg ("document" :: JSString) # ("createElement" :: JSString) $ [tag]
 #else
 foreign import javascript unsafe
   "document.createElement($1)"
-  createElement :: JSString -> JSM Element
+  createElement :: JSString -> JSM Node
 #endif
 
 #ifndef ghcjs_HOST_OS
-createElementNS :: JSString -> JSString -> JSM Element
+createElementNS :: JSString -> JSString -> JSM Node
 createElementNS ns tag = do
   fmap coerce $ jsg ("document" :: JSString) # ("createElementNS" :: JSString) $ [ns, tag]
 #else
 foreign import javascript unsafe
   "document.createElementNS($1, $2)"
-  createElementNS :: JSString -> JSString -> JSM Element
+  createElementNS :: JSString -> JSString -> JSM Node
 #endif
 
 #ifndef ghcjs_HOST_OS
-createTextNode :: JSString -> JSM Element
+createTextNode :: JSString -> JSM Node
 createTextNode tag = do
   fmap coerce $ jsg ("document" :: JSString) # ("createTextNode" :: JSString) $ [tag]
 #else
 foreign import javascript unsafe
   "document.createTextNode($1)"
-  createTextNode :: JSString -> JSM Element
+  createTextNode :: JSString -> JSM Node
 #endif
 
 addEventListener :: JSVal -> JSString -> (JSVal -> JSM ()) -> JSM (JSM ())
