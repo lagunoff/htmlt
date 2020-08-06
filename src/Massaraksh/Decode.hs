@@ -7,6 +7,7 @@ import Control.Monad.IO.Class
 import Data.Coerce
 import Data.Foldable
 import Data.JSString as JSS
+import Data.JSString.Text as JSS
 import Data.Text as T
 import GHC.IORef
 import GHCJS.Prim
@@ -147,6 +148,9 @@ class HasDecoder a where
 
 instance HasDecoder JSString where
   parseJSVal = jsCaseString pure
+
+instance HasDecoder Text where
+  parseJSVal = fmap (fmap JSS.textFromJSString) . jsCaseString pure
 
 instance HasDecoder Bool where
   parseJSVal = jsCaseBool pure

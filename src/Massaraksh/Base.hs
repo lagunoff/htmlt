@@ -6,39 +6,40 @@ import Control.Lens hiding ((#))
 import Control.Monad.IO.Unlift
 import Control.Monad.Reader
 import Data.Coerce
-import Unsafe.Coerce
 import Data.Foldable
 import Data.IORef
+import Data.JSString.Text as JSS
 import Data.List as L
-import Data.JSString as T hiding (index)
+import Data.Text as T hiding (index)
 import Language.Javascript.JSaddle as JS
 import Massaraksh.DOM
 import Massaraksh.Decode
 import Massaraksh.Event
 import Massaraksh.Internal
 import Massaraksh.Types
+import Unsafe.Coerce
 
-el :: JSString -> Html x -> Html x
+el :: Text -> Html x -> Html x
 el tag child = do
   elm <- liftJSM (createElement tag)
   localElement elm child
 
-el' :: JSString -> Html x -> Html Node
+el' :: Text -> Html x -> Html Node
 el' tag child = do
   elm <- liftJSM (createElement tag)
   elm <$ localElement elm child
 
-elNS :: JSString -> JSString -> Html x -> Html x
+elNS :: Text -> Text -> Html x -> Html x
 elNS ns tag child = do
   elm <- liftJSM $ createElementNS ns tag
   localElement elm child
 
-text :: JSString -> Html ()
+text :: Text -> Html ()
 text txt = do
   textNode <- liftJSM (createTextNode txt)
   mutateRoot (flip appendChild textNode)
 
-dynText :: Dynamic JSString -> Html ()
+dynText :: Dynamic Text -> Html ()
 dynText d = do
   txt <- liftIO (dyn_read d)
   js <- askJSM
@@ -47,34 +48,34 @@ dynText d = do
     flip runJSM js $ textNode <# "nodeValue" $ new
   mutateRoot (flip appendChild textNode)
 
-prop :: ToJSVal v => JSString -> v -> Html ()
-prop key val = mutateRoot \rootEl -> do
+prop :: ToJSVal v => Text -> v -> Html ()
+prop (JSS.textToJSString -> key) val = mutateRoot \rootEl -> do
   v <- toJSVal val
   unsafeSetProp key v (coerce rootEl)
 
-(=:) :: JSString -> JSString -> Html ()
+(=:) :: Text -> Text -> Html ()
 (=:) = prop
 infixr 3 =:
 {-# INLINE (=:) #-}
 
-dynProp :: (ToJSVal v, FromJSVal v, Eq v) => JSString -> Dynamic v -> Html ()
-dynProp key dyn = do
+dynProp :: (ToJSVal v, FromJSVal v, Eq v) => Text -> Dynamic v -> Html ()
+dynProp (JSS.textToJSString -> key) dyn = do
   mutate <- askMutateRoot
   let
     setup txt rootEl = toJSVal txt
       >>= flip (unsafeSetProp key) (coerce rootEl)
   void $ forDyn dyn (liftIO . mutate . setup)
 
-(~:) :: (ToJSVal v, FromJSVal v, Eq v) => JSString -> Dynamic v -> Html ()
+(~:) :: (ToJSVal v, FromJSVal v, Eq v) => Text -> Dynamic v -> Html ()
 (~:) = dynProp
 infixr 3 ~:
 {-# INLINE (~:) #-}
 
-attr :: JSString -> JSString -> Html ()
+attr :: Text -> Text -> Html ()
 attr key val = mutateRoot \rootEl -> do
   void $ rootEl # "setAttribute" $ (key, val)
 
-dynAttr :: JSString -> Dynamic JSString -> Html ()
+dynAttr :: Text -> Dynamic Text -> Html ()
 dynAttr key dyn = do
   mutate <- askMutateRoot
   let
@@ -82,16 +83,16 @@ dynAttr key dyn = do
       void $ rootEl # "setAttribute" $ (key, val)
   void $ forDyn dyn (liftIO . mutate . setup)
 
-on :: JSString -> Decoder (Html x) -> Html ()
+on :: Text -> Decoder (Html x) -> Html ()
 on name decoder = do
   env <- ask
   mutateRoot \rootEl ->
     liftIO $ runHtml env $ domEvent rootEl name decoder
 
-on_ :: JSString -> Html x -> Html ()
+on_ :: Text -> Html x -> Html ()
 on_ name w = on name (pure w)
 
-domEvent :: Node -> JSString -> Decoder (Html x) -> Html ()
+domEvent :: Node -> Text -> Decoder (Html x) -> Html ()
 domEvent elm name decoder = do
   env <- ask
   js <- askJSM
@@ -109,10 +110,10 @@ domEvent elm name decoder = do
         void (freeFunction cb)
   void $ htmlSubscribe event (liftIO . runHtml env)
 
-domEvent_ :: Node -> JSString -> Html x -> Html ()
+domEvent_ :: Node -> Text -> Html x -> Html ()
 domEvent_ e n act = domEvent e n (pure act)
 
-toggleClass :: JSString -> Dynamic Bool -> Html ()
+toggleClass :: Text -> Dynamic Bool -> Html ()
 toggleClass cs dyn = do
   mutate <- askMutateRoot
   let
@@ -121,7 +122,7 @@ toggleClass cs dyn = do
       False -> void $ rootEl ! "classList" # "remove" $ [name]
   void $ forDyn dyn (liftIO . mutate . setup cs)
 
-toggleAttr :: JSString -> Dynamic Bool -> Html ()
+toggleAttr :: Text -> Dynamic Bool -> Html ()
 toggleAttr cs dyn = do
   mutate <- askMutateRoot
   let

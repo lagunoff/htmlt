@@ -6,7 +6,7 @@ import Control.Applicative
 import Control.Monad.Catch
 import Control.Monad.Reader
 import Data.IORef
-import Data.JSString as JSS
+import Data.Text as T
 import Data.String
 import Language.Javascript.JSaddle
 import Massaraksh.DOM
@@ -51,7 +51,7 @@ instance MonadJSM Html where
 #endif
 
 instance (x ~ ()) => IsString (Html x) where
-  fromString = text . JSS.pack where
+  fromString = text . T.pack where
     text txt = do
       elm <- liftIO =<< asks (er_read . he_element)
       textNode <- liftJSM (createTextNode txt)

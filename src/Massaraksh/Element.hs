@@ -6,14 +6,14 @@ module Massaraksh.Element where
 
 import Massaraksh.Types
 import Massaraksh.Base
-import Data.JSString (JSString)
+import Data.Text
 
 -- | https://developer.mozilla.org/en-US/docs/Web/HTML/Element/div
 div_ :: Html x -> Html x
 div_ = el "div"
 {-# INLINE div_ #-}
 
-divClass :: JSString -> Html x -> Html x
+divClass :: Text -> Html x -> Html x
 divClass c = div_ . (("className" =: c) *>)
 {-# INLINE divClass #-}
 
@@ -22,7 +22,7 @@ table_ :: Html x -> Html x
 table_ = el "table"
 {-# INLINE table_ #-}
 
-tableClass :: JSString -> Html x -> Html x
+tableClass :: Text -> Html x -> Html x
 tableClass c = table_ . (("className" =: c) *>)
 {-# INLINE tableClass #-}
 
@@ -31,7 +31,7 @@ thead_ :: Html x -> Html x
 thead_ = el "thead"
 {-# INLINE thead_ #-}
 
-theadClass :: JSString -> Html x -> Html x
+theadClass :: Text -> Html x -> Html x
 theadClass c = thead_ . (("className" =: c) *>)
 {-# INLINE theadClass #-}
 
@@ -40,7 +40,7 @@ tbody_ :: Html x -> Html x
 tbody_ = el "tbody"
 {-# INLINE tbody_ #-}
 
-tbodyClass :: JSString -> Html x -> Html x
+tbodyClass :: Text -> Html x -> Html x
 tbodyClass c = tbody_ . (("className" =: c) *>)
 {-# INLINE tbodyClass #-}
 
@@ -49,7 +49,7 @@ tr_ :: Html x -> Html x
 tr_ = el "tr"
 {-# INLINE tr_ #-}
 
-trClass :: JSString -> Html x -> Html x
+trClass :: Text -> Html x -> Html x
 trClass c = tr_ . (("className" =: c) *>)
 {-# INLINE trClass #-}
 
@@ -58,7 +58,7 @@ th_ :: Html x -> Html x
 th_ = el "th"
 {-# INLINE th_ #-}
 
-thClass :: JSString -> Html x -> Html x
+thClass :: Text -> Html x -> Html x
 thClass c = th_ . (("className" =: c) *>)
 {-# INLINE thClass #-}
 
@@ -67,7 +67,7 @@ td_ :: Html x -> Html x
 td_ = el "td"
 {-# INLINE td_ #-}
 
-tdClass :: JSString -> Html x -> Html x
+tdClass :: Text -> Html x -> Html x
 tdClass c = td_ . (("className" =: c) *>)
 {-# INLINE tdClass #-}
 
@@ -76,7 +76,7 @@ tfoot_ :: Html x -> Html x
 tfoot_ = el "tfoot"
 {-# INLINE tfoot_ #-}
 
-tfootClass :: JSString -> Html x -> Html x
+tfootClass :: Text -> Html x -> Html x
 tfootClass c = tfoot_ . (("className" =: c) *>)
 {-# INLINE tfootClass #-}
 
@@ -85,7 +85,7 @@ section_ :: Html x -> Html x
 section_ = el "section"
 {-# INLINE section_ #-}
 
-sectionClass :: JSString -> Html x -> Html x
+sectionClass :: Text -> Html x -> Html x
 sectionClass c = section_ . (("className" =: c) *>)
 {-# INLINE sectionClass #-}
 
@@ -94,7 +94,7 @@ header_ :: Html x -> Html x
 header_ = el "header"
 {-# INLINE header_ #-}
 
-headerClass :: JSString -> Html x -> Html x
+headerClass :: Text -> Html x -> Html x
 headerClass c = header_ . (("className" =: c) *>)
 {-# INLINE headerClass #-}
 
@@ -103,7 +103,7 @@ footer_ :: Html x -> Html x
 footer_ = el "footer"
 {-# INLINE footer_ #-}
 
-footerClass :: JSString -> Html x -> Html x
+footerClass :: Text -> Html x -> Html x
 footerClass c = footer_ . (("className" =: c) *>)
 {-# INLINE footerClass #-}
 
@@ -112,7 +112,7 @@ button_ :: Html x -> Html x
 button_ = el "button"
 {-# INLINE button_ #-}
 
-buttonClass :: JSString -> Html x -> Html x
+buttonClass :: Text -> Html x -> Html x
 buttonClass c = button_ . (("className" =: c) *>)
 {-# INLINE buttonClass #-}
 
@@ -121,7 +121,7 @@ form_ :: Html x -> Html x
 form_ = el "form"
 {-# INLINE form_ #-}
 
-formClass :: JSString -> Html x -> Html x
+formClass :: Text -> Html x -> Html x
 formClass c = form_ . (("className" =: c) *>)
 {-# INLINE formClass #-}
 
@@ -130,7 +130,7 @@ p_ :: Html x -> Html x
 p_ = el "p"
 {-# INLINE p_ #-}
 
-pClass :: JSString -> Html x -> Html x
+pClass :: Text -> Html x -> Html x
 pClass c = p_ . (("className" =: c) *>)
 {-# INLINE pClass #-}
 
@@ -139,7 +139,7 @@ s_ :: Html x -> Html x
 s_ = el "s"
 {-# INLINE s_ #-}
 
-sClass :: JSString -> Html x -> Html x
+sClass :: Text -> Html x -> Html x
 sClass c = s_ . (("className" =: c) *>)
 {-# INLINE sClass #-}
 
@@ -148,7 +148,7 @@ ul_ :: Html x -> Html x
 ul_ = el "ul"
 {-# INLINE ul_ #-}
 
-ulClass :: JSString -> Html x -> Html x
+ulClass :: Text -> Html x -> Html x
 ulClass c = ul_ . (("className" =: c) *>)
 {-# INLINE ulClass #-}
 
@@ -157,7 +157,7 @@ span_ :: Html x -> Html x
 span_ = el "span"
 {-# INLINE span_ #-}
 
-spanClass :: JSString -> Html x -> Html x
+spanClass :: Text -> Html x -> Html x
 spanClass c = span_ . (("className" =: c) *>)
 {-# INLINE spanClass #-}
 
@@ -166,7 +166,7 @@ strong_ :: Html x -> Html x
 strong_ = el "strong"
 {-# INLINE strong_ #-}
 
-strongClass :: JSString -> Html x -> Html x
+strongClass :: Text -> Html x -> Html x
 strongClass c = strong_ . (("className" =: c) *>)
 {-# INLINE strongClass #-}
 
@@ -175,7 +175,7 @@ li_ :: Html x -> Html x
 li_ = el "li"
 {-# INLINE li_ #-}
 
-liClass :: JSString -> Html x -> Html x
+liClass :: Text -> Html x -> Html x
 liClass c = li_ . (("className" =: c) *>)
 {-# INLINE liClass #-}
 
@@ -184,7 +184,7 @@ h1_ :: Html x -> Html x
 h1_ = el "h1"
 {-# INLINE h1_ #-}
 
-h1Class :: JSString -> Html x -> Html x
+h1Class :: Text -> Html x -> Html x
 h1Class c = h1_ . (("className" =: c) *>)
 {-# INLINE h1Class #-}
 
@@ -193,7 +193,7 @@ h2_ :: Html x -> Html x
 h2_ = el "h2"
 {-# INLINE h2_ #-}
 
-h2Class :: JSString -> Html x -> Html x
+h2Class :: Text -> Html x -> Html x
 h2Class c = h2_ . (("className" =: c) *>)
 {-# INLINE h2Class #-}
 
@@ -202,7 +202,7 @@ h3_ :: Html x -> Html x
 h3_ = el "h3"
 {-# INLINE h3_ #-}
 
-h3Class :: JSString -> Html x -> Html x
+h3Class :: Text -> Html x -> Html x
 h3Class c = h3_ . (("className" =: c) *>)
 {-# INLINE h3Class #-}
 
@@ -211,7 +211,7 @@ h4_ :: Html x -> Html x
 h4_ = el "h4"
 {-# INLINE h4_ #-}
 
-h4Class :: JSString -> Html x -> Html x
+h4Class :: Text -> Html x -> Html x
 h4Class c = h4_ . (("className" =: c) *>)
 {-# INLINE h4Class #-}
 
@@ -220,7 +220,7 @@ h5_ :: Html x -> Html x
 h5_ = el "h5"
 {-# INLINE h5_ #-}
 
-h5Class :: JSString -> Html x -> Html x
+h5Class :: Text -> Html x -> Html x
 h5Class c = h5_ . (("className" =: c) *>)
 {-# INLINE h5Class #-}
 
@@ -229,7 +229,7 @@ h6_ :: Html x -> Html x
 h6_ = el "h6"
 {-# INLINE h6_ #-}
 
-h6Class :: JSString -> Html x -> Html x
+h6Class :: Text -> Html x -> Html x
 h6Class c = h6_ . (("className" =: c) *>)
 {-# INLINE h6Class #-}
 
@@ -238,7 +238,7 @@ hr_ :: Html x -> Html x
 hr_ = el "hr"
 {-# INLINE hr_ #-}
 
-hrClass :: JSString -> Html x -> Html x
+hrClass :: Text -> Html x -> Html x
 hrClass c = hr_ . (("className" =: c) *>)
 {-# INLINE hrClass #-}
 
@@ -247,7 +247,7 @@ pre_ :: Html x -> Html x
 pre_ = el "pre"
 {-# INLINE pre_ #-}
 
-preClass :: JSString -> Html x -> Html x
+preClass :: Text -> Html x -> Html x
 preClass c = pre_ . (("className" =: c) *>)
 {-# INLINE preClass #-}
 
@@ -256,7 +256,7 @@ input_ :: Html x -> Html x
 input_ = el "input"
 {-# INLINE input_ #-}
 
-inputClass :: JSString -> Html x -> Html x
+inputClass :: Text -> Html x -> Html x
 inputClass c = input_ . (("className" =: c) *>)
 {-# INLINE inputClass #-}
 
@@ -265,7 +265,7 @@ label_ :: Html x -> Html x
 label_ = el "label"
 {-# INLINE label_ #-}
 
-labelClass :: JSString -> Html x -> Html x
+labelClass :: Text -> Html x -> Html x
 labelClass c = label_ . (("className" =: c) *>)
 {-# INLINE labelClass #-}
 
@@ -274,7 +274,7 @@ a_ :: Html x -> Html x
 a_ = el "a"
 {-# INLINE a_ #-}
 
-aClass :: JSString -> Html x -> Html x
+aClass :: Text -> Html x -> Html x
 aClass c = a_ . (("className" =: c) *>)
 {-# INLINE aClass #-}
 
@@ -283,7 +283,7 @@ mark_ :: Html x -> Html x
 mark_ = el "mark"
 {-# INLINE mark_ #-}
 
-markClass :: JSString -> Html x -> Html x
+markClass :: Text -> Html x -> Html x
 markClass c = mark_ . (("className" =: c) *>)
 {-# INLINE markClass #-}
 
@@ -292,7 +292,7 @@ ruby_ :: Html x -> Html x
 ruby_ = el "ruby"
 {-# INLINE ruby_ #-}
 
-rubyClass :: JSString -> Html x -> Html x
+rubyClass :: Text -> Html x -> Html x
 rubyClass c = ruby_ . (("className" =: c) *>)
 {-# INLINE rubyClass #-}
 
@@ -301,7 +301,7 @@ rt_ :: Html x -> Html x
 rt_ = el "rt"
 {-# INLINE rt_ #-}
 
-rtClass :: JSString -> Html x -> Html x
+rtClass :: Text -> Html x -> Html x
 rtClass c = rt_ . (("className" =: c) *>)
 {-# INLINE rtClass #-}
 
@@ -310,7 +310,7 @@ rp_ :: Html x -> Html x
 rp_ = el "rp"
 {-# INLINE rp_ #-}
 
-rpClass :: JSString -> Html x -> Html x
+rpClass :: Text -> Html x -> Html x
 rpClass c = rp_ . (("className" =: c) *>)
 {-# INLINE rpClass #-}
 
@@ -319,7 +319,7 @@ bdi_ :: Html x -> Html x
 bdi_ = el "bdi"
 {-# INLINE bdi_ #-}
 
-bdiClass :: JSString -> Html x -> Html x
+bdiClass :: Text -> Html x -> Html x
 bdiClass c = bdi_ . (("className" =: c) *>)
 {-# INLINE bdiClass #-}
 
@@ -328,7 +328,7 @@ bdo_ :: Html x -> Html x
 bdo_ = el "bdo"
 {-# INLINE bdo_ #-}
 
-bdoClass :: JSString -> Html x -> Html x
+bdoClass :: Text -> Html x -> Html x
 bdoClass c = bdo_ . (("className" =: c) *>)
 {-# INLINE bdoClass #-}
 
@@ -337,7 +337,7 @@ wbr_ :: Html x -> Html x
 wbr_ = el "wbr"
 {-# INLINE wbr_ #-}
 
-wbrClass :: JSString -> Html x -> Html x
+wbrClass :: Text -> Html x -> Html x
 wbrClass c = wbr_ . (("className" =: c) *>)
 {-# INLINE wbrClass #-}
 
@@ -346,7 +346,7 @@ details_ :: Html x -> Html x
 details_ = el "details"
 {-# INLINE details_ #-}
 
-detailsClass :: JSString -> Html x -> Html x
+detailsClass :: Text -> Html x -> Html x
 detailsClass c = details_ . (("className" =: c) *>)
 {-# INLINE detailsClass #-}
 
@@ -355,7 +355,7 @@ summary_ :: Html x -> Html x
 summary_ = el "summary"
 {-# INLINE summary_ #-}
 
-summaryClass :: JSString -> Html x -> Html x
+summaryClass :: Text -> Html x -> Html x
 summaryClass c = summary_ . (("className" =: c) *>)
 {-# INLINE summaryClass #-}
 
@@ -364,7 +364,7 @@ menuitem_ :: Html x -> Html x
 menuitem_ = el "menuitem"
 {-# INLINE menuitem_ #-}
 
-menuitemClass :: JSString -> Html x -> Html x
+menuitemClass :: Text -> Html x -> Html x
 menuitemClass c = menuitem_ . (("className" =: c) *>)
 {-# INLINE menuitemClass #-}
 
@@ -373,7 +373,7 @@ menu_ :: Html x -> Html x
 menu_ = el "menu"
 {-# INLINE menu_ #-}
 
-menuClass :: JSString -> Html x -> Html x
+menuClass :: Text -> Html x -> Html x
 menuClass c = menu_ . (("className" =: c) *>)
 {-# INLINE menuClass #-}
 
@@ -382,7 +382,7 @@ fieldset_ :: Html x -> Html x
 fieldset_ = el "fieldset"
 {-# INLINE fieldset_ #-}
 
-fieldsetClass :: JSString -> Html x -> Html x
+fieldsetClass :: Text -> Html x -> Html x
 fieldsetClass c = fieldset_ . (("className" =: c) *>)
 {-# INLINE fieldsetClass #-}
 
@@ -391,7 +391,7 @@ legend_ :: Html x -> Html x
 legend_ = el "legend"
 {-# INLINE legend_ #-}
 
-legendClass :: JSString -> Html x -> Html x
+legendClass :: Text -> Html x -> Html x
 legendClass c = legend_ . (("className" =: c) *>)
 {-# INLINE legendClass #-}
 
@@ -400,7 +400,7 @@ datalist_ :: Html x -> Html x
 datalist_ = el "datalist"
 {-# INLINE datalist_ #-}
 
-datalistClass :: JSString -> Html x -> Html x
+datalistClass :: Text -> Html x -> Html x
 datalistClass c = datalist_ . (("className" =: c) *>)
 {-# INLINE datalistClass #-}
 
@@ -409,7 +409,7 @@ optgroup_ :: Html x -> Html x
 optgroup_ = el "optgroup"
 {-# INLINE optgroup_ #-}
 
-optgroupClass :: JSString -> Html x -> Html x
+optgroupClass :: Text -> Html x -> Html x
 optgroupClass c = optgroup_ . (("className" =: c) *>)
 {-# INLINE optgroupClass #-}
 
@@ -418,7 +418,7 @@ keygen_ :: Html x -> Html x
 keygen_ = el "keygen"
 {-# INLINE keygen_ #-}
 
-keygenClass :: JSString -> Html x -> Html x
+keygenClass :: Text -> Html x -> Html x
 keygenClass c = keygen_ . (("className" =: c) *>)
 {-# INLINE keygenClass #-}
 
@@ -427,7 +427,7 @@ output_ :: Html x -> Html x
 output_ = el "output"
 {-# INLINE output_ #-}
 
-outputClass :: JSString -> Html x -> Html x
+outputClass :: Text -> Html x -> Html x
 outputClass c = output_ . (("className" =: c) *>)
 {-# INLINE outputClass #-}
 
@@ -436,7 +436,7 @@ progress_ :: Html x -> Html x
 progress_ = el "progress"
 {-# INLINE progress_ #-}
 
-progressClass :: JSString -> Html x -> Html x
+progressClass :: Text -> Html x -> Html x
 progressClass c = progress_ . (("className" =: c) *>)
 {-# INLINE progressClass #-}
 
@@ -445,7 +445,7 @@ meter_ :: Html x -> Html x
 meter_ = el "meter"
 {-# INLINE meter_ #-}
 
-meterClass :: JSString -> Html x -> Html x
+meterClass :: Text -> Html x -> Html x
 meterClass c = meter_ . (("className" =: c) *>)
 {-# INLINE meterClass #-}
 
@@ -454,7 +454,7 @@ center_ :: Html x -> Html x
 center_ = el "center"
 {-# INLINE center_ #-}
 
-centerClass :: JSString -> Html x -> Html x
+centerClass :: Text -> Html x -> Html x
 centerClass c = center_ . (("className" =: c) *>)
 {-# INLINE centerClass #-}
 
@@ -463,7 +463,7 @@ audio_ :: Html x -> Html x
 audio_ = el "audio"
 {-# INLINE audio_ #-}
 
-audioClass :: JSString -> Html x -> Html x
+audioClass :: Text -> Html x -> Html x
 audioClass c = audio_ . (("className" =: c) *>)
 {-# INLINE audioClass #-}
 
@@ -472,7 +472,7 @@ video_ :: Html x -> Html x
 video_ = el "video"
 {-# INLINE video_ #-}
 
-videoClass :: JSString -> Html x -> Html x
+videoClass :: Text -> Html x -> Html x
 videoClass c = video_ . (("className" =: c) *>)
 {-# INLINE videoClass #-}
 
@@ -481,7 +481,7 @@ source_ :: Html x -> Html x
 source_ = el "source"
 {-# INLINE source_ #-}
 
-sourceClass :: JSString -> Html x -> Html x
+sourceClass :: Text -> Html x -> Html x
 sourceClass c = source_ . (("className" =: c) *>)
 {-# INLINE sourceClass #-}
 
@@ -490,7 +490,7 @@ track_ :: Html x -> Html x
 track_ = el "track"
 {-# INLINE track_ #-}
 
-trackClass :: JSString -> Html x -> Html x
+trackClass :: Text -> Html x -> Html x
 trackClass c = track_ . (("className" =: c) *>)
 {-# INLINE trackClass #-}
 
@@ -499,7 +499,7 @@ embed_ :: Html x -> Html x
 embed_ = el "embed"
 {-# INLINE embed_ #-}
 
-embedClass :: JSString -> Html x -> Html x
+embedClass :: Text -> Html x -> Html x
 embedClass c = embed_ . (("className" =: c) *>)
 {-# INLINE embedClass #-}
 
@@ -508,7 +508,7 @@ object_ :: Html x -> Html x
 object_ = el "object"
 {-# INLINE object_ #-}
 
-objectClass :: JSString -> Html x -> Html x
+objectClass :: Text -> Html x -> Html x
 objectClass c = object_ . (("className" =: c) *>)
 {-# INLINE objectClass #-}
 
@@ -517,7 +517,7 @@ param_ :: Html x -> Html x
 param_ = el "param"
 {-# INLINE param_ #-}
 
-paramClass :: JSString -> Html x -> Html x
+paramClass :: Text -> Html x -> Html x
 paramClass c = param_ . (("className" =: c) *>)
 {-# INLINE paramClass #-}
 
@@ -526,7 +526,7 @@ ins_ :: Html x -> Html x
 ins_ = el "ins"
 {-# INLINE ins_ #-}
 
-insClass :: JSString -> Html x -> Html x
+insClass :: Text -> Html x -> Html x
 insClass c = ins_ . (("className" =: c) *>)
 {-# INLINE insClass #-}
 
@@ -535,7 +535,7 @@ del_ :: Html x -> Html x
 del_ = el "del"
 {-# INLINE del_ #-}
 
-delClass :: JSString -> Html x -> Html x
+delClass :: Text -> Html x -> Html x
 delClass c = del_ . (("className" =: c) *>)
 {-# INLINE delClass #-}
 
@@ -544,7 +544,7 @@ small_ :: Html x -> Html x
 small_ = el "small"
 {-# INLINE small_ #-}
 
-smallClass :: JSString -> Html x -> Html x
+smallClass :: Text -> Html x -> Html x
 smallClass c = small_ . (("className" =: c) *>)
 {-# INLINE smallClass #-}
 
@@ -553,7 +553,7 @@ cite_ :: Html x -> Html x
 cite_ = el "cite"
 {-# INLINE cite_ #-}
 
-citeClass :: JSString -> Html x -> Html x
+citeClass :: Text -> Html x -> Html x
 citeClass c = cite_ . (("className" =: c) *>)
 {-# INLINE citeClass #-}
 
@@ -562,7 +562,7 @@ dfn_ :: Html x -> Html x
 dfn_ = el "dfn"
 {-# INLINE dfn_ #-}
 
-dfnClass :: JSString -> Html x -> Html x
+dfnClass :: Text -> Html x -> Html x
 dfnClass c = dfn_ . (("className" =: c) *>)
 {-# INLINE dfnClass #-}
 
@@ -571,7 +571,7 @@ abbr_ :: Html x -> Html x
 abbr_ = el "abbr"
 {-# INLINE abbr_ #-}
 
-abbrClass :: JSString -> Html x -> Html x
+abbrClass :: Text -> Html x -> Html x
 abbrClass c = abbr_ . (("className" =: c) *>)
 {-# INLINE abbrClass #-}
 
@@ -580,7 +580,7 @@ time_ :: Html x -> Html x
 time_ = el "time"
 {-# INLINE time_ #-}
 
-timeClass :: JSString -> Html x -> Html x
+timeClass :: Text -> Html x -> Html x
 timeClass c = time_ . (("className" =: c) *>)
 {-# INLINE timeClass #-}
 
@@ -589,7 +589,7 @@ var_ :: Html x -> Html x
 var_ = el "var"
 {-# INLINE var_ #-}
 
-varClass :: JSString -> Html x -> Html x
+varClass :: Text -> Html x -> Html x
 varClass c = var_ . (("className" =: c) *>)
 {-# INLINE varClass #-}
 
@@ -598,7 +598,7 @@ samp_ :: Html x -> Html x
 samp_ = el "samp"
 {-# INLINE samp_ #-}
 
-sampClass :: JSString -> Html x -> Html x
+sampClass :: Text -> Html x -> Html x
 sampClass c = samp_ . (("className" =: c) *>)
 {-# INLINE sampClass #-}
 
@@ -607,7 +607,7 @@ kbd_ :: Html x -> Html x
 kbd_ = el "kbd"
 {-# INLINE kbd_ #-}
 
-kbdClass :: JSString -> Html x -> Html x
+kbdClass :: Text -> Html x -> Html x
 kbdClass c = kbd_ . (("className" =: c) *>)
 {-# INLINE kbdClass #-}
 
@@ -616,7 +616,7 @@ caption_ :: Html x -> Html x
 caption_ = el "caption"
 {-# INLINE caption_ #-}
 
-captionClass :: JSString -> Html x -> Html x
+captionClass :: Text -> Html x -> Html x
 captionClass c = caption_ . (("className" =: c) *>)
 {-# INLINE captionClass #-}
 
@@ -625,7 +625,7 @@ colgroup_ :: Html x -> Html x
 colgroup_ = el "colgroup"
 {-# INLINE colgroup_ #-}
 
-colgroupClass :: JSString -> Html x -> Html x
+colgroupClass :: Text -> Html x -> Html x
 colgroupClass c = colgroup_ . (("className" =: c) *>)
 {-# INLINE colgroupClass #-}
 
@@ -634,7 +634,7 @@ col_ :: Html x -> Html x
 col_ = el "col"
 {-# INLINE col_ #-}
 
-colClass :: JSString -> Html x -> Html x
+colClass :: Text -> Html x -> Html x
 colClass c = col_ . (("className" =: c) *>)
 {-# INLINE colClass #-}
 
@@ -643,7 +643,7 @@ nav_ :: Html x -> Html x
 nav_ = el "nav"
 {-# INLINE nav_ #-}
 
-navClass :: JSString -> Html x -> Html x
+navClass :: Text -> Html x -> Html x
 navClass c = nav_ . (("className" =: c) *>)
 {-# INLINE navClass #-}
 
@@ -652,7 +652,7 @@ article_ :: Html x -> Html x
 article_ = el "article"
 {-# INLINE article_ #-}
 
-articleClass :: JSString -> Html x -> Html x
+articleClass :: Text -> Html x -> Html x
 articleClass c = article_ . (("className" =: c) *>)
 {-# INLINE articleClass #-}
 
@@ -661,7 +661,7 @@ aside_ :: Html x -> Html x
 aside_ = el "aside"
 {-# INLINE aside_ #-}
 
-asideClass :: JSString -> Html x -> Html x
+asideClass :: Text -> Html x -> Html x
 asideClass c = aside_ . (("className" =: c) *>)
 {-# INLINE asideClass #-}
 
@@ -670,7 +670,7 @@ address_ :: Html x -> Html x
 address_ = el "address"
 {-# INLINE address_ #-}
 
-addressClass :: JSString -> Html x -> Html x
+addressClass :: Text -> Html x -> Html x
 addressClass c = address_ . (("className" =: c) *>)
 {-# INLINE addressClass #-}
 
@@ -679,7 +679,7 @@ main_ :: Html x -> Html x
 main_ = el "main"
 {-# INLINE main_ #-}
 
-mainClass :: JSString -> Html x -> Html x
+mainClass :: Text -> Html x -> Html x
 mainClass c = main_ . (("className" =: c) *>)
 {-# INLINE mainClass #-}
 
@@ -688,7 +688,7 @@ body_ :: Html x -> Html x
 body_ = el "body"
 {-# INLINE body_ #-}
 
-bodyClass :: JSString -> Html x -> Html x
+bodyClass :: Text -> Html x -> Html x
 bodyClass c = body_ . (("className" =: c) *>)
 {-# INLINE bodyClass #-}
 
@@ -697,7 +697,7 @@ figure_ :: Html x -> Html x
 figure_ = el "figure"
 {-# INLINE figure_ #-}
 
-figureClass :: JSString -> Html x -> Html x
+figureClass :: Text -> Html x -> Html x
 figureClass c = figure_ . (("className" =: c) *>)
 {-# INLINE figureClass #-}
 
@@ -706,7 +706,7 @@ figcaption_ :: Html x -> Html x
 figcaption_ = el "figcaption"
 {-# INLINE figcaption_ #-}
 
-figcaptionClass :: JSString -> Html x -> Html x
+figcaptionClass :: Text -> Html x -> Html x
 figcaptionClass c = figcaption_ . (("className" =: c) *>)
 {-# INLINE figcaptionClass #-}
 
@@ -715,7 +715,7 @@ dl_ :: Html x -> Html x
 dl_ = el "dl"
 {-# INLINE dl_ #-}
 
-dlClass :: JSString -> Html x -> Html x
+dlClass :: Text -> Html x -> Html x
 dlClass c = dl_ . (("className" =: c) *>)
 {-# INLINE dlClass #-}
 
@@ -724,7 +724,7 @@ dt_ :: Html x -> Html x
 dt_ = el "dt"
 {-# INLINE dt_ #-}
 
-dtClass :: JSString -> Html x -> Html x
+dtClass :: Text -> Html x -> Html x
 dtClass c = dt_ . (("className" =: c) *>)
 {-# INLINE dtClass #-}
 
@@ -733,7 +733,7 @@ dd_ :: Html x -> Html x
 dd_ = el "dd"
 {-# INLINE dd_ #-}
 
-ddClass :: JSString -> Html x -> Html x
+ddClass :: Text -> Html x -> Html x
 ddClass c = dd_ . (("className" =: c) *>)
 {-# INLINE ddClass #-}
 
@@ -742,7 +742,7 @@ img_ :: Html x -> Html x
 img_ = el "img"
 {-# INLINE img_ #-}
 
-imgClass :: JSString -> Html x -> Html x
+imgClass :: Text -> Html x -> Html x
 imgClass c = img_ . (("className" =: c) *>)
 {-# INLINE imgClass #-}
 
@@ -751,7 +751,7 @@ iframe_ :: Html x -> Html x
 iframe_ = el "iframe"
 {-# INLINE iframe_ #-}
 
-iframeClass :: JSString -> Html x -> Html x
+iframeClass :: Text -> Html x -> Html x
 iframeClass c = iframe_ . (("className" =: c) *>)
 {-# INLINE iframeClass #-}
 
@@ -760,7 +760,7 @@ canvas_ :: Html x -> Html x
 canvas_ = el "canvas"
 {-# INLINE canvas_ #-}
 
-canvasClass :: JSString -> Html x -> Html x
+canvasClass :: Text -> Html x -> Html x
 canvasClass c = canvas_ . (("className" =: c) *>)
 {-# INLINE canvasClass #-}
 
@@ -769,7 +769,7 @@ math_ :: Html x -> Html x
 math_ = el "math"
 {-# INLINE math_ #-}
 
-mathClass :: JSString -> Html x -> Html x
+mathClass :: Text -> Html x -> Html x
 mathClass c = math_ . (("className" =: c) *>)
 {-# INLINE mathClass #-}
 
@@ -778,7 +778,7 @@ select_ :: Html x -> Html x
 select_ = el "select"
 {-# INLINE select_ #-}
 
-selectClass :: JSString -> Html x -> Html x
+selectClass :: Text -> Html x -> Html x
 selectClass c = select_ . (("className" =: c) *>)
 {-# INLINE selectClass #-}
 
@@ -787,7 +787,7 @@ option_ :: Html x -> Html x
 option_ = el "option"
 {-# INLINE option_ #-}
 
-optionClass :: JSString -> Html x -> Html x
+optionClass :: Text -> Html x -> Html x
 optionClass c = option_ . (("className" =: c) *>)
 {-# INLINE optionClass #-}
 
@@ -796,7 +796,7 @@ textarea_ :: Html x -> Html x
 textarea_ = el "textarea"
 {-# INLINE textarea_ #-}
 
-textareaClass :: JSString -> Html x -> Html x
+textareaClass :: Text -> Html x -> Html x
 textareaClass c = textarea_ . (("className" =: c) *>)
 {-# INLINE textareaClass #-}
 
@@ -805,7 +805,7 @@ sub_ :: Html x -> Html x
 sub_ = el "sub"
 {-# INLINE sub_ #-}
 
-subClass :: JSString -> Html x -> Html x
+subClass :: Text -> Html x -> Html x
 subClass c = sub_ . (("className" =: c) *>)
 {-# INLINE subClass #-}
 
@@ -814,7 +814,7 @@ sup_ :: Html x -> Html x
 sup_ = el "sup"
 {-# INLINE sup_ #-}
 
-supClass :: JSString -> Html x -> Html x
+supClass :: Text -> Html x -> Html x
 supClass c = sup_ . (("className" =: c) *>)
 {-# INLINE supClass #-}
 
@@ -823,7 +823,7 @@ br_ :: Html x -> Html x
 br_ = el "br"
 {-# INLINE br_ #-}
 
-brClass :: JSString -> Html x -> Html x
+brClass :: Text -> Html x -> Html x
 brClass c = br_ . (("className" =: c) *>)
 {-# INLINE brClass #-}
 
@@ -832,7 +832,7 @@ ol_ :: Html x -> Html x
 ol_ = el "ol"
 {-# INLINE ol_ #-}
 
-olClass :: JSString -> Html x -> Html x
+olClass :: Text -> Html x -> Html x
 olClass c = ol_ . (("className" =: c) *>)
 {-# INLINE olClass #-}
 
@@ -841,7 +841,7 @@ blockquote_ :: Html x -> Html x
 blockquote_ = el "blockquote"
 {-# INLINE blockquote_ #-}
 
-blockquoteClass :: JSString -> Html x -> Html x
+blockquoteClass :: Text -> Html x -> Html x
 blockquoteClass c = blockquote_ . (("className" =: c) *>)
 {-# INLINE blockquoteClass #-}
 
@@ -850,7 +850,7 @@ code_ :: Html x -> Html x
 code_ = el "code"
 {-# INLINE code_ #-}
 
-codeClass :: JSString -> Html x -> Html x
+codeClass :: Text -> Html x -> Html x
 codeClass c = code_ . (("className" =: c) *>)
 {-# INLINE codeClass #-}
 
@@ -859,7 +859,7 @@ em_ :: Html x -> Html x
 em_ = el "em"
 {-# INLINE em_ #-}
 
-emClass :: JSString -> Html x -> Html x
+emClass :: Text -> Html x -> Html x
 emClass c = em_ . (("className" =: c) *>)
 {-# INLINE emClass #-}
 
@@ -868,7 +868,7 @@ i_ :: Html x -> Html x
 i_ = el "i"
 {-# INLINE i_ #-}
 
-iClass :: JSString -> Html x -> Html x
+iClass :: Text -> Html x -> Html x
 iClass c = i_ . (("className" =: c) *>)
 {-# INLINE iClass #-}
 
@@ -877,7 +877,7 @@ b_ :: Html x -> Html x
 b_ = el "b"
 {-# INLINE b_ #-}
 
-bClass :: JSString -> Html x -> Html x
+bClass :: Text -> Html x -> Html x
 bClass c = b_ . (("className" =: c) *>)
 {-# INLINE bClass #-}
 
@@ -886,7 +886,7 @@ u_ :: Html x -> Html x
 u_ = el "u"
 {-# INLINE u_ #-}
 
-uClass :: JSString -> Html x -> Html x
+uClass :: Text -> Html x -> Html x
 uClass c = u_ . (("className" =: c) *>)
 {-# INLINE uClass #-}
 
@@ -895,7 +895,7 @@ q_ :: Html x -> Html x
 q_ = el "q"
 {-# INLINE q_ #-}
 
-qClass :: JSString -> Html x -> Html x
+qClass :: Text -> Html x -> Html x
 qClass c = q_ . (("className" =: c) *>)
 {-# INLINE qClass #-}
 
@@ -904,7 +904,7 @@ script_ :: Html x -> Html x
 script_ = el "script"
 {-# INLINE script_ #-}
 
-scriptClass :: JSString -> Html x -> Html x
+scriptClass :: Text -> Html x -> Html x
 scriptClass c = script_ . (("className" =: c) *>)
 {-# INLINE scriptClass #-}
 
@@ -913,6 +913,6 @@ link_ :: Html x -> Html x
 link_ = el "link"
 {-# INLINE link_ #-}
 
-linkClass :: JSString -> Html x -> Html x
+linkClass :: Text -> Html x -> Html x
 linkClass c = link_ . (("className" =: c) *>)
 {-# INLINE linkClass #-}

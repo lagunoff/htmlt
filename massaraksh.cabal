@@ -20,17 +20,12 @@ library
   exposed-modules:
     Massaraksh
     Massaraksh.Base
-    Massaraksh.Base.Text
     Massaraksh.DOM
-    Massaraksh.DOM.Text
     Massaraksh.Decode
-    Massaraksh.Decode.Internal
     Massaraksh.Element
-    Massaraksh.Element.Text
     Massaraksh.Event
     Massaraksh.Internal
     Massaraksh.Main
-    Massaraksh.Text
     Massaraksh.Types
 
   other-modules: Paths_massaraksh
@@ -49,7 +44,6 @@ library
     natural-transformation,
     text,
     transformers,
---    raw-strings-qq, generic-lens, data-default,
     unliftio-core
 
   if impl(ghcjs)
