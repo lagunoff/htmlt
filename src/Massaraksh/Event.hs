@@ -14,7 +14,7 @@ import System.IO.Unsafe
 import qualified Data.Map as M
 
 -- | @Event a@ is a stream of event occurences of type @a@
-newtype Event a = Event (Stage -> Callback a -> Reactive Canceller)
+newtype Event a = Event {unEvent :: Stage -> Callback a -> Reactive Canceller}
 
 data Stage = Immediate | Defer
   deriving (Show, Eq, Ord)

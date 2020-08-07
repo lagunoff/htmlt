@@ -2,7 +2,6 @@
 module Massaraksh.Internal where
 
 import Control.Monad.Catch
-import Control.Monad.IO.Unlift
 import Control.Monad.Reader
 import Data.Bool
 import Data.Foldable
@@ -28,7 +27,6 @@ newElementRef' :: ElementRef -> JSM (ElementRef, IO ())
 newElementRef' ElementRef{..} = do
   flushedRef <- liftIO (newIORef False)
   queueRef <- liftIO (newIORef Seq.empty)
-  un <- askUnliftIO
   let
     mutate m = readIORef flushedRef
       >>= bool (modifyIORef queueRef (Seq.>< Seq.singleton m))

@@ -38,13 +38,11 @@ library
     bytestring,
     exceptions,
     containers,
+    data-default,
     jsaddle,
     lens,
     mtl,
-    natural-transformation,
-    text,
-    transformers,
-    unliftio-core
+    text
 
   if impl(ghcjs)
     build-depends: ghcjs-base, ghcjs-prim
@@ -60,6 +58,7 @@ library
     DeriveFunctor
     DeriveGeneric
     DerivingStrategies
+    DeriveAnyClass
     DuplicateRecordFields
     FlexibleContexts
     FlexibleInstances

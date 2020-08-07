@@ -47,12 +47,12 @@ instance Monoid a => Monoid (Html a) where
 
 #ifndef ghcjs_HOST_OS
 instance MonadJSM Html where
-  liftJSM' jsm = Html $ ReaderT \HtmlEnv{..} -> runReaderT (unJSM jsm) htnvJsContext
+  liftJSM' jsm = Html $ ReaderT (runReaderT (unJSM jsm) . htnvJsContext)
 #endif
 
 instance (x ~ ()) => IsString (Html x) where
   fromString = text . T.pack where
-    text txt = do
+    text t = do
       elm <- liftIO =<< asks (elrfRead . htnvElement)
-      textNode <- liftJSM (createTextNode txt)
+      textNode <- liftJSM (createTextNode t)
       liftJSM (appendChild elm textNode)

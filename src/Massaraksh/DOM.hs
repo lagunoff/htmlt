@@ -3,15 +3,25 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Massaraksh.DOM where
 
+import Control.Monad
 import Data.Text
 import Data.Coerce
-import Data.Functor
+import Data.Default
 import GHC.Generics
 import Language.Javascript.JSaddle as JS
 import Massaraksh.Decode
 
 newtype Node = Node {unNode :: JSVal}
   deriving newtype (MakeArgs, MakeObject, ToJSVal)
+
+data ListenOpts = ListenOpts
+  { stopPropagation :: Bool
+  , preventDefault  :: Bool }
+  deriving stock (Eq, Show, Generic)
+  deriving anyclass (ToJSVal)
+
+instance Default ListenOpts where
+  def = ListenOpts True False
 
 #ifndef ghcjs_HOST_OS
 appendChild :: Node -> Node -> JSM ()
@@ -143,9 +153,15 @@ foreign import javascript unsafe
   setTextValue :: Node -> Text -> JSM ()
 #endif
 
-addEventListener :: JSVal -> Text -> (JSVal -> JSM ()) -> JSM (JSM ())
-addEventListener target name f = do
-  cb <- function \_ _ [event] -> f event
+addEventListener
+  :: ListenOpts -> JSVal -> Text -> (JSVal -> JSM ()) -> JSM (JSM ())
+addEventListener ListenOpts{..} target name f = do
+  cb <- function \_ _ [event] -> do
+    when stopPropagation do
+      void $ event # ("stopPropagation"::Text) $ ()
+    when preventDefault do
+      void $ event # ("preventDefault"::Text) $ ()
+    f event
   target # ("addEventListener"::Text) $ (name, cb)
   pure do
     target # ("removeEventListener"::Text) $ (name, cb)

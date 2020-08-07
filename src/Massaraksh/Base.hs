@@ -3,9 +3,9 @@
 module Massaraksh.Base where
 
 import Control.Lens hiding ((#))
-import Control.Monad.IO.Unlift
 import Control.Monad.Reader
 import Data.Coerce
+import Data.Default
 import Data.Foldable
 import Data.IORef
 import Data.JSString.Text as JSS
@@ -89,23 +89,22 @@ on name decoder = do
 on_ :: Text -> Html x -> Html ()
 on_ name w = on name (pure w)
 
-domEvent :: Node -> Text -> Decoder (Html x) -> Html ()
-domEvent elm name decoder = do
+domEventOpts :: ListenOpts -> Node -> Text -> Decoder (Html x) -> Html ()
+domEventOpts opts elm name decoder = do
   env <- ask
   js <- askJSM
+  elmJs <- liftJSM (toJSVal elm)
   let
     event :: Event (Html ())
     event = Event \s k -> liftIO $ flip runJSM js do
-      cb <- function $ fun \_ _ [event] -> do
+      unlisten <- addEventListener opts elmJs name \event -> do
         e <- runDecoder decoder event
         either (\_ -> pure ()) (void . liftIO . sync . k . void) e
-      makeCb <- eval ("(function(f) { return function(e){e.preventDefault(); f(e); }; }) ")
-      cb' <- call makeCb jsUndefined $ [cb]
-      (elm # "addEventListener" $ (name, cb'))
-      pure $ liftIO $ flip runJSM js do
-        elm # "removeEventListener" $ (name, cb')
-        void (freeFunction cb)
+      pure $ liftIO $ runJSM unlisten js
   void $ htmlSubscribe event (liftIO . runHtml env)
+
+domEvent :: Node -> Text -> Decoder (Html x) -> Html ()
+domEvent = domEventOpts def
 
 domEvent_ :: Node -> Text -> Html x -> Html ()
 domEvent_ e n act = domEvent e n (pure act)

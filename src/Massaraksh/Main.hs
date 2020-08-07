@@ -4,7 +4,6 @@
 module Massaraksh.Main where
 
 import Control.Exception
-import Control.Monad.IO.Unlift
 import Control.Monad.Reader
 import Data.Coerce
 import Data.IORef
