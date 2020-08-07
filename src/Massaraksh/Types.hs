@@ -18,11 +18,11 @@ newtype Html a = Html {unHtml :: ReaderT HtmlEnv IO a}
     , MonadFix, MonadCatch, MonadThrow, MonadMask )
 
 data HtmlEnv = HtmlEnv
-  { he_element           :: ElementRef
-  , he_subscribe         :: Subscriber
-  , he_post_build        :: IORef [Html ()]
-  , he_js_context        :: JSContextRef
-  , he_catch_interactive :: SomeException -> IO () }
+  { htnvElement   :: ElementRef
+  , htnvSubscribe :: Subscriber
+  , htnvPostBuild :: IORef [Html ()]
+  , htnvJsContext :: JSContextRef
+  , htnvCatchInteractive :: SomeException -> IO () }
 
 newtype Subscriber = Subscriber
   {unSubscriber :: forall a. Event a -> Callback a -> Reactive Canceller}
@@ -30,8 +30,8 @@ newtype Subscriber = Subscriber
 type Subscriptions = IORef [IORef (IO ())]
 
 data ElementRef = ElementRef
-  { er_read           :: IO Node
-  , er_queue_mutation :: (Node -> JSM ()) -> IO () }
+  { elrfRead          :: IO Node
+  , elrfQueueMutation :: (Node -> JSM ()) -> IO () }
 
 data Exist (f :: * -> *) = forall x. Exist (f x)
 
@@ -47,12 +47,12 @@ instance Monoid a => Monoid (Html a) where
 
 #ifndef ghcjs_HOST_OS
 instance MonadJSM Html where
-  liftJSM' jsm = Html $ ReaderT \HtmlEnv{..} -> runReaderT (unJSM jsm) he_js_context
+  liftJSM' jsm = Html $ ReaderT \HtmlEnv{..} -> runReaderT (unJSM jsm) htnvJsContext
 #endif
 
 instance (x ~ ()) => IsString (Html x) where
   fromString = text . T.pack where
     text txt = do
-      elm <- liftIO =<< asks (er_read . he_element)
+      elm <- liftIO =<< asks (elrfRead . htnvElement)
       textNode <- liftJSM (createTextNode txt)
       liftJSM (appendChild elm textNode)

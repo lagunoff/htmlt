@@ -20,8 +20,8 @@ data Stage = Immediate | Defer
   deriving (Show, Eq, Ord)
 
 data Dynamic a = Dynamic
-  { dyn_read    :: IO a    -- ^ Read current value
-  , dyn_updates :: Event a -- ^ Event that fires when the value changes
+  { dnRead    :: IO a    -- ^ Read current value
+  , dnUpdates :: Event a -- ^ Event that fires when the value changes
   }
 
 type Callback a = a -> Reactive ()
@@ -76,7 +76,7 @@ defer k act = Reactive do
   modify \(ReactiveState s) -> ReactiveState (M.insert k act s)
 
 newtype ReactiveState = ReactiveState
-  { rs_deferred_acts :: M.Map ActId (Reactive ())
+  { rstDeferredActs :: M.Map ActId (Reactive ())
   }
 
 instance Semigroup ReactiveState where
@@ -154,8 +154,8 @@ constDyn a = Dynamic (pure a) never
 
 lensMap :: Lens' s a -> DynamicRef s -> DynamicRef a
 lensMap stab (d, m) = (Dynamic read upd, modify) where
-  read   = fmap (getConst . stab Const) $ dyn_read d
-  upd    = fmap (getConst . stab Const) $ dyn_updates d
+  read   = fmap (getConst . stab Const) $ dnRead d
+  upd    = fmap (getConst . stab Const) $ dnUpdates d
   modify = \f -> m (over stab f)
 
 holdUniqDyn :: Eq a => Dynamic a -> Dynamic a
@@ -196,8 +196,8 @@ traceDyn = traceDynWith show
 {-# INLINE traceDyn #-}
 
 traceDynWith :: (a -> String) -> String -> Dynamic a -> Dynamic a
-traceDynWith show' tag d = d {dyn_updates = e} where
-  e = traceEventWith show' tag (dyn_updates d)
+traceDynWith show' tag d = d {dnUpdates = e} where
+  e = traceEventWith show' tag (dnUpdates d)
 {-# INLINE traceDynWith #-}
 
 withOld :: a -> Event a -> Event (a, a)
@@ -249,20 +249,20 @@ instance Functor Dynamic where
 instance Applicative Dynamic where
   pure = constDyn
   (<*>) df da = Dynamic r u where
-    r = liftA2 ($) (dyn_read df) (dyn_read da)
+    r = liftA2 ($) (dnRead df) (dnRead da)
     u = Event \s k -> do
       actId <- liftIO newActId
       let
         doFire newF newA = do
-          f <- liftIO $ maybe (dyn_read df) pure newF
-          a <- liftIO $ maybe (dyn_read da) pure newA
+          f <- liftIO $ maybe (dnRead df) pure newF
+          a <- liftIO $ maybe (dnRead da) pure newA
           k (f a)
         fire newF newA = case s of
           Immediate -> doFire newF newA
           Defer     -> defer actId (doFire newF newA)
-      c1 <- dyn_updates df `subscribeImmediate` \f ->
+      c1 <- dnUpdates df `subscribeImmediate` \f ->
         fire (Just f) Nothing
-      c2 <- dyn_updates da `subscribeImmediate` \a ->
+      c2 <- dnUpdates da `subscribeImmediate` \a ->
         fire Nothing (Just a)
       pure (c1 *> c2)
 
@@ -270,8 +270,8 @@ instance Applicative Dynamic where
 (<**>) (dA, aMod) (bDyn, bMod) = (dyn, mod) where
   dyn = (,) <$> dA <*> bDyn
   mod = \f -> do
-    oldA <- liftIO $ dyn_read dA
-    oldB <- liftIO $ dyn_read bDyn
+    oldA <- liftIO $ dnRead dA
+    oldB <- liftIO $ dnRead bDyn
     let (newA, newB) = f (oldA, oldB)
     aMod \_ -> newA
     bMod \_ -> newB

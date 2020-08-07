@@ -41,10 +41,10 @@ text txt = do
 
 dynText :: Dynamic Text -> Html ()
 dynText d = do
-  txt <- liftIO (dyn_read d)
+  txt <- liftIO (dnRead d)
   js <- askJSM
   textNode <- liftJSM (createTextNode txt)
-  dyn_updates d `htmlSubscribe` \new -> void $ liftIO do
+  dnUpdates d `htmlSubscribe` \new -> void $ liftIO do
     flip runJSM js $ setTextValue textNode new
   mutateRoot (flip appendChild textNode)
 
@@ -152,7 +152,7 @@ itraverseHtml l dynRef@(dyn, _) h = do
   hte <- ask
   js <- askJSM
   rootEl <- askElement
-  s <- liftIO $ dyn_read (fst dynRef)
+  s <- liftIO $ dnRead (fst dynRef)
   itemRefs <- liftIO (newIORef [])
   let
     -- FIXME: 'setup' should return new contents for 'itemRefs'
@@ -166,8 +166,8 @@ itraverseHtml l dynRef@(dyn, _) h = do
         let
           model   = (fst dynRef', mkModifier idx (fst dynRef'))
           newEnv  = hte
-            { he_subscribe  = subscriber
-            , he_post_build = error "post hook not implemented" }
+            { htnvSubscribe  = subscriber
+            , htnvPostBuild = error "post hook not implemented" }
           itemRef = ChildHtmlRef newEnv model subscriptions (snd dynRef')
         runHtml newEnv $ h idx model
         liftIO (modifyIORef itemRefs (<> [itemRef]))
@@ -192,12 +192,12 @@ itraverseHtml l dynRef@(dyn, _) h = do
 
     mkModifier :: Int -> Dynamic a -> (a -> a) -> Reactive ()
     mkModifier idx dyn f = do
-      oldA <- liftIO $ dyn_read dyn
+      oldA <- liftIO $ dnRead dyn
       snd dynRef \oldS ->
         oldS & iover l \i x -> if i == idx then f oldA else x
 
   liftIO $ setup s 0 [] [] (toListOf l s)
-  let eUpdates = withOld s (dyn_updates dyn)
+  let eUpdates = withOld s (dnUpdates dyn)
   htmlSubscribe eUpdates \(old, new) -> do
     refs <- liftIO (readIORef itemRefs)
     liftIO $ setup new 0 refs (toListOf l old) (toListOf l new)
@@ -218,7 +218,7 @@ dynHtml' dyn = do
     setup html rootEl = liftIO mdo
       postHooks <- newIORef []
       (subscriber, subscriptions) <- newSubscriber
-      (elmRef, flush) <- flip runJSM js $ newElementRef' (he_element env)
+      (elmRef, flush) <- flip runJSM js $ newElementRef' (htnvElement env)
       let
         unsub = liftIO do
           oldEnv <- readIORef childRef
@@ -228,7 +228,7 @@ dynHtml' dyn = do
             writeIORef s []
           writeIORef childRef (Just (newEnv, subscriptions))
         newEnv = env
-          {he_subscribe=subscriber, he_post_build=postHooks, he_element=elmRef}
+          {htnvSubscribe=subscriber, htnvPostBuild=postHooks, htnvElement=elmRef}
       runHtml newEnv do
         let
           commit::Html X = unsafeCoerce ()

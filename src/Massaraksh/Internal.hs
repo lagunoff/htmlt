@@ -17,7 +17,7 @@ import qualified Data.Sequence as Seq
 
 newElementRef :: Node -> Html ElementRef
 newElementRef elm = do
-  jsCtx <- asks he_js_context
+  jsCtx <- asks htnvJsContext
   mutateRoot (flip appendChild elm)
   let
     read = pure elm
@@ -32,37 +32,35 @@ newElementRef' ElementRef{..} = do
   let
     mutate m = readIORef flushedRef
       >>= bool (modifyIORef queueRef (Seq.>< Seq.singleton m))
-        (er_queue_mutation m)
+        (elrfQueueMutation m)
     flush = do
       writeIORef flushedRef True
       queue <- atomicModifyIORef' queueRef (Seq.empty,)
-      er_queue_mutation \rootEl -> for_ queue ($ rootEl)
-  pure (ElementRef er_read mutate, flush)
+      elrfQueueMutation \rootEl -> for_ queue ($ rootEl)
+  pure (ElementRef elrfRead mutate, flush)
 
 askElement :: Html Node
-askElement =
-  liftIO =<< asks (er_read . he_element)
+askElement = liftIO =<< asks (elrfRead . htnvElement)
 {-# INLINE askElement #-}
 
 mutateRoot :: (Node -> JSM ()) -> Html ()
-mutateRoot f =
-  liftIO =<< asks (($ f). er_queue_mutation . he_element)
+mutateRoot f = liftIO =<< asks (($ f). elrfQueueMutation . htnvElement)
 {-# INLINE mutateRoot #-}
 
 askMutateRoot :: Html ((Node -> JSM ()) -> IO ())
-askMutateRoot = asks (er_queue_mutation . he_element)
+askMutateRoot = asks (elrfQueueMutation . htnvElement)
 {-# INLINE askMutateRoot #-}
 
 localElement :: Node -> Html a -> Html a
 localElement elm child = do
   elRef <- newElementRef elm
-  local (\env -> env { he_element = elRef }) child
+  local (\env -> env { htnvElement = elRef }) child
 {-# INLINE localElement #-}
 
 htmlSubscribe :: Event a -> (a -> Reactive ()) -> Html (IO ())
 htmlSubscribe e k = do
-  s <- asks (unSubscriber . he_subscribe)
-  h <- asks he_catch_interactive
+  s <- asks (unSubscriber . htnvSubscribe)
+  h <- asks htnvCatchInteractive
   let k' x = k x `catchSync` (liftIO . h)
   liftIO $ sync (s e k')
 {-# INLINE htmlSubscribe #-}
@@ -79,12 +77,12 @@ newSubscriber = do
   pure (subscriber, subs)
 
 subscribeUpdates :: Dynamic s -> Callback s -> Html (IO ())
-subscribeUpdates d f = dyn_updates d `htmlSubscribe` f
+subscribeUpdates d f = dnUpdates d `htmlSubscribe` f
 {-# INLINE subscribeUpdates #-}
 
 forDyn :: Dynamic a -> Callback a -> Html (IO ())
 forDyn dyn k = do
-  liftIO (dyn_read dyn) >>= liftIO . sync . k
+  liftIO (dnRead dyn) >>= liftIO . sync . k
   subscribeUpdates dyn k
 
 catchSync :: (MonadCatch m, MonadThrow m) => m a -> (SomeException -> m a) -> m a
