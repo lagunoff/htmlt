@@ -10,7 +10,7 @@ import Data.String (fromString)
 import Data.Text (Text)
 import GHC.Generics
 import Language.Javascript.JSaddle
-import Massaraksh.Text
+import Component
 import Text.RawString.QQ (r)
 import Utils (readTodos, writeTodos, readHash, writeHash)
 import qualified Data.Text as T
@@ -40,12 +40,12 @@ data Msg a where
 
 init :: JSM Model
 init = do
-    hash <- readHash
-    todos <- readTodos
-    let filter = fromMaybe All $ hash ^? url2Filter
-    pure (Model "" todos filter)
+  hash <- readHash
+  todos <- readTodos
+  let filter = fromMaybe All $ hash ^? url2Filter
+  pure (Model "" todos filter)
 
-todosWidget :: DynRef Model -> HtmlEmit Msg JSM
+todosWidget :: DynamicRef Model -> Component Msg
 todosWidget dynRef@(model, modify) yield = \case
   Render -> do
     render
@@ -58,7 +58,7 @@ todosWidget dynRef@(model, modify) yield = \case
   ClearCompleted ->
     liftIO $ sync $ modify $ moTodos %~ Prelude.filter (not . Item._moCompleted)
   EditingCommit -> do
-    txt <- liftIO $ dyn_read model <&> (T.strip . _moTitle)
+    txt <- liftIO $ dnRead model <&> (T.strip . _moTitle)
     case txt of
       ""      -> pure ()
       trimmed -> do
@@ -75,7 +75,7 @@ todosWidget dynRef@(model, modify) yield = \case
       liftIO $ sync $ modify $ moFilter .~ All
       liftJSM $ writeHash (review url2Filter All)
   BeforeUnload -> do
-    todos <- liftIO $ dyn_read model <&> _moTodos
+    todos <- liftIO $ dnRead model <&> _moTodos
     liftJSM $ writeTodos todos
   where
     render =
@@ -91,25 +91,24 @@ todosWidget dynRef@(model, modify) yield = \case
     renderHeader =
       header_ do
         "className" =: "header"
-        h1_ do text "todos"
+        h1_ "todos"
         input_ do
           "className" =: "new-todo"
           "placeholder" =: "What needs to be done?"
           "autofocus" =: "on"
           "value" ~: (model <&> _moTitle)
-          on "input" $ dValue <&> yield . Edit
-          on "keydown" $ dKeyCode <&> yield . KeyPress
+          on "input" $ value <&> yield . Edit
+          on "keydown" $ keyCode <&> yield . KeyPress
 
     renderMain =
       section_ do
-        dynClassList
-          [ ("hidden", null . _moTodos <$> model)
-          , ("main", pure True) ]
+        toggleClass "hidden" $ null . _moTodos <$> model
+        toggleClass "main" $ pure True
         input_ do
           "type" =: "checkbox"
           "id" =: "toggle-all"
           "className" =: "toggle-all"
-          on "click" $ dChecked <&> yield . ToggleAll
+          on "click" $ checked <&> yield . ToggleAll
         label_ do
           attr "for" "toggle-all"
           text "Mark all as completed"
@@ -117,7 +116,7 @@ todosWidget dynRef@(model, modify) yield = \case
           "className" =: "todo-list"
           let
             itemConfig = Item.Config _2 $ Item.Props . uncurry isHidden
-            mkItemWidget = \itemDyn (override :: HtmlEmit Item.Msg JSM) ->
+            mkItemWidget = \itemDyn (override :: Component Item.Msg) ->
               fix1 (Item.itemWidget (itemConfig itemDyn) `compose1` override) Item.Render
           itraverseHtml (moTodos . traversed) dynRef \idx dynA ->
             mkItemWidget (dynRef <**> dynA) \super -> \case
@@ -127,15 +126,14 @@ todosWidget dynRef@(model, modify) yield = \case
     renderFilter x =
       li_ do
         a_ do
-          dynClassList [ ("selected", (x ==) . Todos._moFilter  <$> model) ]
           "href" =: review url2Filter x
+          toggleClass "selected" $ (x ==) . Todos._moFilter <$> model
           text $ fromString (show x)
 
     renderFooter =
       footer_ do
-        dynClassList
-          [ ("footer", pure True)
-          , ("hidden", null . _moTodos  <$> model) ]
+        toggleClass "footer" $ pure True
+        toggleClass "hidden" $ null . _moTodos  <$> model
         span_ do
           "className" =: "todo-count"
           strong_ do dynText $ model <&> fromString . show . itemsLeft
@@ -153,9 +151,9 @@ todosWidget dynRef@(model, modify) yield = \case
         "className" =: "info"
         p_ "Double-click to edit a todo"
         p_ do
-          text "Created by "
-          a_ ("Vlad Lagunov" <> "href" =: "https://github.com/lagunoff")
-        p_ do text "Part of "; a_ ("TodoMVC" <> "href" =: "http://todomvc.com")
+          "Created by "
+          a_ do "Vlad Lagunov"; "href" =: "https://github.com/lagunoff"
+        p_ do text "Part of "; a_ do "TodoMVC"; "href" =: "http://todomvc.com"
 
 itemsLeft :: Model -> Int
 itemsLeft Model{..} = foldl folder 0 _moTodos

@@ -6,8 +6,6 @@ import Control.Applicative
 import Control.Monad.Catch
 import Control.Monad.Reader
 import Data.IORef
-import Data.Text as T
-import Data.String
 import Language.Javascript.JSaddle
 import Massaraksh.DOM
 import Massaraksh.Event
@@ -18,20 +16,21 @@ newtype Html a = Html {unHtml :: ReaderT HtmlEnv IO a}
     , MonadFix, MonadCatch, MonadThrow, MonadMask )
 
 data HtmlEnv = HtmlEnv
-  { htnvElement   :: ElementRef
-  , htnvSubscribe :: Subscriber
-  , htnvPostBuild :: IORef [Html ()]
-  , htnvJsContext :: JSContextRef
+  { htnvRootRef    :: RootRef
+  , htnvSubscribe  :: Subscriber
+  , htnvPostBuild  :: IORef [Html ()]
+  , htnvJsContext  :: JSContextRef
   , htnvCatchInteractive :: SomeException -> IO () }
+
+data RootRef = RootRef
+  { rrfRoot   :: Node
+  , rrfMutate :: (Node -> JSM ()) -> IO ()
+  , rrfAdopt  :: IO (Maybe Node) }
 
 newtype Subscriber = Subscriber
   {unSubscriber :: forall a. Event a -> Callback a -> Reactive Canceller}
 
 type Subscriptions = IORef [IORef (IO ())]
-
-data ElementRef = ElementRef
-  { elrfRead          :: IO Node
-  , elrfQueueMutation :: (Node -> JSM ()) -> IO () }
 
 data Exist (f :: * -> *) = forall x. Exist (f x)
 
@@ -49,10 +48,3 @@ instance Monoid a => Monoid (Html a) where
 instance MonadJSM Html where
   liftJSM' jsm = Html $ ReaderT (runReaderT (unJSM jsm) . htnvJsContext)
 #endif
-
-instance (x ~ ()) => IsString (Html x) where
-  fromString = text . T.pack where
-    text t = do
-      elm <- liftIO =<< asks (elrfRead . htnvElement)
-      textNode <- liftJSM (createTextNode t)
-      liftJSM (appendChild elm textNode)
