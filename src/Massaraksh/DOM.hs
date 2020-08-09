@@ -1,18 +1,30 @@
-{-# LANGUAGE CPP #-}
 {-# LANGUAGE JavaScriptFFI #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Massaraksh.DOM where
 
-import Control.Monad
-import Data.Text
-import Data.Coerce
+import Control.Monad.IO.Class
 import Data.Default
+import Data.HashTable.IO as HT
+import Data.IORef
+import Data.List as L
+import Data.Text as T
+import Data.Typeable
 import GHC.Generics
 import Language.Javascript.JSaddle as JS
 import Massaraksh.Decode
 
-newtype Node = Node {unNode :: JSVal}
-  deriving newtype (MakeArgs, MakeObject, ToJSVal)
+data Node
+  = SsrElement
+    { ssreNs     :: Maybe Text
+    , ssreTag    :: Text
+    , ssreAttrs  :: CuckooHashTable Text Text
+    , ssreChilds :: IORef [Node] }
+  | SsrText
+    { ssrtContent :: IORef Text }
+
+instance MakeArgs Node where makeArgs = undefined
+instance MakeObject Node where makeObject = undefined
+instance ToJSVal Node where toJSVal = undefined
 
 data ListenOpts = ListenOpts
   { stopPropagation :: Bool
@@ -23,149 +35,75 @@ data ListenOpts = ListenOpts
 instance Default ListenOpts where
   def = ListenOpts True False
 
-#ifndef ghcjs_HOST_OS
 appendChild :: Node -> Node -> JSM ()
-appendChild root child = do
-  void (root # ("appendChild"::Text) $ child)
-#else
-foreign import javascript unsafe
-  "$1.appendChild($2)"
-  appendChild :: Node -> Node -> JSM ()
-#endif
+appendChild (SsrElement _ _ _ chRef) new = do
+  liftIO $ modifyIORef chRef (<> [new])
+appendChild _ _ = pure ()
 
-#ifndef ghcjs_HOST_OS
 setAttribute :: Node -> Text -> Text -> JSM ()
-setAttribute e k v = do
-  void $ e # ("setAttribute"::Text) $ (k, v)
-#else
-foreign import javascript unsafe
-  "$1.setAttribute($2, $3)"
-  setAttribute :: Node -> Text -> Text -> JSM ()
-#endif
+setAttribute (SsrElement _ _ attRef _) k v = do
+  liftIO $ HT.insert attRef k v
+setAttribute _ _ _ = pure ()
 
-#ifndef ghcjs_HOST_OS
+setProp :: forall v. (ToJSVal v, Typeable v) => Node -> Text -> v -> JSM ()
+setProp (SsrElement _ _ attRef _) k v
+  | Just t <- cast @_ @Text v = liftIO $ HT.insert attRef k t
+  | Just s <- cast @_ @String v = liftIO $ HT.insert attRef k (T.pack s)
+  | otherwise = pure ()
+setProp _ _ _ = pure ()
+
 removeAttribute :: Node -> Text -> JSM ()
-removeAttribute e k = do
-  void $ e # ("removeAttribute"::Text) $ [k]
-#else
-foreign import javascript unsafe
-  "$1.removeAttribute($2)"
-  removeAttribute :: Node -> Text -> JSM ()
-#endif
+removeAttribute (SsrElement _ _ attRef _) k = do
+  liftIO $ HT.delete attRef k
+removeAttribute  _ _ = pure ()
 
-#ifndef ghcjs_HOST_OS
 removeChild :: Node -> Node -> JSM ()
-removeChild p ch = do
-  void $ p # ("removeChild"::Text) $ [ch]
-#else
-foreign import javascript unsafe
-  "$1.removeChild($2)"
-  removeChild :: Node -> Node -> JSM ()
-#endif
+removeChild _ _ = pure ()
 
-#ifndef ghcjs_HOST_OS
 replaceChild :: Node -> Node -> Node -> JSM ()
-replaceChild root new old = do
-  void (root # ("replaceChild"::Text) $ (new, old))
-#else
-foreign import javascript unsafe
-  "$1.replaceChild($2, $3)"
-  replaceChild :: Node -> Node -> Node -> JSM ()
-#endif
+replaceChild _ _ _ = pure ()
 
-#ifndef ghcjs_HOST_OS
 childLength :: Node -> JSM Int
-childLength e = do
-  fromJSValUnchecked =<< e ! ("childNodes"::Text) ! ("length"::Text)
-#else
-foreign import javascript unsafe
-  "$1.childNodes.length"
-  childLength :: Node -> JSM Int
-#endif
+childLength (SsrElement _ _ _ chRef) =
+  liftIO $ L.length <$> readIORef chRef
+childLength _ = pure 0
 
-#ifndef ghcjs_HOST_OS
 getChildNode :: Node -> Int -> JSM Node
-getChildNode e ix =
-  fmap coerce (e ! ("childNodes"::Text) JS.!! ix)
-#else
-foreign import javascript unsafe
-  "$1.childNodes[$2]"
-  getChildNode :: Node -> Int -> JSM Node
-#endif
+getChildNode (SsrElement _ _ _ chRef) ix =
+  liftIO $ (L.!! ix) <$> readIORef chRef
+getChildNode _ _ = error "getChildNode called on SsrText"
 
-#ifndef ghcjs_HOST_OS
 createElement :: Text -> JSM Node
-createElement tag = do
-  fmap coerce $ jsg ("document"::Text) # ("createElement"::Text) $ [tag]
-#else
-foreign import javascript unsafe
-  "document.createElement($1)"
-  createElement :: Text -> JSM Node
-#endif
+createElement t = liftIO do
+  att <- HT.new
+  ch <- newIORef []
+  pure $ SsrElement Nothing t att ch
 
-#ifndef ghcjs_HOST_OS
 createElementNS :: Text -> Text -> JSM Node
-createElementNS ns tag = do
-  fmap coerce $ jsg ("document"::Text) # ("createElementNS"::Text) $ [ns, tag]
-#else
-foreign import javascript unsafe
-  "document.createElementNS($1, $2)"
-  createElementNS :: Text -> Text -> JSM Node
-#endif
+createElementNS ns t = liftIO do
+  att <- HT.new
+  ch <- newIORef []
+  pure $ SsrElement (Just ns) t att ch
 
-#ifndef ghcjs_HOST_OS
 createTextNode :: Text -> JSM Node
-createTextNode tag = do
-  fmap coerce $ jsg ("document"::Text) # ("createTextNode"::Text) $ [tag]
-#else
-foreign import javascript unsafe
-  "document.createTextNode($1)"
-  createTextNode :: Text -> JSM Node
-#endif
+createTextNode t = liftIO do
+  content <- newIORef t
+  pure $ SsrText content
 
-#ifndef ghcjs_HOST_OS
 classListAdd :: Node -> Text -> JSM ()
-classListAdd e c = do
-  void $ e ! ("classList"::Text) # ("add"::Text) $ [c]
-#else
-foreign import javascript unsafe
-  "$1.classList.add($2)"
-  classListAdd :: Node -> Text -> JSM ()
-#endif
+classListAdd _ _ = pure ()
 
-#ifndef ghcjs_HOST_OS
 classListRemove :: Node -> Text -> JSM ()
-classListRemove e c = do
-  void $ e ! ("classList"::Text) # ("remove"::Text) $ [c]
-#else
-foreign import javascript unsafe
-  "$1.classList.remove($2)"
-  classListRemove :: Node -> Text -> JSM ()
-#endif
+classListRemove _ _ = pure ()
 
-#ifndef ghcjs_HOST_OS
 setTextValue :: Node -> Text -> JSM ()
-setTextValue e c = do
-  void $ e <# ("nodeValue"::Text) $ c
-#else
-foreign import javascript unsafe
-  "$1.nodeValue = $2;"
-  setTextValue :: Node -> Text -> JSM ()
-#endif
+setTextValue (SsrText ref) t =
+  liftIO $ writeIORef ref t
+setTextValue _ _ = pure ()
 
 addEventListener
-  :: ListenOpts -> JSVal -> Text -> (JSVal -> JSM ()) -> JSM (JSM ())
-addEventListener ListenOpts{..} target name f = do
-  cb <- function \_ _ [event] -> do
-    when stopPropagation do
-      void $ event # ("stopPropagation"::Text) $ ()
-    when preventDefault do
-      void $ event # ("preventDefault"::Text) $ ()
-    f event
-  target # ("addEventListener"::Text) $ (name, cb)
-  pure do
-    target # ("removeEventListener"::Text) $ (name, cb)
-    freeFunction cb
+  :: ListenOpts -> Node -> Text -> (JSVal -> JSM ()) -> JSM (JSM ())
+addEventListener _ _ _ _ = pure (pure ())
 
 target :: Decoder JSVal
 target = decodeAt ["target"] decodeJSVal

@@ -4,17 +4,34 @@ module Massaraksh.Internal where
 import Control.Monad.Catch
 import Control.Monad.Reader
 import Data.Bool
+import Data.ByteString.Builder
 import Data.Foldable
+import Data.HashTable.IO as HT
 import Data.IORef
-import Data.List
+import Data.List as L
 import Data.Maybe
 import Data.Text as T
 import Language.Javascript.JSaddle
 import Massaraksh.DOM
 import Massaraksh.Event
 import Massaraksh.Types
+import qualified Blaze.ByteString.Builder.Html.Utf8 as B
 import qualified Control.Exception as E
 import qualified Data.Sequence as Seq
+
+renderNode :: Node -> IO Builder
+renderNode (SsrText ref) =
+  B.fromHtmlEscapedText <$> readIORef ref
+renderNode (SsrElement ns t attHt chRef) = do
+  ch <- readIORef chRef
+  c <- fold <$> mapM renderNode ch
+  let renderAtt (k,v) = B.fromText k <> B.fromString "=\"" <> B.fromHtmlEscapedText v <> B.fromString "\""
+  att0 <- HT.toList attHt
+  let att1 = fold $ L.intersperse (B.fromChar ' ') $ fmap renderAtt att0
+  let att2 = bool (B.fromChar ' ' <> att1) att1 $ att0 == mempty
+  let begin = B.fromChar '<' <> B.fromHtmlEscapedText t <> att2 <> B.fromChar '>'
+  let end = B.fromString "</" <> B.fromHtmlEscapedText t <> B.fromChar '>'
+  pure $ begin <> c <> end
 
 newRootRef :: Bool -> Node -> JSM RootRef
 newRootRef adopting n = do
@@ -103,7 +120,7 @@ newSubscriber = do
       unsub <- e `subscribe` f
       unRef <- liftIO (newIORef unsub)
       liftIO $ modifyIORef subs ((:) unRef)
-      pure $ liftIO $ modifyIORef subs (delete unRef)
+      pure $ liftIO $ modifyIORef subs (L.delete unRef)
   pure (subscriber, subs)
 
 subscribeUpdates :: Dynamic s -> Callback s -> Html (IO ())

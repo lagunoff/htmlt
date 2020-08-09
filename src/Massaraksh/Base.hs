@@ -5,16 +5,15 @@ module Massaraksh.Base where
 
 import Control.Lens hiding ((#))
 import Control.Monad.Reader
-import Data.Coerce
 import Data.Default
 import Data.Foldable
+import Data.Typeable
 import Data.String
 import Data.IORef
-import Data.JSString.Text as JSS
 import Data.List as L
 import Data.Text as T hiding (index)
 import Language.Javascript.JSaddle as JS
-import Massaraksh.DOM
+import Massaraksh.DOM as DOM
 import Massaraksh.Decode
 import Massaraksh.Event
 import Massaraksh.Internal
@@ -41,31 +40,29 @@ dynText :: Dynamic Text -> Html ()
 dynText = adoptDynText
 {-# INLINE dynText #-}
 
-prop :: ToJSVal v => Text -> v -> Html ()
-prop (JSS.textToJSString -> key) val = mutateRoot \rootEl -> do
-  v <- toJSVal val
-  unsafeSetProp key v (coerce rootEl)
+prop :: (ToJSVal v, Typeable v) => Text -> v -> Html ()
+prop k v = mutateRoot \e -> DOM.setProp e k v
+{-# INLINE prop #-}
 
 (=:) :: Text -> Text -> Html ()
 (=:) = prop
 infixr 3 =:
 {-# INLINE (=:) #-}
 
-dynProp :: (ToJSVal v, FromJSVal v, Eq v) => Text -> Dynamic v -> Html ()
-dynProp (JSS.textToJSString -> key) dyn = do
+dynProp :: (ToJSVal v, Typeable v) => Text -> Dynamic v -> Html ()
+dynProp k d = do
   mutate <- askMutateRoot
-  let
-    setup txt rootEl = toJSVal txt
-      >>= flip (unsafeSetProp key) (coerce rootEl)
-  void $ forDyn dyn (liftIO . mutate . setup)
+  let setup t el = toJSVal t >>= DOM.setProp el k
+  void $ forDyn d (liftIO . mutate . setup)
 
-(~:) :: (ToJSVal v, FromJSVal v, Eq v) => Text -> Dynamic v -> Html ()
+(~:) :: (ToJSVal v, Typeable v) => Text -> Dynamic v -> Html ()
 (~:) = dynProp
 infixr 3 ~:
 {-# INLINE (~:) #-}
 
 attr :: Text -> Text -> Html ()
 attr k v = mutateRoot \e -> setAttribute e k v
+{-# INLINE attr #-}
 
 dynAttr :: Text -> Dynamic Text -> Html ()
 dynAttr k d = do
@@ -74,10 +71,8 @@ dynAttr k d = do
   void $ forDyn d (liftIO . mutate . setup)
 
 on :: Text -> Decoder (Html x) -> Html ()
-on name decoder = do
-  env <- ask
-  mutateRoot \rootEl ->
-    liftIO $ runHtml env $ domEvent rootEl name decoder
+on k d = ask >>= \ht -> mutateRoot \e ->
+  liftIO $ runHtml ht $ domEvent e k d
 
 on_ :: Text -> Html x -> Html ()
 on_ name w = on name (pure w)
@@ -86,11 +81,10 @@ domEventOpts :: ListenOpts -> Node -> Text -> Decoder (Html x) -> Html ()
 domEventOpts opts elm name decoder = do
   env <- ask
   js <- askJSM
-  elmJs <- liftJSM (toJSVal elm)
   let
     event :: Event (Html ())
     event = Event \s k -> liftIO $ flip runJSM js do
-      unlisten <- addEventListener opts elmJs name \event -> do
+      unlisten <- addEventListener opts elm name \event -> do
         e <- runDecoder decoder event
         either (\_ -> pure ()) (void . liftIO . sync . k . void) e
       pure $ liftIO $ runJSM unlisten js
