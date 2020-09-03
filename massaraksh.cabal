@@ -21,6 +21,8 @@ library
     Massaraksh
     Massaraksh.Base
     Massaraksh.DOM
+    Massaraksh.DOM.Decoders
+    Massaraksh.DOM.Impl
     Massaraksh.Decode
     Massaraksh.Element
     Massaraksh.Event
@@ -29,7 +31,7 @@ library
     Massaraksh.Types
 
   other-modules: Paths_massaraksh
-  hs-source-dirs: src
+  hs-source-dirs: src-ssr, src
   ghc-options:
     -Wall -Wno-missing-signatures -Wno-name-shadowing
     -Wno-unused-matches -Wno-unused-do-bind
@@ -41,7 +43,7 @@ library
     data-default,
     hashtables,
     jsaddle,
-    blaze-html,
+    blaze-builder,
     lens,
     mtl,
     text

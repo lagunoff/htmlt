@@ -15,6 +15,7 @@ import Language.Javascript.JSaddle
 import Massaraksh.DOM
 import Massaraksh.Event
 import Massaraksh.Types
+import Debug.Trace
 import qualified Blaze.ByteString.Builder.Html.Utf8 as B
 import qualified Control.Exception as E
 import qualified Data.Sequence as Seq
@@ -33,26 +34,34 @@ renderNode (SsrElement ns t attHt chRef) = do
   let end = B.fromString "</" <> B.fromHtmlEscapedText t <> B.fromChar '>'
   pure $ begin <> c <> end
 
-newRootRef :: Bool -> Node -> JSM RootRef
-newRootRef adopting n = do
+newRootRef :: Node -> JSM RootRef
+newRootRef n = do
   js <- askJSM
   acRef <- liftIO (newIORef 0)
-  chLen <- childLength n
   let
     mutate m = runJSM (m n) js
-    dontAdopt = pure Nothing
-    doAdopt = do
-      x <- atomicModifyIORef' acRef \x -> (x + 1, x + 1)
-      bool (Just <$> (runJSM (getChildNode n x) js)) (pure Nothing)
-        $ x >= chLen
-    adopt = bool dontAdopt doAdopt adopting
-  pure $ RootRef n mutate adopt
+    nextChild = liftIO (atomicModifyIORef' acRef \x -> (x + 1, x))
+      >>= getChildNode n >>= \case
+        Nothing -> pure Nothing
+        Just e  -> Just . (e,) <$> isText e
+    appendText t = nextChild >>= \case
+      Nothing -> createTextNode n t
+        >>= \e -> e <$ liftIO (mutate (flip appendChild e))
+      Just (e, True) -> pure e
+      Just (e, False) -> pure e -- TODO: replace Element with Text
+    appendEl create = nextChild >>= \case
+      Nothing -> create n
+        >>= \e -> e <$ liftIO (mutate (flip appendChild e))
+      Just (e, False) -> pure e
+      Just (e, True) -> appendEl create
+  pure $ RootRef n mutate acRef appendText appendEl
 
 deferMutations :: RootRef -> IO (RootRef, IO ())
 deferMutations rf@RootRef{..} = do
   doneRef <- newIORef False
   queueRef <- newIORef Seq.empty
   let
+    n = rrfRoot
     mutate m = readIORef doneRef
       >>= bool (modifyIORef queueRef (Seq.>< Seq.singleton m))
         (rrfMutate m)
@@ -60,7 +69,21 @@ deferMutations rf@RootRef{..} = do
       writeIORef doneRef True
       queue <- atomicModifyIORef' queueRef (Seq.empty,)
       rrfMutate \rootEl -> for_ queue ($ rootEl)
-  pure (rf {rrfMutate = mutate}, commit)
+    nextChild = liftIO (atomicModifyIORef' rrfAppendCount \x -> (x + 1, x))
+      >>= getChildNode n >>= \case
+        Nothing -> pure Nothing
+        Just e  -> Just . (e,) <$> isText e
+    appendText t = nextChild >>= \case
+      Nothing -> createTextNode n t
+        >>= \e -> e <$ liftIO (mutate (flip appendChild e))
+      Just (e, True) -> pure e
+      Just (e, False) -> pure e -- TODO: replace Element with Text
+    appendEl create = nextChild >>= \case
+      Nothing -> create n
+        >>= \e -> e <$ liftIO (mutate (flip appendChild e))
+      Just (e, False) -> pure e
+      Just (e, True) -> appendEl create
+  pure (rf {rrfMutate = mutate, rrfAppendText = appendText, rrfAppendElement = appendEl}, commit)
 
 askElement :: Html Node
 askElement = asks (rrfRoot . htnvRootRef)
@@ -74,35 +97,26 @@ askMutateRoot :: Html ((Node -> JSM ()) -> IO ())
 askMutateRoot = asks (rrfMutate . htnvRootRef)
 {-# INLINE askMutateRoot #-}
 
-adoptElement :: JSM Node -> Html a -> Html (a, Node)
+adoptElement :: (Node -> JSM Node) -> Html a -> Html (a, Node)
 adoptElement create child = do
   rf <- asks htnvRootRef
-  mayEl <- liftIO (rrfAdopt rf)
-  el <- maybe (liftJSM create) pure mayEl
-  newRf <- liftJSM (newRootRef True el)
+  el <- liftJSM (rrfAppendElement rf create)
+  newRf <- liftJSM (newRootRef el)
   a <- local (\e -> e {htnvRootRef = newRf}) child
-  when (isNothing mayEl)
-    $ liftIO $ rrfMutate rf (flip appendChild el)
   pure (a, el)
 
 adoptText :: Text -> Html ()
 adoptText t = do
   rf <- asks htnvRootRef
-  mayEl <- liftIO (rrfAdopt rf)
-  when (isNothing mayEl) do
-    tn <- liftJSM (createTextNode t)
-    liftIO $ rrfMutate rf (flip appendChild tn)
+  void $ liftJSM (rrfAppendText rf t)
 
 adoptDynText :: Dynamic Text -> Html ()
 adoptDynText d = do
-  rf <- asks htnvRootRef
   js <- askJSM
-  mayEl <- liftIO (rrfAdopt rf)
+  rf <- asks htnvRootRef
   t <- liftIO (dnRead d)
-  el <- maybe (liftJSM (createTextNode t)) pure mayEl
-  subscribeUpdates d (liftIO . flip runJSM js . setTextValue el)
-  when (isNothing mayEl) do
-    liftIO $ rrfMutate rf (flip appendChild el)
+  el <- liftJSM (rrfAppendText rf t)
+  void $ subscribeUpdates d (liftIO . flip runJSM js . setTextValue el)
 
 htmlSubscribe :: Event a -> Callback a -> Html (IO ())
 htmlSubscribe e k = do
