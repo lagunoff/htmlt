@@ -9,7 +9,7 @@ import Data.Text as T
 import GHC.Generics (Generic)
 import GHCJS.Marshal
 import Language.Javascript.JSaddle
-import Massaraksh.Text
+import Component
 
 data Config s = Config
   { cfgModel :: Lens' s Model
@@ -42,22 +42,21 @@ data Msg a where
   EditingCancel :: Msg ()
   EditingCommit :: Msg ()
 
-itemWidget :: Config s -> HtmlEmit Msg JSM
+itemWidget :: Config s -> Component Msg
 itemWidget Config{cfgDynamic = dynRef@(model, modify), ..} yield = \case
   Render -> do
     li_ do
-      dynClassList
-        [ ("completed", (^. cfgModel . moCompleted) <$> model)
-        , ("editing", (^. cfgModel . moEditing . to isJust) <$> model)
-        , ("hidden", propHidden . cfgProps <$> model) ]
+      toggleClass "completed" $ (^. cfgModel . moCompleted) <$> model
+      toggleClass "editing" $ (^. cfgModel . moEditing . to isJust) <$> model
+      toggleClass "hidden" $ (propHidden . cfgProps) <$> model
       div_ do
         "className" =: "view"
-        on "dblclick" $ dTarget <&> yield . EditingOn
+        on "dblclick" $ target <&> yield . EditingOn
         input_ do
           "className" =: "toggle"
           "type"      =: "checkbox"
           "checked"   ~: (^. cfgModel . moCompleted) <$> model
-          on "change" $ dChecked <&> yield . Completed
+          on "change" $ checked <&> yield . Completed
         label_ $ dynText $ (^. cfgModel . moTitle) <$> model
         button_ do
           "className" =: "destroy"
@@ -66,9 +65,9 @@ itemWidget Config{cfgDynamic = dynRef@(model, modify), ..} yield = \case
         "className" =: "edit"
         "type"      =: "text"
         "value"     ~: (^. cfgModel . moEditing . to (fromMaybe "")) <$> model
-        on "input" $ dValue <&> yield . EditInput
+        on "input" $ value <&> yield . EditInput
         on_ "blur" $ yield Blur
-        on "keydown" $ dKeyCode <&> \case
+        on "keydown" $ keyCode <&> \case
           13 -> yield EditingCommit -- Enter
           27 -> yield EditingCancel -- Escape
           _  -> pure ()
@@ -79,7 +78,7 @@ itemWidget Config{cfgDynamic = dynRef@(model, modify), ..} yield = \case
   Blur ->
     yield EditingCommit
   EditingOn elm -> do
-    title <- liftIO $ (^. cfgModel . moTitle) <$> dyn_read model
+    title <- liftIO $ (^. cfgModel . moTitle) <$> dnRead model
     liftIO $ sync $ modify $ cfgModel . moEditing .~ Just title
     void $ liftJSM $ do
       -- FIXME: currentTarget doesn't work for @dblclick@ it gets
@@ -93,7 +92,7 @@ itemWidget Config{cfgDynamic = dynRef@(model, modify), ..} yield = \case
     liftIO $ sync $ modify $ cfgModel . moEditing %~ fmap (const x)
   EditingCancel -> do
     liftIO $ sync $ modify $ cfgModel . moEditing .~ Nothing
-  EditingCommit -> liftIO ((^. cfgModel . moEditing) <$> dyn_read model) >>= \case
+  EditingCommit -> liftIO ((^. cfgModel . moEditing) <$> dnRead model) >>= \case
     Just "" -> yield Destroy
     Just x  -> liftIO $ sync $ modify $ (cfgModel . moEditing .~ Nothing) . (cfgModel . moTitle .~ x)
     Nothing -> pure ()

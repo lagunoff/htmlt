@@ -1,18 +1,19 @@
 {-# LANGUAGE NoOverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 module Massaraksh.Base where
 
 import Control.Lens hiding ((#))
 import Control.Monad.Reader
-import Data.Coerce
 import Data.Default
 import Data.Foldable
+import Data.Typeable
+import Data.String
 import Data.IORef
-import Data.JSString.Text as JSS
 import Data.List as L
 import Data.Text as T hiding (index)
 import Language.Javascript.JSaddle as JS
-import Massaraksh.DOM
+import Massaraksh.DOM as DOM
 import Massaraksh.Decode
 import Massaraksh.Event
 import Massaraksh.Internal
@@ -20,59 +21,48 @@ import Massaraksh.Types
 import Unsafe.Coerce
 
 el :: Text -> Html x -> Html x
-el tag child = do
-  elm <- liftJSM (createElement tag)
-  localElement elm child
+el t c = fmap fst $ adoptElement (flip createElement t) c
+{-# INLINE el #-}
 
-el' :: Text -> Html x -> Html Node
-el' tag child = do
-  elm <- liftJSM (createElement tag)
-  elm <$ localElement elm child
+el' :: Text -> Html x -> Html (x, Node)
+el' t c = adoptElement (flip createElement t) c
+{-# INLINE el' #-}
 
 nsEl :: Text -> Text -> Html x -> Html x
-nsEl ns tag child = do
-  elm <- liftJSM $ createElementNS ns tag
-  localElement elm child
+nsEl ns t c = fmap fst $ adoptElement (\n -> createElementNS n ns t) c
+{-# INLINE nsEl #-}
 
 text :: Text -> Html ()
-text txt = do
-  textNode <- liftJSM (createTextNode txt)
-  mutateRoot (flip appendChild textNode)
+text = adoptText
+{-# INLINE text #-}
 
 dynText :: Dynamic Text -> Html ()
-dynText d = do
-  txt <- liftIO (dnRead d)
-  js <- askJSM
-  textNode <- liftJSM (createTextNode txt)
-  dnUpdates d `htmlSubscribe` \new -> void $ liftIO do
-    flip runJSM js $ setTextValue textNode new
-  mutateRoot (flip appendChild textNode)
+dynText = adoptDynText
+{-# INLINE dynText #-}
 
-prop :: ToJSVal v => Text -> v -> Html ()
-prop (JSS.textToJSString -> key) val = mutateRoot \rootEl -> do
-  v <- toJSVal val
-  unsafeSetProp key v (coerce rootEl)
+prop :: (ToJSVal v, Typeable v) => Text -> v -> Html ()
+prop k v = mutateRoot \e -> DOM.setProp e k v
+{-# INLINE prop #-}
 
 (=:) :: Text -> Text -> Html ()
 (=:) = prop
 infixr 3 =:
 {-# INLINE (=:) #-}
 
-dynProp :: (ToJSVal v, FromJSVal v, Eq v) => Text -> Dynamic v -> Html ()
-dynProp (JSS.textToJSString -> key) dyn = do
+dynProp :: (ToJSVal v, Typeable v) => Text -> Dynamic v -> Html ()
+dynProp k d = do
   mutate <- askMutateRoot
-  let
-    setup txt rootEl = toJSVal txt
-      >>= flip (unsafeSetProp key) (coerce rootEl)
-  void $ forDyn dyn (liftIO . mutate . setup)
+  let setup t el = DOM.setProp el k t
+  void $ forDyn d (liftIO . mutate . setup)
 
-(~:) :: (ToJSVal v, FromJSVal v, Eq v) => Text -> Dynamic v -> Html ()
+(~:) :: (ToJSVal v, Typeable v) => Text -> Dynamic v -> Html ()
 (~:) = dynProp
 infixr 3 ~:
 {-# INLINE (~:) #-}
 
 attr :: Text -> Text -> Html ()
 attr k v = mutateRoot \e -> setAttribute e k v
+{-# INLINE attr #-}
 
 dynAttr :: Text -> Dynamic Text -> Html ()
 dynAttr k d = do
@@ -81,10 +71,8 @@ dynAttr k d = do
   void $ forDyn d (liftIO . mutate . setup)
 
 on :: Text -> Decoder (Html x) -> Html ()
-on name decoder = do
-  env <- ask
-  mutateRoot \rootEl ->
-    liftIO $ runHtml env $ domEvent rootEl name decoder
+on k d = ask >>= \ht -> mutateRoot \e ->
+  liftIO $ runHtml ht $ domEvent e k d
 
 on_ :: Text -> Html x -> Html ()
 on_ name w = on name (pure w)
@@ -93,11 +81,10 @@ domEventOpts :: ListenOpts -> Node -> Text -> Decoder (Html x) -> Html ()
 domEventOpts opts elm name decoder = do
   env <- ask
   js <- askJSM
-  elmJs <- liftJSM (toJSVal elm)
   let
     event :: Event (Html ())
     event = Event \s k -> liftIO $ flip runJSM js do
-      unlisten <- addEventListener opts elmJs name \event -> do
+      unlisten <- addEventListener opts elm name \event -> do
         e <- runDecoder decoder event
         either (\_ -> pure ()) (void . liftIO . sync . k . void) e
       pure $ liftIO $ runJSM unlisten js
@@ -134,11 +121,11 @@ blank = pure ()
 htmlLocal :: (HtmlEnv -> HtmlEnv) -> Html x -> Html x
 htmlLocal f (Html (ReaderT h)) = Html $ ReaderT (h . f)
 
-data ChildHtmlRef s = ChildHtmlRef
-  { childHtmlRef_htmlEnv :: HtmlEnv
-  , childHtmlRef_dynRef  :: DynamicRef s
-  , childHtmlRef_subscriptions :: IORef [IORef (IO ())]
-  , childHtmlRef_modify  :: Modifier s
+data ChildrenEnv s = ChildrenEnv
+  { cenvHtmlEnv :: HtmlEnv
+  , cenvDynRef  :: DynamicRef s
+  , cenvSubscriptions :: IORef [IORef (IO ())]
+  , cenvModify  :: Modifier s
   }
 
 itraverseHtml
@@ -155,7 +142,7 @@ itraverseHtml l dynRef@(dyn, _) h = do
   itemRefs <- liftIO (newIORef [])
   let
     -- FIXME: 'setup' should return new contents for 'itemRefs'
-    setup :: s -> Int -> [ChildHtmlRef a] -> [a] -> [a] -> IO ()
+    setup :: s -> Int -> [ChildrenEnv a] -> [a] -> [a] -> IO ()
     setup s idx refs old new = case (refs, old, new) of
       (_, [], [])    -> pure ()
       ([], [], x:xs) -> mdo
@@ -167,7 +154,7 @@ itraverseHtml l dynRef@(dyn, _) h = do
           newEnv  = hte
             { htnvSubscribe  = subscriber
             , htnvPostBuild = error "post hook not implemented" }
-          itemRef = ChildHtmlRef newEnv model subscriptions (snd dynRef')
+          itemRef = ChildrenEnv newEnv model subscriptions (snd dynRef')
         runHtml newEnv $ h idx model
         liftIO (modifyIORef itemRefs (<> [itemRef]))
         setup s (idx + 1) [] [] xs
@@ -177,14 +164,14 @@ itraverseHtml l dynRef@(dyn, _) h = do
         itemRefsValue <- liftIO (readIORef itemRefs)
         let (newRefs, tailRefs) = L.splitAt idx itemRefsValue
         liftIO (writeIORef itemRefs newRefs)
-        for_ tailRefs \ChildHtmlRef{..} -> do
-          subscriptions <- liftIO $ readIORef childHtmlRef_subscriptions
+        for_ tailRefs \ChildrenEnv{..} -> do
+          subscriptions <- liftIO $ readIORef cenvSubscriptions
           liftIO $ for_ subscriptions (readIORef >=> id)
-          childEl <- flip runJSM js $ getChildNode rootEl idx
+          Just childEl <- flip runJSM js $ getChildNode rootEl idx
           flip runJSM js (removeChild rootEl childEl)
       (r:rs, x:xs, y:ys) -> do
         -- Update child elemens along the way
-        liftIO $ sync $ childHtmlRef_modify r \_ -> y
+        liftIO $ sync $ cenvModify r \_ -> y
         setup s (idx + 1) rs xs ys
       (_, _, _)      -> do
         error "dynList: Incoherent internal state"
@@ -205,19 +192,17 @@ itraverseHtml l dynRef@(dyn, _) h = do
 dynHtml :: Dynamic (Html ()) -> Html ()
 dynHtml dyn = dynHtml' $ fmap (\h c _ -> h *> c) dyn
 
-data X
-
-dynHtml' :: Dynamic (Html X -> Html X -> Html X) -> Html ()
+dynHtml' :: Dynamic (Html () -> Html () -> Html ()) -> Html ()
 dynHtml' dyn = do
   env <- ask
   js <- askJSM
   childRef <- liftIO (newIORef Nothing)
   mutate <- askMutateRoot
   let
-    setup html rootEl = liftIO mdo
+    setup is1 html rootEl = liftIO mdo
       postHooks <- newIORef []
       (subscriber, subscriptions) <- newSubscriber
-      (elmRef, flush) <- flip runJSM js $ newElementRef' (htnvElement env)
+      (rf, commit1) <- deferMutations (htnvRootRef env)
       let
         unsub = liftIO do
           oldEnv <- readIORef childRef
@@ -227,19 +212,25 @@ dynHtml' dyn = do
             writeIORef s []
           writeIORef childRef (Just (newEnv, subscriptions))
         newEnv = env
-          {htnvSubscribe=subscriber, htnvPostBuild=postHooks, htnvElement=elmRef}
+          {htnvSubscribe=subscriber, htnvPostBuild=postHooks, htnvRootRef=rf}
       runHtml newEnv do
         let
-          commit::Html X = unsafeCoerce ()
-            <$ unsub
-            <* (sequence_ =<< liftIO (readIORef postHooks))
-            <* liftIO (removeAllChilds env)
-            <* liftIO (liftIO flush)
-          revert::Html X = unsafeCoerce () <$ pure ()
+          commit::Html () = do
+            unsub
+              <* (sequence_ =<< liftIO (readIORef postHooks))
+              <* unless is1 (liftIO removeAllChilds)
+              <* liftIO (liftIO commit1)
+              <* liftJSM syncPoint
+            pure (unsafeCoerce ())
+          revert::Html () = unsafeCoerce () <$ pure ()
         html commit revert
-    removeAllChilds env = mutate \rootEl -> do
+    removeAllChilds = mutate \rootEl -> do
       length <- childLength rootEl
       for_ [0..length - 1] \idx -> do
-        childEl <- getChildNode rootEl (length - idx - 1)
+        Just childEl <- getChildNode rootEl (length - idx - 1)
         removeChild rootEl childEl
-  void $ forDyn dyn (liftIO . mutate . (void .) . setup)
+  liftIO $ mutate . (void .) . setup True =<< dnRead dyn
+  void $ subscribeUpdates dyn (liftIO . mutate . (void .) . setup False)
+
+instance (x ~ ()) => IsString (Html x) where
+  fromString = text . T.pack

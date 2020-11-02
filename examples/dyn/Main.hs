@@ -68,7 +68,7 @@ widget = do
         liftIO (modifyDynRef dynRef f)
     button_ do "Home"; on_ "click" do navigateTo IndexR
     button_ do "Blog"; on_ "click" do navigateTo (BlogR 1)
-    button_ do "About"; on_ "click" do navigateTo (AboutR "0.0.0.0.0.0.0.0.1")
+    button_ do "About"; on_ "click" do navigateTo (AboutR "param")
   div_ do
     pageDyn <- liftIO $ flip holdUniqDynBy' (getDyn dynRef) \Model{page=a} Model{page=b} -> do
       ptrA <- makeStableName a

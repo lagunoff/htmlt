@@ -5,12 +5,17 @@ module Massaraksh.Main where
 
 import Control.Exception
 import Control.Monad.Reader
+import Data.Foldable as F
 import Data.Coerce
+import Data.Text as T
 import Data.IORef
 import Language.Javascript.JSaddle
 import Massaraksh.DOM
 import Massaraksh.Internal
 import Massaraksh.Types
+import Data.ByteString.Builder
+import Data.HashTable.IO as HT
+import Unsafe.Coerce
 
 #ifndef ghcjs_HOST_OS
 import Control.Applicative ((<|>))
@@ -24,19 +29,27 @@ attach rootEl render = do
   evalRef <- liftIO $ newIORef \_ -> pure ()
   (subscriber, subscriptions) <- liftIO newSubscriber
   postHooks <- liftIO (newIORef [])
-  let rootRef = ElementRef (pure rootEl) (flip runJSM js . ($ rootEl))
-  (elRef, flush) <- newElementRef' rootRef
-  let env = HtmlEnv elRef subscriber postHooks js throwIO
+  (rf, commit) <- liftIO . deferMutations =<< newRootRef rootEl
+  let env = HtmlEnv rf subscriber postHooks js throwIO
   liftIO $ writeIORef evalRef \(Exist h) -> void (runHtml env h)
   res <- liftIO $ runHtml env render
-  liftIO flush
-  liftIO (readIORef postHooks >>= mapM_ (runHtml env))
+  liftIO commit
+  liftIO (readIORef postHooks >>= F.mapM_ (runHtml env))
   pure (res, env)
 
 attachToBody :: Html a -> JSM (a, HtmlEnv)
 attachToBody render = do
-  rootEl <- fmap coerce $ jsg "document" ! "body"
-  attach rootEl render
+  b <- fmap coerce $ jsg "document" ! "body"
+  attach (JsNode b) render
+
+buildHtml :: Html x -> IO Builder
+buildHtml h = do
+  att <- HT.new
+  ch <- newIORef []
+  let node = SsrElement Nothing (T.pack "div") att ch
+  -- TODO: make sure js context never gets evaluated
+  (_, ht) <- runJSM (attach node h) (unsafeCoerce ())
+  readIORef ch >>= fmap fold . mapM renderNode
 
 withJSM :: JSM x -> IO ()
 #ifdef ghcjs_HOST_OS

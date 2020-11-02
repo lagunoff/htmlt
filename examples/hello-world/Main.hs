@@ -1,22 +1,19 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ViewPatterns #-}
 module Main where
 
-import Massaraksh
 import Control.Monad.Reader
+import Data.Text as T
+import Massaraksh
 import Text.RawString.QQ (r)
-import Language.Javascript.JSaddle (JSM)
-import qualified Data.Text as T
 
 type Model = Int
 
-widget :: HtmlT JSM ()
+widget :: Html ()
 widget = do
-  (dyn, modify) <- liftIO (newDyn 0)
+  (dynVar, modify) <- liftIO (newDyn 0)
   div_ do
     "className" =: "root"
     h1_ do
-      "style" ~: headerStyle <$> dyn
+      "style" ~: headerStyle <$> dynVar
       on_ "mouseenter" do liftIO $ sync $ modify (+ 1)
       text "Hello, World!"
     el "style" do "type" =: "text/css"; text css
