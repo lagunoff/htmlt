@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+
+DIR="$(dirname "${BASH_SOURCE[0]}")"
+EXTRA_ARGS="-fobject-code -j -outputdir=$DIR/../out"
+make --silent -f $DIR/envrc.mk $DIR/../.envrc || exit 1;
+source $DIR/../.envrc
+CABAL_ARGS=$(cd $DIR/../; cabal-cargs || exit 1)
+RUNGHC_CABAL_ARGS=$(for a in $CABAL_ARGS; do echo "--ghc-arg=$a"; done | tr '\r\n' ' ')
+RUNGHC_EXTRA_ARGS=$(for a in $EXTRA_ARGS; do echo "--ghc-arg=$a"; done | tr '\r\n' ' ')
+
+runghc $RUNGHC_CABAL_ARGS $RUNGHC_EXTRA_ARGS "$@"

@@ -1,7 +1,8 @@
 **/tags
 **/TAGS
 **/.#*
-/dist-newstyle
+**/dist-newstyle
+/examples/dist-newstyle
 **/*~
 **/*.kate-swp
 **/.directory
@@ -14,5 +15,9 @@
 **/.cabal-sandbox
 **/*.db
 **/.ghc.environment*
-ghcjs-result
-ghc-result
+/.*-env
+result
+dist
+out
+locals.nix
+screenlog.*

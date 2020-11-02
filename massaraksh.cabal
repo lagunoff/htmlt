@@ -1,61 +1,90 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.31.2.
---
--- see: https://github.com/sol/hpack
---
--- hash: 4373a15a95b0ae0dec3c0881c1043e106c9ff2bfcec2c126dc286f4abe833c5d
-
 name:                massaraksh
 version:             0.1.0.0
 homepage:            https://github.com/lagunoff/massaraksh
 license:             BSD3
-license-file:        LICENSE
 author:              Vladislav Lagunov
 maintainer:          vlad.lagunoff@gmail.com
 copyright:           2019 Vladislav Lagunov
 category:            Web
 build-type:          Simple
 extra-source-files:
-    README.md
+  README.md
+
+Flag production
+  default: True
+  description: Adds optimisation
 
 library
   exposed-modules:
-      Massaraksh
-      Massaraksh.Base
-      Massaraksh.Dynamic
-      Massaraksh.Event
-      Massaraksh.Html
-      Massaraksh.Html.Attribute
-      Massaraksh.Html.Attribute.Dynamic
-      Massaraksh.Html.Base
-      Massaraksh.Html.Decoder
-      Massaraksh.Html.Dynamic
-      Massaraksh.Html.Element
-  other-modules:
-      Paths_massaraksh
-  hs-source-dirs:
-      src
-  default-extensions: DataKinds FlexibleContexts GADTs LambdaCase PolyKinds RankNTypes ScopedTypeVariables TypeApplications TypeOperators TypeFamilies BlockArguments NamedFieldPuns DuplicateRecordFields DeriveGeneric DeriveAnyClass MultiParamTypeClasses RecordWildCards
-  ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -Wno-unused-do-bind -O0
+    Massaraksh
+    Massaraksh.Base
+    Massaraksh.DOM
+    Massaraksh.DOM.Decoders
+    Massaraksh.DOM.Impl
+    Massaraksh.Decode
+    Massaraksh.Element
+    Massaraksh.Event
+    Massaraksh.Internal
+    Massaraksh.Main
+    Massaraksh.Types
+
+  other-modules: Paths_massaraksh
+  hs-source-dirs: src-ssr, src
+  ghc-options:
+    -Wall -Wno-missing-signatures -Wno-name-shadowing
+    -Wno-unused-matches -Wno-unused-do-bind
   build-depends:
-      aeson >=1.4.0.0 && <1.5.0.0
-    , base >=4.7 && <5
-    , bytestring
-    , jsaddle
-    , lens
-    , mtl
-    , text
-    , transformers
+    base,
+    bytestring,
+    exceptions,
+    containers,
+    data-default,
+    hashtables,
+    jsaddle,
+    blaze-builder,
+    lens,
+    mtl,
+    text
+
   if impl(ghcjs)
-    hs-source-dirs:
-        src-ghcjs
-    ghc-options: -dedupe
-    build-depends:
-        ghcjs-base
+    build-depends: ghcjs-base, ghcjs-prim
+    if flag(production)
+      ghc-options: -dedupe -O2
   else
-    hs-source-dirs:
-        src-ghc
-    build-depends:
-        jsaddle-warp
+    build-depends: jsaddle-warp
+
+  default-extensions:
+    BlockArguments
+    ConstraintKinds
+    DataKinds
+    DeriveFunctor
+    DeriveGeneric
+    DerivingStrategies
+    DeriveAnyClass
+    DuplicateRecordFields
+    FlexibleContexts
+    FlexibleInstances
+    FunctionalDependencies
+    GADTs
+    GeneralizedNewtypeDeriving
+    IncoherentInstances
+    LambdaCase
+    MultiParamTypeClasses
+    NamedFieldPuns
+    PolyKinds
+    QuasiQuotes
+    RankNTypes
+    RecordWildCards
+    ScopedTypeVariables
+    StrictData
+    TemplateHaskell
+    TypeApplications
+    TypeFamilies
+    TypeOperators
+    TypeSynonymInstances
+    UndecidableInstances
+    ViewPatterns
+        
   default-language: Haskell2010

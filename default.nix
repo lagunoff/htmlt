@@ -1,54 +1,31 @@
+# Same arguments as for reflex-platform/default.nix
+# https://github.com/reflex-frp/reflex-platform/blob/develop/default.nix
+{}:
 let
-  fetchFromGitHub = { owner, repo, rev, sha256 }:
-    if (builtins ? "fetchTarball")
-    then builtins.fetchTarball {
-      inherit sha256;
-      url = "https://github.com/${owner}/${repo}/archive/${rev}.tar.gz";
-    }
-    else (import <nixpkgs> {}).fetchFromGitHub { inherit owner repo rev sha256; };
-  config = { allowBroken = true; };
-in {
-  nixpkgsFunc ? import (fetchFromGitHub {
-    owner = "nixos";
-    repo = "nixpkgs-channels";
-    rev = "9d55c1430af72ace3a479d5e0a90451108e774b4";
-    sha256 = "05625fwgsa15i2jlsf2ymv3jx68362nf3zqbpnrwq6d3sn89liny";
-  }),
-  reflex-platform ? import (fetchFromGitHub {
-    owner = "reflex-frp";
-    repo = "reflex-platform";
-    rev = "aa8a9d1ac3d41ad51fbe04e575d4350da65cf3db";
-    sha256 = "0hffy5rcfy6ay06ww3cxykqzp024jfcdg6w1yrmnf0h80sjfgdcm";
-  }) { nixpkgsFunc = c: nixpkgsFunc (c // { inherit config; }); }
-}:
-reflex-platform.project({ pkgs, ... }:
-  let
-    customOverrides = hlib: self: super: with hlib; {
-    };
+  reflex-platform = import (builtins.fetchTarball {
+    url = "https://github.com/reflex-frp/reflex-platform/archive/846964a0895e819946c1a415202aee414d27cfa3.tar.gz";
+  }) { config.allowBroken = true; };
 
-    dontCheckOverrides = _: super: {
-      mkDerivation = args: super.mkDerivation (args // {
-        doCheck = false;
-        doHaddock = false;
-      });
-    };
-  in {
-    useWarp = true;
-    withHoogle = false;
-    name = "massaraksh";
+in reflex-platform.project({ pkgs, ... }:{
+  useWarp = true;
+  withHoogle = true;
+  name = "massaraksh";
 
-    packages = {
-      massaraksh = ./.;
-      massaraksh-examples = ./examples;
-    };
+  packages = {
+    massaraksh = ./.;
+    massaraksh-todomvc = ./examples/todomvc;
+  };
 
-    shells = {
-      ghc = ["massaraksh" "massaraksh-examples"];
-      ghcjs = ["massaraksh" "massaraksh-examples"];
-    };
+  shells = {
+    ghc = ["massaraksh"];
+    ghcjs = ["massaraksh"];
+    wasm = ["massaraksh"];
+  };
 
-    shellToolOverrides = ghc: super: {
-      inherit (pkgs) pkgconfig zlib;
-    };
-  }
-)
+  shellToolOverrides = ghc: super: {
+    inherit (pkgs) pkgconfig zlib;
+    ghc-mod = null;
+    haskell-ide-engine = null;
+    cabal-cargs = pkgs.haskell.lib.dontCheck pkgs.haskellPackages.cabal-cargs;
+  };
+})

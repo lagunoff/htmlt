@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+
+DIR="$(dirname "${BASH_SOURCE[0]}")"
+EXTRA_ARGS="-j -fobject-code -outputdir=$DIR/../out"
+make --silent -f $DIR/envrc.mk $DIR/../.envrc || exit 1;
+source $DIR/../.envrc
+CABAL_ARGS=$(cd $DIR/../; cabal-cargs || exit 1)
+
+ghc $CABAL_ARGS $EXTRA_ARGS -O0 --interactive "$@"
