@@ -49,6 +49,7 @@ executable massaraksh-helloworld
     LambdaCase
     MultiParamTypeClasses
     NamedFieldPuns
+    OverloadedStrings
     PolyKinds
     QuasiQuotes
     RankNTypes
@@ -60,4 +61,5 @@ executable massaraksh-helloworld
     TypeOperators
     TypeSynonymInstances
     UndecidableInstances
+    ViewPatterns
     ViewPatterns

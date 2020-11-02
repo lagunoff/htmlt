@@ -121,11 +121,11 @@ blank = pure ()
 htmlLocal :: (HtmlEnv -> HtmlEnv) -> Html x -> Html x
 htmlLocal f (Html (ReaderT h)) = Html $ ReaderT (h . f)
 
-data ChildHtmlRef s = ChildHtmlRef
-  { childHtmlRef_htmlEnv :: HtmlEnv
-  , childHtmlRef_dynRef  :: DynamicRef s
-  , childHtmlRef_subscriptions :: IORef [IORef (IO ())]
-  , childHtmlRef_modify  :: Modifier s
+data ChildrenEnv s = ChildrenEnv
+  { cenvHtmlEnv :: HtmlEnv
+  , cenvDynRef  :: DynamicRef s
+  , cenvSubscriptions :: IORef [IORef (IO ())]
+  , cenvModify  :: Modifier s
   }
 
 itraverseHtml
@@ -142,7 +142,7 @@ itraverseHtml l dynRef@(dyn, _) h = do
   itemRefs <- liftIO (newIORef [])
   let
     -- FIXME: 'setup' should return new contents for 'itemRefs'
-    setup :: s -> Int -> [ChildHtmlRef a] -> [a] -> [a] -> IO ()
+    setup :: s -> Int -> [ChildrenEnv a] -> [a] -> [a] -> IO ()
     setup s idx refs old new = case (refs, old, new) of
       (_, [], [])    -> pure ()
       ([], [], x:xs) -> mdo
@@ -154,7 +154,7 @@ itraverseHtml l dynRef@(dyn, _) h = do
           newEnv  = hte
             { htnvSubscribe  = subscriber
             , htnvPostBuild = error "post hook not implemented" }
-          itemRef = ChildHtmlRef newEnv model subscriptions (snd dynRef')
+          itemRef = ChildrenEnv newEnv model subscriptions (snd dynRef')
         runHtml newEnv $ h idx model
         liftIO (modifyIORef itemRefs (<> [itemRef]))
         setup s (idx + 1) [] [] xs
@@ -164,14 +164,14 @@ itraverseHtml l dynRef@(dyn, _) h = do
         itemRefsValue <- liftIO (readIORef itemRefs)
         let (newRefs, tailRefs) = L.splitAt idx itemRefsValue
         liftIO (writeIORef itemRefs newRefs)
-        for_ tailRefs \ChildHtmlRef{..} -> do
-          subscriptions <- liftIO $ readIORef childHtmlRef_subscriptions
+        for_ tailRefs \ChildrenEnv{..} -> do
+          subscriptions <- liftIO $ readIORef cenvSubscriptions
           liftIO $ for_ subscriptions (readIORef >=> id)
           Just childEl <- flip runJSM js $ getChildNode rootEl idx
           flip runJSM js (removeChild rootEl childEl)
       (r:rs, x:xs, y:ys) -> do
         -- Update child elemens along the way
-        liftIO $ sync $ childHtmlRef_modify r \_ -> y
+        liftIO $ sync $ cenvModify r \_ -> y
         setup s (idx + 1) rs xs ys
       (_, _, _)      -> do
         error "dynList: Incoherent internal state"
@@ -192,9 +192,7 @@ itraverseHtml l dynRef@(dyn, _) h = do
 dynHtml :: Dynamic (Html ()) -> Html ()
 dynHtml dyn = dynHtml' $ fmap (\h c _ -> h *> c) dyn
 
-data X
-
-dynHtml' :: Dynamic (Html X -> Html X -> Html X) -> Html ()
+dynHtml' :: Dynamic (Html () -> Html () -> Html ()) -> Html ()
 dynHtml' dyn = do
   env <- ask
   js <- askJSM
@@ -217,14 +215,14 @@ dynHtml' dyn = do
           {htnvSubscribe=subscriber, htnvPostBuild=postHooks, htnvRootRef=rf}
       runHtml newEnv do
         let
-          commit::Html X = do
+          commit::Html () = do
             unsub
               <* (sequence_ =<< liftIO (readIORef postHooks))
               <* unless is1 (liftIO removeAllChilds)
               <* liftIO (liftIO commit1)
               <* liftJSM syncPoint
             pure (unsafeCoerce ())
-          revert::Html X = unsafeCoerce () <$ pure ()
+          revert::Html () = unsafeCoerce () <$ pure ()
         html commit revert
     removeAllChilds = mutate \rootEl -> do
       length <- childLength rootEl
