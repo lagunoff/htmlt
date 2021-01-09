@@ -1,6 +1,5 @@
 {-# LANGUAGE NoOverloadedStrings #-}
 {-# LANGUAGE RecursiveDo #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
 module Massaraksh.Base where
 
 import Control.Lens hiding ((#))
@@ -8,7 +7,6 @@ import Control.Monad.Reader
 import Data.Coerce
 import Data.Default
 import Data.Foldable
-import Data.String
 import Data.IORef
 import Data.JSString.Text as JSS
 import Data.List as L
@@ -22,24 +20,33 @@ import Massaraksh.Types
 import Unsafe.Coerce
 
 el :: Text -> Html x -> Html x
-el t c = fmap fst $ adoptElement (createElement t) c
-{-# INLINE el #-}
+el tag child = do
+  elm <- liftJSM (createElement tag)
+  localElement elm child
 
-el' :: Text -> Html x -> Html (x, Node)
-el' t c = adoptElement (createElement t) c
-{-# INLINE el' #-}
+el' :: Text -> Html x -> Html Node
+el' tag child = do
+  elm <- liftJSM (createElement tag)
+  elm <$ localElement elm child
 
 nsEl :: Text -> Text -> Html x -> Html x
-nsEl ns t c = fmap fst $ adoptElement (createElementNS ns t) c
-{-# INLINE nsEl #-}
+nsEl ns tag child = do
+  elm <- liftJSM $ createElementNS ns tag
+  localElement elm child
 
 text :: Text -> Html ()
-text = adoptText
-{-# INLINE text #-}
+text txt = do
+  textNode <- liftJSM (createTextNode txt)
+  mutateRoot (flip appendChild textNode)
 
 dynText :: Dynamic Text -> Html ()
-dynText = adoptDynText
-{-# INLINE dynText #-}
+dynText d = do
+  txt <- liftIO (dnRead d)
+  js <- askJSM
+  textNode <- liftJSM (createTextNode txt)
+  dnUpdates d `htmlSubscribe` \new -> void $ liftIO do
+    flip runJSM js $ setTextValue textNode new
+  mutateRoot (flip appendChild textNode)
 
 prop :: ToJSVal v => Text -> v -> Html ()
 prop (JSS.textToJSString -> key) val = mutateRoot \rootEl -> do
@@ -208,7 +215,7 @@ dynHtml' dyn = do
     setup html rootEl = liftIO mdo
       postHooks <- newIORef []
       (subscriber, subscriptions) <- newSubscriber
-      (rf, commit1) <- deferMutations (htnvRootRef env)
+      (elmRef, flush) <- flip runJSM js $ newElementRef' (htnvElement env)
       let
         unsub = liftIO do
           oldEnv <- readIORef childRef
@@ -218,7 +225,7 @@ dynHtml' dyn = do
             writeIORef s []
           writeIORef childRef (Just (newEnv, subscriptions))
         newEnv = env
-          {htnvSubscribe=subscriber, htnvPostBuild=postHooks, htnvRootRef=rf}
+          {htnvSubscribe=subscriber, htnvPostBuild=postHooks, htnvElement=elmRef}
       runHtml newEnv do
         let
           commit::Html () = do
@@ -235,6 +242,3 @@ dynHtml' dyn = do
         childEl <- getChildNode rootEl (length - idx - 1)
         removeChild rootEl childEl
   void $ forDyn dyn (liftIO . mutate . (void .) . setup)
-
-instance (x ~ ()) => IsString (Html x) where
-  fromString = text . T.pack

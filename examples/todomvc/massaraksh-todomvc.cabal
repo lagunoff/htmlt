@@ -41,7 +41,6 @@ executable massaraksh-todomvc
     DataKinds
     DeriveFunctor
     DeriveGeneric
-    DeriveAnyClass
     DerivingStrategies
     DuplicateRecordFields
     FlexibleContexts
