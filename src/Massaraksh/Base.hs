@@ -21,15 +21,15 @@ import Massaraksh.Types
 import Unsafe.Coerce
 
 el :: Text -> Html x -> Html x
-el t c = fmap fst $ adoptElement (flip createElement t) c
+el t c = fmap fst $ adoptElement (createElement t) c
 {-# INLINE el #-}
 
 el' :: Text -> Html x -> Html (x, Node)
-el' t c = adoptElement (flip createElement t) c
+el' t c = adoptElement (createElement t) c
 {-# INLINE el' #-}
 
 nsEl :: Text -> Text -> Html x -> Html x
-nsEl ns t c = fmap fst $ adoptElement (\n -> createElementNS n ns t) c
+nsEl ns t c = fmap fst $ adoptElement (createElementNS ns t) c
 {-# INLINE nsEl #-}
 
 text :: Text -> Html ()
@@ -52,7 +52,7 @@ infixr 3 =:
 dynProp :: (ToJSVal v, Typeable v) => Text -> Dynamic v -> Html ()
 dynProp k d = do
   mutate <- askMutateRoot
-  let setup t el = DOM.setProp el k t
+  let setup t el = toJSVal t >>= DOM.setProp el k
   void $ forDyn d (liftIO . mutate . setup)
 
 (~:) :: (ToJSVal v, Typeable v) => Text -> Dynamic v -> Html ()
@@ -167,7 +167,7 @@ itraverseHtml l dynRef@(dyn, _) h = do
         for_ tailRefs \ChildrenEnv{..} -> do
           subscriptions <- liftIO $ readIORef cenvSubscriptions
           liftIO $ for_ subscriptions (readIORef >=> id)
-          Just childEl <- flip runJSM js $ getChildNode rootEl idx
+          childEl <- flip runJSM js $ getChildNode rootEl idx
           flip runJSM js (removeChild rootEl childEl)
       (r:rs, x:xs, y:ys) -> do
         -- Update child elemens along the way
@@ -199,7 +199,7 @@ dynHtml' dyn = do
   childRef <- liftIO (newIORef Nothing)
   mutate <- askMutateRoot
   let
-    setup is1 html rootEl = liftIO mdo
+    setup html rootEl = liftIO mdo
       postHooks <- newIORef []
       (subscriber, subscriptions) <- newSubscriber
       (rf, commit1) <- deferMutations (htnvRootRef env)
@@ -220,17 +220,15 @@ dynHtml' dyn = do
               <* (sequence_ =<< liftIO (readIORef postHooks))
               <* unless is1 (liftIO removeAllChilds)
               <* liftIO (liftIO commit1)
-              <* liftJSM syncPoint
             pure (unsafeCoerce ())
           revert::Html () = unsafeCoerce () <$ pure ()
         html commit revert
-    removeAllChilds = mutate \rootEl -> do
+    removeAllChilds env = mutate \rootEl -> do
       length <- childLength rootEl
       for_ [0..length - 1] \idx -> do
-        Just childEl <- getChildNode rootEl (length - idx - 1)
+        childEl <- getChildNode rootEl (length - idx - 1)
         removeChild rootEl childEl
-  liftIO $ mutate . (void .) . setup True =<< dnRead dyn
-  void $ subscribeUpdates dyn (liftIO . mutate . (void .) . setup False)
+  void $ forDyn dyn (liftIO . mutate . (void .) . setup)
 
 instance (x ~ ()) => IsString (Html x) where
   fromString = text . T.pack

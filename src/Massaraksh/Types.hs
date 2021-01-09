@@ -6,7 +6,6 @@ import Control.Applicative
 import Control.Monad.Catch
 import Control.Monad.Reader
 import Data.IORef
-import Data.Text
 import Language.Javascript.JSaddle
 import Massaraksh.DOM
 import Massaraksh.Event
@@ -26,9 +25,7 @@ data HtmlEnv = HtmlEnv
 data RootRef = RootRef
   { rrfRoot   :: Node
   , rrfMutate :: (Node -> JSM ()) -> IO ()
-  , rrfAppendCount :: IORef Int
-  , rrfAppendText  :: Text -> JSM Node
-  , rrfAppendElement :: (Node -> JSM Node) -> JSM Node }
+  , rrfAdopt  :: IO (Maybe Node) }
 
 newtype Subscriber = Subscriber
   {unSubscriber :: forall a. Event a -> Callback a -> Reactive Canceller}
