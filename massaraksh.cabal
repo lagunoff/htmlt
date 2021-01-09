@@ -39,9 +39,7 @@ library
     exceptions,
     containers,
     data-default,
-    hashtables,
     jsaddle,
-    blaze-html,
     lens,
     mtl,
     text

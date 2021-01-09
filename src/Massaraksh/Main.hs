@@ -5,16 +5,12 @@ module Massaraksh.Main where
 
 import Control.Exception
 import Control.Monad.Reader
-import Data.Foldable as F
 import Data.Coerce
-import Data.Text as T
 import Data.IORef
 import Language.Javascript.JSaddle
 import Massaraksh.DOM
 import Massaraksh.Internal
 import Massaraksh.Types
-import Data.ByteString.Builder
-import Data.HashTable.IO as HT
 
 #ifndef ghcjs_HOST_OS
 import Control.Applicative ((<|>))
@@ -33,21 +29,13 @@ attach rootEl render = do
   liftIO $ writeIORef evalRef \(Exist h) -> void (runHtml env h)
   res <- liftIO $ runHtml env render
   liftIO commit
-  liftIO (readIORef postHooks >>= F.mapM_ (runHtml env))
+  liftIO (readIORef postHooks >>= mapM_ (runHtml env))
   pure (res, env)
 
-attachToBody :: Coercible Node JSVal => Html a -> JSM (a, HtmlEnv)
+attachToBody :: Html a -> JSM (a, HtmlEnv)
 attachToBody render = do
   rootEl <- fmap coerce $ jsg "document" ! "body"
   attach rootEl render
-
-buildHtml :: Html x -> JSM Builder
-buildHtml h = do
-  att <- liftIO HT.new
-  ch <- liftIO (newIORef [])
-  let node = SsrElement Nothing (T.pack "div") att ch
-  (_, ht) <- attach node h
-  liftIO $ renderNode $ rrfRoot $ htnvRootRef ht
 
 withJSM :: JSM x -> IO ()
 #ifdef ghcjs_HOST_OS
