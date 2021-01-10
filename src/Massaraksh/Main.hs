@@ -25,7 +25,7 @@ attach rootEl render = do
   (subscriber, subscriptions) <- liftIO newSubscriber
   postHooks <- liftIO (newIORef [])
   let rootRef = ElementRef (pure rootEl) (flip runJSM js . ($ rootEl))
-  (elRef, flush) <- newElementRef' rootRef
+  (elRef, flush) <- deferMutations rootRef
   let env = HtmlEnv elRef subscriber postHooks js throwIO
   liftIO $ writeIORef evalRef \(Exist h) -> void (runHtml env h)
   res <- liftIO $ runHtml env render

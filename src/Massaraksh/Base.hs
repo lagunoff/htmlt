@@ -165,8 +165,8 @@ itraverseHtml l dynRef@(dyn, _) h = do
         let
           model   = (fst dynRef', mkModifier idx (fst dynRef'))
           newEnv  = hte
-            { htnvSubscribe  = subscriber
-            , htnvPostBuild = error "post hook not implemented" }
+            { htenvSubscriber  = subscriber
+            , htenvPostBuild = error "post hook not implemented" }
           itemRef = ChildrenEnv newEnv model subscriptions (snd dynRef')
         runHtml newEnv $ h idx model
         liftIO (modifyIORef itemRefs (<> [itemRef]))
@@ -215,7 +215,7 @@ dynHtml' dyn = do
     setup html rootEl = liftIO mdo
       postHooks <- newIORef []
       (subscriber, subscriptions) <- newSubscriber
-      (elmRef, flush) <- flip runJSM js $ newElementRef' (htnvElement env)
+      (elmRef, flush) <- flip runJSM js $ deferMutations (htenvElement env)
       let
         unsub = liftIO do
           oldEnv <- readIORef childRef
@@ -225,15 +225,15 @@ dynHtml' dyn = do
             writeIORef s []
           writeIORef childRef (Just (newEnv, subscriptions))
         newEnv = env
-          {htnvSubscribe=subscriber, htnvPostBuild=postHooks, htnvElement=elmRef}
+          {htenvSubscriber=subscriber, htenvPostBuild=postHooks, htenvElement=elmRef}
       runHtml newEnv do
         let
           commit::Html () = do
             unsub
               <* (sequence_ =<< liftIO (readIORef postHooks))
-              <* unless is1 (liftIO removeAllChilds)
-              <* liftIO (liftIO commit1)
-            pure (unsafeCoerce ())
+              <* liftIO (removeAllChilds env)
+              <* liftIO (liftIO flush)
+            pure ()
           revert::Html () = unsafeCoerce () <$ pure ()
         html commit revert
     removeAllChilds env = mutate \rootEl -> do

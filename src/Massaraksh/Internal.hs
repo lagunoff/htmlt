@@ -16,15 +16,15 @@ import qualified Data.Sequence as Seq
 
 newElementRef :: Node -> Html ElementRef
 newElementRef elm = do
-  jsCtx <- asks htnvJsContext
+  jsCtx <- asks htenvJsContext
   mutateRoot (flip appendChild elm)
   let
     read = pure elm
     mutate m = runJSM (m elm) jsCtx
   pure (ElementRef read mutate)
 
-newElementRef' :: ElementRef -> JSM (ElementRef, IO ())
-newElementRef' ElementRef{..} = do
+deferMutations :: ElementRef -> JSM (ElementRef, IO ())
+deferMutations ElementRef{..} = do
   flushedRef <- liftIO (newIORef False)
   queueRef <- liftIO (newIORef Seq.empty)
   let
@@ -38,41 +38,41 @@ newElementRef' ElementRef{..} = do
   pure (ElementRef elrfRead mutate, flush)
 
 askElement :: Html Node
-askElement = liftIO =<< asks (elrfRead . htnvElement)
+askElement = liftIO =<< asks (elrfRead . htenvElement)
 {-# INLINE askElement #-}
 
 mutateRoot :: (Node -> JSM ()) -> Html ()
-mutateRoot f = liftIO =<< asks (($ f). elrfQueueMutation . htnvElement)
+mutateRoot f = liftIO =<< asks (($ f). elrfQueueMutation . htenvElement)
 {-# INLINE mutateRoot #-}
 
 askMutateRoot :: Html ((Node -> JSM ()) -> IO ())
-askMutateRoot = asks (elrfQueueMutation . htnvElement)
+askMutateRoot = asks (elrfQueueMutation . htenvElement)
 {-# INLINE askMutateRoot #-}
 
 localElement :: Node -> Html a -> Html a
 localElement elm child = do
   elRef <- newElementRef elm
-  local (\env -> env { htnvElement = elRef }) child
+  local (\env -> env { htenvElement = elRef }) child
 {-# INLINE localElement #-}
 
 htmlSubscribe :: Event a -> (a -> Reactive ()) -> Html (IO ())
 htmlSubscribe e k = do
-  s <- asks (unSubscriber . htnvSubscribe)
-  h <- asks htnvCatchInteractive
+  s <- asks (unSubscriber . htenvSubscriber)
+  h <- asks htenvCatchInteractive
   let k' x = k x `catchSync` (liftIO . h)
   liftIO $ sync (s e k')
 {-# INLINE htmlSubscribe #-}
 
 newSubscriber :: IO (Subscriber, Subscriptions)
 newSubscriber = do
-  subs <- newIORef []
+  subscriptions <- newIORef []
   let
     subscriber = Subscriber \e f -> do
       unsub <- e `subscribe` f
       unRef <- liftIO (newIORef unsub)
-      liftIO $ modifyIORef subs ((:) unRef)
-      pure $ liftIO $ modifyIORef subs (delete unRef)
-  pure (subscriber, subs)
+      liftIO $ modifyIORef subscriptions ((:) unRef)
+      pure $ liftIO $ modifyIORef subscriptions (delete unRef)
+  pure (subscriber, subscriptions)
 
 subscribeUpdates :: Dynamic s -> Callback s -> Html (IO ())
 subscribeUpdates d f = dnUpdates d `htmlSubscribe` f

@@ -14,7 +14,9 @@ import System.IO.Unsafe
 import qualified Data.Map as M
 
 -- | @Event a@ is a stream of event occurences of type @a@
-newtype Event a = Event {unEvent :: Stage -> Callback a -> Reactive Canceller}
+newtype Event a = Event
+  { unEvent :: Stage -> Callback a -> Reactive Canceller
+  }
 
 data Stage = Immediate | Defer
   deriving (Show, Eq, Ord)
@@ -265,13 +267,3 @@ instance Applicative Dynamic where
       c2 <- dnUpdates da `subscribeImmediate` \a ->
         fire Nothing (Just a)
       pure (c1 *> c2)
-
-(<**>) :: DynamicRef a -> DynamicRef b -> DynamicRef (a, b)
-(<**>) (dA, aMod) (bDyn, bMod) = (dyn, mod) where
-  dyn = (,) <$> dA <*> bDyn
-  mod = \f -> do
-    oldA <- liftIO $ dnRead dA
-    oldB <- liftIO $ dnRead bDyn
-    let (newA, newB) = f (oldA, oldB)
-    aMod \_ -> newA
-    bMod \_ -> newB
