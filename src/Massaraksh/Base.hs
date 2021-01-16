@@ -4,6 +4,7 @@ module Massaraksh.Base where
 
 import Control.Lens hiding ((#))
 import Control.Monad.Reader
+import Control.Exception
 import Data.Coerce
 import Data.Default
 import Data.Foldable
@@ -17,7 +18,6 @@ import Massaraksh.Decode
 import Massaraksh.Event
 import Massaraksh.Internal
 import Massaraksh.Types
-import Unsafe.Coerce
 
 el :: Text -> Html x -> Html x
 el tag child = do
@@ -202,22 +202,19 @@ itraverseHtml l dynRef@(dyn, _) h = do
     liftIO $ setup new 0 refs (toListOf l old) (toListOf l new)
   pure ()
 
-dynHtml :: Dynamic (Html ()) -> Html ()
-dynHtml dyn = dynHtml' $ fmap (\h c _ -> h *> c) dyn
-
-dynHtml' :: Dynamic (Html () -> Html () -> Html ()) -> Html ()
-dynHtml' dyn = do
+dyn_ :: Dynamic (Html ()) -> Html ()
+dyn_ dyn = do
   env <- ask
   js <- askJSM
   childRef <- liftIO (newIORef Nothing)
   mutate <- askMutateRoot
   let
-    setup html rootEl = liftIO mdo
+    setup html rootEl = liftIO do
       postHooks <- newIORef []
       (subscriber, subscriptions) <- newSubscriber
       (elmRef, flush) <- flip runJSM js $ deferMutations (htenvElement env)
       let
-        unsub = liftIO do
+        unsub = do
           oldEnv <- readIORef childRef
           for_ oldEnv \(e, s) -> do
             subs <- readIORef s
@@ -226,19 +223,22 @@ dynHtml' dyn = do
           writeIORef childRef (Just (newEnv, subscriptions))
         newEnv = env
           {htenvSubscriber=subscriber, htenvPostBuild=postHooks, htenvElement=elmRef}
-      runHtml newEnv do
-        let
-          commit::Html () = do
-            unsub
-              <* (sequence_ =<< liftIO (readIORef postHooks))
-              <* liftIO (removeAllChilds env)
-              <* liftIO (liftIO flush)
-            pure ()
-          revert::Html () = unsafeCoerce () <$ pure ()
-        html commit revert
+        triggerPost = runHtml newEnv . sequence_
+          =<< readIORef postHooks
+        commit = do
+          unsub
+            <* removeAllChilds env
+            <* flush
+            <* triggerPost
+      runHtml newEnv html <* commit
     removeAllChilds env = mutate \rootEl -> do
       length <- childLength rootEl
       for_ [0..length - 1] \idx -> do
         childEl <- getChildNode rootEl (length - idx - 1)
         removeChild rootEl childEl
   void $ forDyn dyn (liftIO . mutate . (void .) . setup)
+
+catchInteractive :: Html () -> (SomeException -> Html ()) -> Html ()
+catchInteractive html handle = ask >>= run where
+  run e = htmlLocal (f e) html
+  f e he = he{htenvCatchInteractive=runHtml e . handle}
