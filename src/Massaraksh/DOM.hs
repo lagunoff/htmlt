@@ -155,7 +155,7 @@ foreign import javascript unsafe
 #endif
 
 addEventListener
-  :: ListenOpts -> JSVal -> Text -> (JSVal -> JSM ()) -> JSM (JSM ())
+  :: ListenOpts -> Node -> Text -> (JSVal -> JSM ()) -> JSM (JSM ())
 addEventListener ListenOpts{..} target name f = do
   cb <- function \_ _ [event] -> do
     when stopPropagation do
@@ -210,7 +210,7 @@ offsetXY = Position
 pageXY :: Decoder Position
 pageXY = Position
   <$> decodeAt ["pageX"] decoder
-  <*> decodeAt ["pageX"] decoder
+  <*> decodeAt ["pageY"] decoder
 
 data Keys = Keys
   { altKey   :: Bool
@@ -242,3 +242,12 @@ keyboardEvent = KeyboardEvent
   <*> decodeAt ["key"] decoder
   <*> decodeAt ["keyCode"] decoder
   <*> decodeAt ["repeat"] decoder
+
+getCurrentWindow :: MonadJSM m => m JSVal
+getCurrentWindow = liftJSM (jsg ("window"::Text))
+
+getDocument :: MonadJSM m => JSVal -> m JSVal
+getDocument self = liftJSM (self ! ("document"::Text))
+
+getCurrentBody :: MonadJSM m => m Node
+getCurrentBody = liftJSM (Node <$> jsg ("document"::Text) ! ("body"::Text))

@@ -9,6 +9,7 @@ import Control.Monad.State
 import Data.Foldable
 import Data.IORef
 import Data.List
+import GHC.Generics
 import Debug.Trace
 import System.IO.Unsafe
 import qualified Data.Map as M
@@ -17,14 +18,16 @@ import qualified Data.Map as M
 newtype Event a = Event
   { unEvent :: Stage -> Callback a -> Reactive Canceller
   }
+  deriving (Generic)
 
 data Stage = Immediate | Defer
-  deriving (Show, Eq, Ord)
+  deriving (Show, Eq, Ord, Generic)
 
 data Dynamic a = Dynamic
-  { dnRead    :: IO a    -- ^ Read current value
+  { dnRead :: IO a -- ^ Read current value
   , dnUpdates :: Event a -- ^ Event that fires when the value changes
   }
+  deriving (Generic)
 
 type Callback a = a -> Reactive ()
 type Trigger a = a -> Reactive ()
@@ -80,6 +83,7 @@ defer k act = Reactive do
 newtype ReactiveState = ReactiveState
   { rstDeferredActs :: M.Map ActId (Reactive ())
   }
+  deriving (Generic)
 
 instance Semigroup ReactiveState where
   (<>) (ReactiveState a) (ReactiveState b) = ReactiveState (a <> b)
@@ -138,7 +142,7 @@ newDyn initial = do
       push new
   pure (Dynamic (readIORef ref) ev, modify)
 
-mapMaybeD :: b -> (a -> Maybe b) -> Dynamic a -> IO (Dynamic b)
+mapMaybeD :: MonadIO m => b -> (a -> Maybe b) -> Dynamic a -> IO (Dynamic b)
 mapMaybeD def f (Dynamic s u) = do
   latestRef <- newIORef def
   let

@@ -38,6 +38,13 @@ attachToBody render = do
   rootEl <- fmap coerce $ jsg "document" ! "body"
   attach rootEl render
 
+portal :: Node -> Html a -> Html a
+portal rootEl render = do
+  js <- askJSM
+  env <- ask
+  let rootRef = ElementRef (pure rootEl) (flip runJSM js . ($ rootEl))
+  local (\e -> e {htenvElement = rootRef}) render
+
 withJSM :: JSM x -> IO ()
 #ifdef ghcjs_HOST_OS
 withJSM jsm = do _ <- jsm; pure ()

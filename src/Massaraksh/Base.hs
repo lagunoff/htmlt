@@ -93,11 +93,10 @@ domEventOpts :: ListenOpts -> Node -> Text -> Decoder (Html x) -> Html ()
 domEventOpts opts elm name decoder = do
   env <- ask
   js <- askJSM
-  elmJs <- liftJSM (toJSVal elm)
   let
     event :: Event (Html ())
     event = Event \s k -> liftIO $ flip runJSM js do
-      unlisten <- addEventListener opts elmJs name \event -> do
+      unlisten <- addEventListener opts elm name \event -> do
         e <- runDecoder decoder event
         either (\_ -> pure ()) (void . liftIO . sync . k . void) e
       pure $ liftIO $ runJSM unlisten js
@@ -108,6 +107,13 @@ domEvent = domEventOpts def
 
 domEvent_ :: Node -> Text -> Html x -> Html ()
 domEvent_ e n act = domEvent e n (pure act)
+
+classes :: Text -> Html ()
+classes cs = do
+  mutate <- askMutateRoot
+  liftIO $ mutate \rootEl -> do
+    for_ (T.splitOn (T.pack " ") cs) \c -> do
+      classListAdd rootEl c
 
 toggleClass :: Text -> Dynamic Bool -> Html ()
 toggleClass cs dyn = do
@@ -123,7 +129,7 @@ toggleAttr att dyn = do
   mutate <- askMutateRoot
   let
     setup name enable rootEl = case enable of
-      True  -> setAttribute rootEl name (T.pack "on")
+      True -> setAttribute rootEl name (T.pack "on")
       False -> removeAttribute rootEl name
   void $ forDyn dyn (liftIO . mutate . setup att)
 
@@ -136,9 +142,9 @@ htmlLocal f (Html (ReaderT h)) = Html $ ReaderT (h . f)
 
 data ChildrenEnv s = ChildrenEnv
   { cenvHtmlEnv :: HtmlEnv
-  , cenvDynRef  :: DynamicRef s
+  , cenvDynRef :: DynamicRef s
   , cenvSubscriptions :: IORef [IORef (IO ())]
-  , cenvModify  :: Modifier s
+  , cenvModify :: Modifier s
   }
 
 itraverseHtml

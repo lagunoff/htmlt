@@ -14,9 +14,10 @@ import Massaraksh.DOM
 import Massaraksh.Event
 
 newtype Html a = Html {unHtml :: ReaderT HtmlEnv IO a}
-  deriving newtype
-    ( Functor, Applicative, Monad, MonadIO, MonadReader HtmlEnv
-    , MonadFix, MonadCatch, MonadThrow, MonadMask )
+  deriving newtype (
+    Functor, Applicative, Monad, MonadIO, MonadReader HtmlEnv,
+    MonadFix, MonadCatch, MonadThrow, MonadMask
+  )
 
 data HtmlEnv = HtmlEnv
   { htenvElement :: ElementRef
@@ -28,9 +29,10 @@ data HtmlEnv = HtmlEnv
   deriving stock (Generic)
 
 data ElementRef = ElementRef
-  { elrfRead          :: IO Node
+  { elrfRead :: IO Node
   , elrfQueueMutation :: (Node -> JSM ()) -> IO ()
   }
+  deriving stock (Generic)
 
 newtype Subscriber = Subscriber
   { unSubscriber :: forall a. Event a -> Callback a -> Reactive Canceller
