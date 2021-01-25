@@ -5,7 +5,6 @@ module Massaraksh.Main where
 
 import Control.Exception
 import Control.Monad.Reader
-import Data.Coerce
 import Data.IORef
 import Language.Javascript.JSaddle
 import Massaraksh.DOM
@@ -21,22 +20,18 @@ import System.Environment
 attach :: Node -> Html a -> JSM (a, HtmlEnv)
 attach rootEl render = do
   js <- askJSM
-  evalRef <- liftIO $ newIORef \_ -> pure ()
-  (subscriber, subscriptions) <- liftIO newSubscriber
+  subscriptions <- liftIO (newIORef [])
   postHooks <- liftIO (newIORef [])
   let rootRef = ElementRef (pure rootEl) (flip runJSM js . ($ rootEl))
   (elRef, flush) <- deferMutations rootRef
-  let env = HtmlEnv elRef subscriber postHooks js throwIO
-  liftIO $ writeIORef evalRef \(Exist h) -> void (runHtml env h)
+  let env = HtmlEnv elRef subscriptions postHooks js throwIO
   res <- liftIO $ runHtml env render
   liftIO flush
   liftIO (readIORef postHooks >>= mapM_ (runHtml env))
   pure (res, env)
 
 attachToBody :: Html a -> JSM (a, HtmlEnv)
-attachToBody render = do
-  rootEl <- fmap coerce $ jsg "document" ! "body"
-  attach rootEl render
+attachToBody h = getCurrentBody >>= (`attach` h)
 
 portal :: Node -> Html a -> Html a
 portal rootEl render = do
@@ -47,7 +42,7 @@ portal rootEl render = do
 
 withJSM :: JSM x -> IO ()
 #ifdef ghcjs_HOST_OS
-withJSM jsm = do _ <- jsm; pure ()
+withJSM = void
 #else
 withJSM jsm = do
   envPort <- either (const Nothing) Just <$>

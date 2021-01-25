@@ -140,11 +140,10 @@ blank = pure ()
 htmlLocal :: (HtmlEnv -> HtmlEnv) -> Html x -> Html x
 htmlLocal f (Html (ReaderT h)) = Html $ ReaderT (h . f)
 
-data ChildrenEnv s = ChildrenEnv
+data ChildrenEnv a = ChildrenEnv
   { cenvHtmlEnv :: HtmlEnv
-  , cenvDynRef :: DynamicRef s
-  , cenvSubscriptions :: IORef [IORef (IO ())]
-  , cenvModify :: Modifier s
+  , cenvDynRef :: DynamicRef a
+  , cenvModify :: Modifier a
   }
 
 itraverseHtml
@@ -166,14 +165,14 @@ itraverseHtml l dynRef@(dyn, _) h = do
       (_, [], [])    -> pure ()
       ([], [], x:xs) -> mdo
         -- New list is longer, append new elements
-        (subscriber, subscriptions) <- newSubscriber
+        subscriptions <- newIORef []
         dynRef' <- liftIO (newDyn x)
         let
-          model   = (fst dynRef', mkModifier idx (fst dynRef'))
+          model = (fst dynRef', mkModifier idx (fst dynRef'))
           newEnv  = hte
-            { htenvSubscriber  = subscriber
+            { htenvSubscriptions = subscriptions
             , htenvPostBuild = error "post hook not implemented" }
-          itemRef = ChildrenEnv newEnv model subscriptions (snd dynRef')
+          itemRef = ChildrenEnv newEnv model (snd dynRef')
         runHtml newEnv $ h idx model
         liftIO (modifyIORef itemRefs (<> [itemRef]))
         setup s (idx + 1) [] [] xs
@@ -184,7 +183,7 @@ itraverseHtml l dynRef@(dyn, _) h = do
         let (newRefs, tailRefs) = L.splitAt idx itemRefsValue
         liftIO (writeIORef itemRefs newRefs)
         for_ tailRefs \ChildrenEnv{..} -> do
-          subscriptions <- liftIO $ readIORef cenvSubscriptions
+          subscriptions <- liftIO . readIORef . htenvSubscriptions $ cenvHtmlEnv
           liftIO $ for_ subscriptions (readIORef >=> id)
           childEl <- flip runJSM js $ getChildNode rootEl idx
           flip runJSM js (removeChild rootEl childEl)
@@ -217,18 +216,18 @@ dyn_ dyn = do
   let
     setup html rootEl = liftIO do
       postHooks <- newIORef []
-      (subscriber, subscriptions) <- newSubscriber
+      subscriptions <- newIORef []
       (elmRef, flush) <- flip runJSM js $ deferMutations (htenvElement env)
       let
         unsub = do
           oldEnv <- readIORef childRef
-          for_ oldEnv \(e, s) -> do
-            subs <- readIORef s
+          for_ oldEnv \HtmlEnv{..} -> do
+            subs <- readIORef htenvSubscriptions
             for_ subs (readIORef >=> id)
-            writeIORef s []
-          writeIORef childRef (Just (newEnv, subscriptions))
+            writeIORef htenvSubscriptions []
+          writeIORef childRef (Just newEnv)
         newEnv = env
-          {htenvSubscriber=subscriber, htenvPostBuild=postHooks, htenvElement=elmRef}
+          {htenvSubscriptions=subscriptions, htenvPostBuild=postHooks, htenvElement=elmRef}
         triggerPost = runHtml newEnv . sequence_
           =<< readIORef postHooks
         commit = do

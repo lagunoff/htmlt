@@ -11,7 +11,7 @@ import Data.Text as T
 import GHC.Generics
 import Language.Javascript.JSaddle
 import Massaraksh.DOM
-import Massaraksh.Event
+import Control.Monad.IO.Unlift
 
 newtype Html a = Html {unHtml :: ReaderT HtmlEnv IO a}
   deriving newtype (
@@ -19,9 +19,11 @@ newtype Html a = Html {unHtml :: ReaderT HtmlEnv IO a}
     MonadFix, MonadCatch, MonadThrow, MonadMask
   )
 
+type MonadHtml m = (MonadIO m, MonadReader HtmlEnv m, MonadUnliftIO m)
+
 data HtmlEnv = HtmlEnv
   { htenvElement :: ElementRef
-  , htenvSubscriber :: Subscriber
+  , htenvSubscriptions :: IORef [IORef (IO ())]
   , htenvPostBuild :: IORef [Html ()]
   , htenvJsContext :: JSContextRef
   , htenvCatchInteractive :: SomeException -> IO ()
@@ -33,14 +35,6 @@ data ElementRef = ElementRef
   , elrfQueueMutation :: (Node -> JSM ()) -> IO ()
   }
   deriving stock (Generic)
-
-newtype Subscriber = Subscriber
-  { unSubscriber :: forall a. Event a -> Callback a -> Reactive Canceller
-  }
-
-type Subscriptions = IORef [IORef (IO ())]
-
-data Exist (f :: * -> *) = forall x. Exist (f x)
 
 runHtml :: HtmlEnv -> Html x -> IO x
 runHtml e = flip runReaderT e . unHtml

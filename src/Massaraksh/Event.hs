@@ -16,7 +16,7 @@ import qualified Data.Map as M
 
 -- | @Event a@ is a stream of event occurences of type @a@
 newtype Event a = Event
-  { unEvent :: Stage -> Callback a -> Reactive Canceller
+  { unEvent :: Stage -> Callback a -> IO Canceller
   }
   deriving (Generic)
 
@@ -28,6 +28,17 @@ data Dynamic a = Dynamic
   , dnUpdates :: Event a -- ^ Event that fires when the value changes
   }
   deriving (Generic)
+
+newtype ReactiveState = ReactiveState
+  { rstDeferredActs :: M.Map ActId (Reactive ())
+  }
+  deriving (Generic)
+
+newtype Reactive a = Reactive (StateT ReactiveState IO a)
+  deriving newtype (
+    Functor, Applicative, Monad, MonadIO, MonadState ReactiveState,
+    MonadFix, MonadCatch, MonadThrow, MonadMask
+  )
 
 type Callback a = a -> Reactive ()
 type Trigger a = a -> Reactive ()
@@ -62,11 +73,6 @@ actIdSupply = unsafePerformIO (newIORef 0)
 newActId :: IO ActId
 newActId = atomicModifyIORef actIdSupply \x -> (succ x, succ x)
 
-newtype Reactive a = Reactive (StateT ReactiveState IO a)
-  deriving newtype
-    ( Functor, Applicative, Monad, MonadIO, MonadFix, MonadCatch, MonadThrow
-    , MonadMask )
-
 instance Semigroup x => Semigroup (Reactive x) where
   (<>) = liftA2 (<>)
 
@@ -79,11 +85,6 @@ class MonadReactive m where
 defer :: Int -> Reactive () -> Reactive ()
 defer k act = Reactive do
   modify \(ReactiveState s) -> ReactiveState (M.insert k act s)
-
-newtype ReactiveState = ReactiveState
-  { rstDeferredActs :: M.Map ActId (Reactive ())
-  }
-  deriving (Generic)
 
 instance Semigroup ReactiveState where
   (<>) (ReactiveState a) (ReactiveState b) = ReactiveState (a <> b)
@@ -107,11 +108,11 @@ popQueue intact@(ReactiveState m) = case M.minViewWithKey m of
   Just ((_, act), rest) -> (Just act, ReactiveState rest)
   Nothing               -> (Nothing, intact)
 
-subscribe :: Event a -> Callback a -> Reactive Canceller
+subscribe :: Event a -> Callback a -> IO Canceller
 subscribe (Event s) = s Defer
 {-# INLINE subscribe #-}
 
-subscribeImmediate :: Event a -> Callback a -> Reactive Canceller
+subscribeImmediate :: Event a -> Callback a -> IO Canceller
 subscribeImmediate (Event s) = s Immediate
 {-# INLINE subscribeImmediate #-}
 
@@ -226,8 +227,8 @@ instance Semigroup a => Monoid (Event a) where
 instance Applicative Event where
   pure a = Event \case
     Immediate -> \k ->
-      k a *> mempty
-    Defer     -> \k -> do
+      sync $ k a *> mempty
+    Defer -> \k -> sync do
       actId <- liftIO newActId
       defer actId (k a)
       mempty

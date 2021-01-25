@@ -55,24 +55,16 @@ localElement elm child = do
   local (\env -> env { htenvElement = elRef }) child
 {-# INLINE localElement #-}
 
-htmlSubscribe :: Event a -> (a -> Reactive ()) -> Html (IO ())
+htmlSubscribe :: Event a -> Callback a -> Html (IO ())
 htmlSubscribe e k = do
-  s <- asks (unSubscriber . htenvSubscriber)
-  h <- asks htenvCatchInteractive
-  let k' x = k x `catchSync` (liftIO . h)
-  liftIO $ sync (s e k')
-{-# INLINE htmlSubscribe #-}
-
-newSubscriber :: IO (Subscriber, Subscriptions)
-newSubscriber = do
-  subscriptions <- newIORef []
-  let
-    subscriber = Subscriber \e f -> do
-      unsub <- e `subscribe` f
-      unRef <- liftIO (newIORef unsub)
-      liftIO $ modifyIORef subscriptions ((:) unRef)
-      pure $ liftIO $ modifyIORef subscriptions (delete unRef)
-  pure (subscriber, subscriptions)
+  sRef <- asks htenvSubscriptions
+  handle <- asks htenvCatchInteractive
+  let k' x = k x `catchSync` (liftIO . handle)
+  liftIO do
+    unsub <- e `subscribe` k'
+    unRef <- newIORef unsub
+    modifyIORef sRef ((:) unRef)
+    pure $ modifyIORef sRef (delete unRef)
 
 subscribeUpdates :: Dynamic s -> Callback s -> Html (IO ())
 subscribeUpdates d f = dnUpdates d `htmlSubscribe` f
