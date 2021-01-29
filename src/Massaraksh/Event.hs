@@ -44,12 +44,12 @@ type Callback a = a -> Reactive ()
 type Trigger a = a -> Reactive ()
 type Modifier a = (a -> a) -> Reactive ()
 type Canceller = IO ()
-type DynamicRef a = (Dynamic a, Modifier a)
+type DynRef a = (Dynamic a, Modifier a)
 type ActId = Int
 
 -- | Create new event and a function to supply values to that event
-newEvent :: IO (Event a, Trigger a)
-newEvent = do
+newEvent :: MonadIO m => m (Event a, Trigger a)
+newEvent = liftIO do
   immediateSubs <- newIORef []
   deferredSubs <- newIORef []
   actId <- liftIO newActId
@@ -131,8 +131,8 @@ never :: Event a
 never = Event \_ -> mempty
 
 -- | Create new 'Dynamic' and a function to update the value
-newDyn :: a -> IO (Dynamic a, Modifier a)
-newDyn initial = do
+newRef :: MonadIO m => a -> m (DynRef a)
+newRef initial = liftIO do
   ref <- newIORef initial
   (ev, push) <- newEvent
   let
@@ -159,7 +159,7 @@ mapMaybeD def f (Dynamic s u) = do
 constDyn :: a -> Dynamic a
 constDyn a = Dynamic (pure a) never
 
-lensMap :: Lens' s a -> DynamicRef s -> DynamicRef a
+lensMap :: Lens' s a -> DynRef s -> DynRef a
 lensMap stab (d, m) = (Dynamic read upd, modify) where
   read   = fmap (getConst . stab Const) $ dnRead d
   upd    = fmap (getConst . stab Const) $ dnUpdates d
@@ -272,3 +272,35 @@ instance Applicative Dynamic where
       c2 <- dnUpdates da `subscribeImmediate` \a ->
         fire Nothing (Just a)
       pure (c1 *> c2)
+
+writeRef :: MonadIO m => DynRef a -> a -> m ()
+writeRef ref a = modifyRef ref (const a)
+{-# INLINE writeRef #-}
+
+readRef :: MonadIO m => DynRef a -> m a
+readRef (dyn, _) = readDyn dyn
+{-# INLINE readRef #-}
+
+modifyRef :: MonadIO m => DynRef a -> (a -> a) -> m ()
+modifyRef (_, modify) = liftIO . sync . modify
+{-# INLINE modifyRef #-}
+
+modifySync :: DynRef a -> (a -> a) -> Reactive ()
+modifySync (_, modify) = modify
+{-# INLINE modifySync #-}
+
+writeSync :: DynRef a -> a -> Reactive ()
+writeSync ref a = modifySync ref (const a)
+{-# INLINE writeSync #-}
+
+fromRef :: DynRef a -> Dynamic a
+fromRef = fst
+{-# INLINE fromRef #-}
+
+readDyn :: MonadIO m => Dynamic a -> m a
+readDyn = liftIO . dnRead
+{-# INLINE readDyn #-}
+
+updates :: Dynamic a -> Event a
+updates = dnUpdates
+{-# INLINE updates #-}

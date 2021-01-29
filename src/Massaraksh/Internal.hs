@@ -79,3 +79,9 @@ catchSync :: (MonadCatch m, MonadThrow m) => m a -> (SomeException -> m a) -> m 
 catchSync io h = io `catch` \e -> case E.fromException e of
   Just (E.SomeAsyncException _) -> throwM e
   Nothing                       -> h e
+
+addFinalizer :: IO () -> Html ()
+addFinalizer fin = do
+  subs <- asks htenvSubscriptions
+  finRef <- liftIO $ newIORef fin
+  liftIO $ modifyIORef subs (finRef :)

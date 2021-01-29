@@ -16,10 +16,10 @@ import Control.Monad.IO.Unlift
 newtype Html a = Html {unHtml :: ReaderT HtmlEnv IO a}
   deriving newtype (
     Functor, Applicative, Monad, MonadIO, MonadReader HtmlEnv,
-    MonadFix, MonadCatch, MonadThrow, MonadMask
+    MonadFix, MonadCatch, MonadThrow, MonadMask, MonadUnliftIO
   )
 
-type MonadHtml m = (MonadIO m, MonadReader HtmlEnv m, MonadUnliftIO m)
+type MonadHtml m = (MonadReader HtmlEnv m, MonadIO m, MonadUnliftIO m)
 
 data HtmlEnv = HtmlEnv
   { htenvElement :: ElementRef

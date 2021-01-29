@@ -140,39 +140,40 @@ blank = pure ()
 htmlLocal :: (HtmlEnv -> HtmlEnv) -> Html x -> Html x
 htmlLocal f (Html (ReaderT h)) = Html $ ReaderT (h . f)
 
-data ChildrenEnv a = ChildrenEnv
+data ItemEnv a = ItemEnv
   { cenvHtmlEnv :: HtmlEnv
-  , cenvDynRef :: DynamicRef a
+  , cenvRef :: DynRef a
   , cenvModify :: Modifier a
   }
 
 itraverseHtml
   :: forall s a
    . IndexedTraversal' Int s a
-  -> DynamicRef s
-  -> (Int -> DynamicRef a -> Html ())
+  -> DynRef s
+  -> (Int -> DynRef a -> Html ())
   -> Html ()
 itraverseHtml l dynRef@(dyn, _) h = do
   hte <- ask
   js <- askJSM
   rootEl <- askElement
-  s <- liftIO $ dnRead (fst dynRef)
+  s <- readRef dynRef
   itemRefs <- liftIO (newIORef [])
   let
     -- FIXME: 'setup' should return new contents for 'itemRefs'
-    setup :: s -> Int -> [ChildrenEnv a] -> [a] -> [a] -> IO ()
+    setup :: s -> Int -> [ItemEnv a] -> [a] -> [a] -> IO ()
     setup s idx refs old new = case (refs, old, new) of
       (_, [], [])    -> pure ()
       ([], [], x:xs) -> mdo
         -- New list is longer, append new elements
         subscriptions <- newIORef []
-        dynRef' <- liftIO (newDyn x)
+        dynRef' <- newRef x
+        postRef <- liftIO (newIORef [])
         let
           model = (fst dynRef', mkModifier idx (fst dynRef'))
           newEnv  = hte
             { htenvSubscriptions = subscriptions
-            , htenvPostBuild = error "post hook not implemented" }
-          itemRef = ChildrenEnv newEnv model (snd dynRef')
+            , htenvPostBuild = postRef }
+          itemRef = ItemEnv newEnv model (snd dynRef')
         runHtml newEnv $ h idx model
         liftIO (modifyIORef itemRefs (<> [itemRef]))
         setup s (idx + 1) [] [] xs
@@ -181,12 +182,10 @@ itraverseHtml l dynRef@(dyn, _) h = do
         -- present in the new list
         itemRefsValue <- liftIO (readIORef itemRefs)
         let (newRefs, tailRefs) = L.splitAt idx itemRefsValue
+        unsub tailRefs
+        childEl <- flip runJSM js $ getChildNode rootEl idx
+        flip runJSM js (removeChild rootEl childEl)
         liftIO (writeIORef itemRefs newRefs)
-        for_ tailRefs \ChildrenEnv{..} -> do
-          subscriptions <- liftIO . readIORef . htenvSubscriptions $ cenvHtmlEnv
-          liftIO $ for_ subscriptions (readIORef >=> id)
-          childEl <- flip runJSM js $ getChildNode rootEl idx
-          flip runJSM js (removeChild rootEl childEl)
       (r:rs, x:xs, y:ys) -> do
         -- Update child elemens along the way
         liftIO $ sync $ cenvModify r \_ -> y
@@ -194,13 +193,17 @@ itraverseHtml l dynRef@(dyn, _) h = do
       (_, _, _)      -> do
         error "dynList: Incoherent internal state"
 
+    unsub = traverse_ \ItemEnv{..} -> do
+      subscriptions <- liftIO . readIORef . htenvSubscriptions $ cenvHtmlEnv
+      liftIO $ for_ subscriptions (readIORef >=> id)
+
     mkModifier :: Int -> Dynamic a -> (a -> a) -> Reactive ()
     mkModifier idx dyn f = do
       oldA <- liftIO $ dnRead dyn
       snd dynRef \oldS ->
         oldS & iover l \i x -> if i == idx then f oldA else x
-
   liftIO $ setup s 0 [] [] (toListOf l s)
+  addFinalizer $ readIORef itemRefs >>= unsub
   let eUpdates = withOld s (dnUpdates dyn)
   htmlSubscribe eUpdates \(old, new) -> do
     refs <- liftIO (readIORef itemRefs)
@@ -214,24 +217,24 @@ dyn_ dyn = do
   childRef <- liftIO (newIORef Nothing)
   mutate <- askMutateRoot
   let
+    unsub newEnv = do
+      oldEnv <- readIORef childRef
+      for_ oldEnv \HtmlEnv{..} -> do
+        subs <- readIORef htenvSubscriptions
+        for_ subs (readIORef >=> id)
+        writeIORef htenvSubscriptions []
+      writeIORef childRef newEnv
     setup html rootEl = liftIO do
       postHooks <- newIORef []
       subscriptions <- newIORef []
       (elmRef, flush) <- flip runJSM js $ deferMutations (htenvElement env)
       let
-        unsub = do
-          oldEnv <- readIORef childRef
-          for_ oldEnv \HtmlEnv{..} -> do
-            subs <- readIORef htenvSubscriptions
-            for_ subs (readIORef >=> id)
-            writeIORef htenvSubscriptions []
-          writeIORef childRef (Just newEnv)
         newEnv = env
           {htenvSubscriptions=subscriptions, htenvPostBuild=postHooks, htenvElement=elmRef}
         triggerPost = runHtml newEnv . sequence_
           =<< readIORef postHooks
         commit = do
-          unsub
+          unsub (Just newEnv)
             <* removeAllChilds env
             <* flush
             <* triggerPost
@@ -241,6 +244,7 @@ dyn_ dyn = do
       for_ [0..length - 1] \idx -> do
         childEl <- getChildNode rootEl (length - idx - 1)
         removeChild rootEl childEl
+  addFinalizer (unsub Nothing)
   void $ forDyn dyn (liftIO . mutate . (void .) . setup)
 
 catchInteractive :: Html () -> (SomeException -> Html ()) -> Html ()
