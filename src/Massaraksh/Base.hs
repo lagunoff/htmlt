@@ -41,10 +41,10 @@ text txt = do
 
 dynText :: Dynamic Text -> Html ()
 dynText d = do
-  txt <- liftIO (dnRead d)
+  txt <- liftIO (dynamic_read d)
   js <- askJSM
   textNode <- liftJSM (createTextNode txt)
-  dnUpdates d `htmlSubscribe` \new -> void $ liftIO do
+  dynamic_updates d `htmlSubscribe` \new -> void $ liftIO do
     flip runJSM js $ setTextValue textNode new
   mutateRoot (flip appendChild textNode)
 
@@ -152,7 +152,7 @@ itraverseHtml
   -> DynRef s
   -> (Int -> DynRef a -> Html ())
   -> Html ()
-itraverseHtml l dynRef@(dyn, _) h = do
+itraverseHtml l dynRef h = do
   hte <- ask
   js <- askJSM
   rootEl <- askElement
@@ -166,18 +166,18 @@ itraverseHtml l dynRef@(dyn, _) h = do
       ([], [], x:xs) -> mdo
         -- New list is longer, append new elements
         subscriptions <- newIORef []
-        dynRef' <- newRef x
+        elemRef <- newRef x
         postRef <- liftIO (newIORef [])
         let
-          model = (fst dynRef', mkModifier idx (fst dynRef'))
-          newEnv  = hte
+          elemRef' = elemRef {dynRef_modifier=mkModifier idx (fromRef elemRef)}
+          newEnv = hte
             { htenvSubscriptions = subscriptions
             , htenvPostBuild = postRef }
-          itemRef = ItemEnv newEnv model (snd dynRef')
-        runHtml newEnv $ h idx model
+          itemRef = ItemEnv newEnv elemRef' (dynRef_modifier elemRef)
+        runHtml newEnv $ h idx elemRef'
         liftIO (modifyIORef itemRefs (<> [itemRef]))
         setup s (idx + 1) [] [] xs
-      (_, x:xs, [])  -> do
+      (_, x:xs, []) -> do
         -- New list is shorter, delete the elements that no longer
         -- present in the new list
         itemRefsValue <- liftIO (readIORef itemRefs)
@@ -190,8 +190,8 @@ itraverseHtml l dynRef@(dyn, _) h = do
         -- Update child elemens along the way
         liftIO $ sync $ cenvModify r \_ -> y
         setup s (idx + 1) rs xs ys
-      (_, _, _)      -> do
-        error "dynList: Incoherent internal state"
+      (_, _, _) -> do
+        error "itraverseHtml: Incoherent internal state"
 
     unsub = traverse_ \ItemEnv{..} -> do
       subscriptions <- liftIO . readIORef . htenvSubscriptions $ cenvHtmlEnv
@@ -199,12 +199,12 @@ itraverseHtml l dynRef@(dyn, _) h = do
 
     mkModifier :: Int -> Dynamic a -> (a -> a) -> Reactive ()
     mkModifier idx dyn f = do
-      oldA <- liftIO $ dnRead dyn
-      snd dynRef \oldS ->
+      oldA <- liftIO $ dynamic_read dyn
+      dynRef_modifier dynRef \oldS ->
         oldS & iover l \i x -> if i == idx then f oldA else x
   liftIO $ setup s 0 [] [] (toListOf l s)
   addFinalizer $ readIORef itemRefs >>= unsub
-  let eUpdates = withOld s (dnUpdates dyn)
+  let eUpdates = withOld s (dynamic_updates $ fromRef dynRef)
   htmlSubscribe eUpdates \(old, new) -> do
     refs <- liftIO (readIORef itemRefs)
     liftIO $ setup new 0 refs (toListOf l old) (toListOf l new)

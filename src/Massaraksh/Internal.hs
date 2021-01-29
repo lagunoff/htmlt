@@ -67,12 +67,12 @@ htmlSubscribe e k = do
     pure $ modifyIORef sRef (delete unRef)
 
 subscribeUpdates :: Dynamic s -> Callback s -> Html (IO ())
-subscribeUpdates d f = dnUpdates d `htmlSubscribe` f
+subscribeUpdates d f = dynamic_updates d `htmlSubscribe` f
 {-# INLINE subscribeUpdates #-}
 
 forDyn :: Dynamic a -> Callback a -> Html (IO ())
 forDyn dyn k = do
-  liftIO (dnRead dyn) >>= liftIO . sync . k
+  liftIO (dynamic_read dyn) >>= liftIO . sync . k
   subscribeUpdates dyn k
 
 catchSync :: (MonadCatch m, MonadThrow m) => m a -> (SomeException -> m a) -> m a
