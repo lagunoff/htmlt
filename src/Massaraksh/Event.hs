@@ -20,9 +20,6 @@ newtype Event a = Event
   }
   deriving stock Generic
 
-data Stage = Immediate | Defer
-  deriving (Show, Eq, Ord, Generic)
-
 data Dynamic a = Dynamic
   { dynamic_read :: IO a -- ^ Read current value
   , dynamic_updates :: Event a -- ^ Event that fires when the value changes
@@ -34,6 +31,9 @@ data DynRef a = DynRef
   , dynRef_modifier :: Modifier a
   }
   deriving stock Generic
+
+data Stage = Immediate | Defer
+  deriving (Show, Eq, Ord, Generic)
 
 newtype ReactiveState = ReactiveState
   { unReactiveState :: M.Map EventId (Reactive ())
@@ -91,6 +91,12 @@ newRef initial = liftIO do
       push new
     dynamic = Dynamic (readIORef ref) ev
   return $ DynRef dynamic modify
+
+constDyn :: a -> Dynamic a
+constDyn a = Dynamic (pure a) never
+
+never :: Event a
+never = Event \_ -> mempty
 
 writeRef :: MonadIO m => DynRef a -> a -> m ()
 writeRef ref a = modifyRef ref (const a)
@@ -166,9 +172,6 @@ mapMaybeE' f (Event e) = Event \s k ->
   e s \a -> maybe mempty k =<< liftIO (f a)
 {-# INLINE mapMaybeE' #-}
 
-never :: Event a
-never = Event \_ -> mempty
-
 mapMaybeD :: MonadIO m => b -> (a -> Maybe b) -> Dynamic a -> IO (Dynamic b)
 mapMaybeD def f (Dynamic s u) = do
   latestRef <- newIORef def
@@ -181,9 +184,6 @@ mapMaybeD def f (Dynamic s u) = do
           pure (Just new)
         Nothing  -> pure Nothing
   pure (Dynamic read updates)
-
-constDyn :: a -> Dynamic a
-constDyn a = Dynamic (pure a) never
 
 lensMap :: Lens' s a -> DynRef s -> DynRef a
 lensMap stab (DynRef d m) = DynRef (Dynamic read updates) modify where

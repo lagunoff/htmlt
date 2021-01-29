@@ -99,7 +99,7 @@ domEventOpts opts elm name decoder = do
     event = Event \s k -> liftIO $ flip runJSM js do
       unlisten <- addEventListener opts elm name \event -> do
         e <- runDecoder decoder event
-        either (\_ -> pure ()) (void . liftIO . sync . k . void) e
+        maybe blank (void . liftIO . sync . k . void) e
       pure $ liftIO $ runJSM unlisten js
   void $ htmlSubscribe event (liftIO . runHtml env)
 
@@ -147,7 +147,7 @@ data ElemEnv a = ElemEnv
 
 itraverseHtml
   :: forall s a
-   . IndexedTraversal' Int s a
+  . IndexedTraversal' Int s a
   -> DynRef s
   -> (Int -> DynRef a -> Html ())
   -> Html ()

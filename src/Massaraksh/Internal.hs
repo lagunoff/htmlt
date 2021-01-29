@@ -57,14 +57,14 @@ localElement elm child = do
 
 htmlSubscribe :: Event a -> Callback a -> Html (IO ())
 htmlSubscribe e k = do
-  sRef <- asks htmlEnv_finalizers
+  finsRef <- asks htmlEnv_finalizers
   handle <- asks htmlEnv_catchInteractive
   let k' x = k x `catchSync` (liftIO . handle)
   liftIO do
     unsub <- e `subscribe` k'
-    unRef <- newIORef unsub
-    modifyIORef sRef ((:) unRef)
-    pure $ modifyIORef sRef (delete unRef)
+    unsubRef <- newIORef unsub
+    modifyIORef finsRef ((:) unsubRef)
+    pure $ modifyIORef finsRef (delete unsubRef) *> unsub
 
 subscribeUpdates :: Dynamic s -> Callback s -> Html (IO ())
 subscribeUpdates d f = dynamic_updates d `htmlSubscribe` f
