@@ -22,17 +22,17 @@ newtype Html a = Html {unHtml :: ReaderT HtmlEnv IO a}
 type MonadHtml m = (MonadReader HtmlEnv m, MonadIO m, MonadUnliftIO m)
 
 data HtmlEnv = HtmlEnv
-  { htenvElement :: ElementRef
-  , htenvSubscriptions :: IORef [IORef (IO ())]
-  , htenvPostBuild :: IORef [Html ()]
-  , htenvJsContext :: JSContextRef
-  , htenvCatchInteractive :: SomeException -> IO ()
+  { htmlEnv_element :: ElementRef
+  , htmlEnv_finalizers :: IORef [IORef (IO ())]
+  , htmlEnv_postHooks :: IORef [Html ()]
+  , htmlEnv_jsContext :: JSContextRef
+  , htmlEnv_catchInteractive :: SomeException -> IO ()
   }
   deriving stock (Generic)
 
 data ElementRef = ElementRef
-  { elrfRead :: IO Node
-  , elrfQueueMutation :: (Node -> JSM ()) -> IO ()
+  { elementRef_read :: IO Node
+  , elementRef_mutate :: (Node -> JSM ()) -> IO ()
   }
   deriving stock (Generic)
 
@@ -49,11 +49,11 @@ instance Monoid a => Monoid (Html a) where
 instance (x ~ ()) => IsString (Html x) where
   fromString = text . T.pack where
     text t = do
-      elm <- liftIO =<< asks (elrfRead . htenvElement)
+      elm <- liftIO =<< asks (elementRef_read . htmlEnv_element)
       textNode <- liftJSM (createTextNode t)
       liftJSM (appendChild elm textNode)
 
 #ifndef ghcjs_HOST_OS
 instance MonadJSM Html where
-  liftJSM' jsm = Html $ ReaderT (runReaderT (unJSM jsm) . htenvJsContext)
+  liftJSM' jsm = Html $ ReaderT (runReaderT (unJSM jsm) . htmlEnv_jsContext)
 #endif

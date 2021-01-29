@@ -16,7 +16,7 @@ import qualified Data.Sequence as Seq
 
 newElementRef :: Node -> Html ElementRef
 newElementRef elm = do
-  jsCtx <- asks htenvJsContext
+  jsCtx <- asks htmlEnv_jsContext
   mutateRoot (flip appendChild elm)
   let
     read = pure elm
@@ -30,35 +30,35 @@ deferMutations ElementRef{..} = do
   let
     mutate m = readIORef flushedRef
       >>= bool (modifyIORef queueRef (Seq.>< Seq.singleton m))
-        (elrfQueueMutation m)
+        (elementRef_mutate m)
     flush = do
       writeIORef flushedRef True
       queue <- atomicModifyIORef' queueRef (Seq.empty,)
-      elrfQueueMutation \rootEl -> for_ queue ($ rootEl)
-  pure (ElementRef elrfRead mutate, flush)
+      elementRef_mutate \rootEl -> for_ queue ($ rootEl)
+  pure (ElementRef elementRef_read mutate, flush)
 
 askElement :: Html Node
-askElement = liftIO =<< asks (elrfRead . htenvElement)
+askElement = liftIO =<< asks (elementRef_read . htmlEnv_element)
 {-# INLINE askElement #-}
 
 mutateRoot :: (Node -> JSM ()) -> Html ()
-mutateRoot f = liftIO =<< asks (($ f). elrfQueueMutation . htenvElement)
+mutateRoot f = liftIO =<< asks (($ f). elementRef_mutate . htmlEnv_element)
 {-# INLINE mutateRoot #-}
 
 askMutateRoot :: Html ((Node -> JSM ()) -> IO ())
-askMutateRoot = asks (elrfQueueMutation . htenvElement)
+askMutateRoot = asks (elementRef_mutate . htmlEnv_element)
 {-# INLINE askMutateRoot #-}
 
 localElement :: Node -> Html a -> Html a
 localElement elm child = do
   elRef <- newElementRef elm
-  local (\env -> env { htenvElement = elRef }) child
+  local (\env -> env { htmlEnv_element = elRef }) child
 {-# INLINE localElement #-}
 
 htmlSubscribe :: Event a -> Callback a -> Html (IO ())
 htmlSubscribe e k = do
-  sRef <- asks htenvSubscriptions
-  handle <- asks htenvCatchInteractive
+  sRef <- asks htmlEnv_finalizers
+  handle <- asks htmlEnv_catchInteractive
   let k' x = k x `catchSync` (liftIO . handle)
   liftIO do
     unsub <- e `subscribe` k'
@@ -82,6 +82,6 @@ catchSync io h = io `catch` \e -> case E.fromException e of
 
 addFinalizer :: IO () -> Html ()
 addFinalizer fin = do
-  subs <- asks htenvSubscriptions
+  subs <- asks htmlEnv_finalizers
   finRef <- liftIO $ newIORef fin
   liftIO $ modifyIORef subs (finRef :)

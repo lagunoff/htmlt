@@ -2,9 +2,9 @@
 {-# LANGUAGE RecursiveDo #-}
 module Massaraksh.Base where
 
+import Control.Exception
 import Control.Lens hiding ((#))
 import Control.Monad.Reader
-import Control.Exception
 import Data.Coerce
 import Data.Default
 import Data.Foldable
@@ -12,6 +12,7 @@ import Data.IORef
 import Data.JSString.Text as JSS
 import Data.List as L
 import Data.Text as T hiding (index)
+import GHC.Generics
 import Language.Javascript.JSaddle as JS
 import Massaraksh.DOM
 import Massaraksh.Decode
@@ -137,14 +138,12 @@ blank :: Applicative m => m ()
 blank = pure ()
 {-# INLINE blank #-}
 
-htmlLocal :: (HtmlEnv -> HtmlEnv) -> Html x -> Html x
-htmlLocal f (Html (ReaderT h)) = Html $ ReaderT (h . f)
-
-data ItemEnv a = ItemEnv
-  { cenvHtmlEnv :: HtmlEnv
-  , cenvRef :: DynRef a
-  , cenvModify :: Modifier a
+data ElemEnv a = ElemEnv
+  { elemEnv_htmlEnv :: HtmlEnv
+  , elemEnv_Ref :: DynRef a
+  , elemRef_modifier :: Modifier a
   }
+  deriving stock Generic
 
 itraverseHtml
   :: forall s a
@@ -160,7 +159,7 @@ itraverseHtml l dynRef h = do
   itemRefs <- liftIO (newIORef [])
   let
     -- FIXME: 'setup' should return new contents for 'itemRefs'
-    setup :: s -> Int -> [ItemEnv a] -> [a] -> [a] -> IO ()
+    setup :: s -> Int -> [ElemEnv a] -> [a] -> [a] -> IO ()
     setup s idx refs old new = case (refs, old, new) of
       (_, [], [])    -> pure ()
       ([], [], x:xs) -> mdo
@@ -171,9 +170,9 @@ itraverseHtml l dynRef h = do
         let
           elemRef' = elemRef {dynRef_modifier=mkModifier idx (fromRef elemRef)}
           newEnv = hte
-            { htenvSubscriptions = subscriptions
-            , htenvPostBuild = postRef }
-          itemRef = ItemEnv newEnv elemRef' (dynRef_modifier elemRef)
+            { htmlEnv_finalizers = subscriptions
+            , htmlEnv_postHooks = postRef }
+          itemRef = ElemEnv newEnv elemRef' (dynRef_modifier elemRef)
         runHtml newEnv $ h idx elemRef'
         liftIO (modifyIORef itemRefs (<> [itemRef]))
         setup s (idx + 1) [] [] xs
@@ -188,13 +187,13 @@ itraverseHtml l dynRef h = do
         liftIO (writeIORef itemRefs newRefs)
       (r:rs, x:xs, y:ys) -> do
         -- Update child elemens along the way
-        liftIO $ sync $ cenvModify r \_ -> y
+        liftIO $ sync $ elemRef_modifier r \_ -> y
         setup s (idx + 1) rs xs ys
       (_, _, _) -> do
         error "itraverseHtml: Incoherent internal state"
 
-    unsub = traverse_ \ItemEnv{..} -> do
-      subscriptions <- liftIO . readIORef . htenvSubscriptions $ cenvHtmlEnv
+    unsub = traverse_ \ElemEnv{..} -> do
+      subscriptions <- liftIO . readIORef . htmlEnv_finalizers $ elemEnv_htmlEnv
       liftIO $ for_ subscriptions (readIORef >=> id)
 
     mkModifier :: Int -> Dynamic a -> (a -> a) -> Reactive ()
@@ -220,17 +219,19 @@ dyn_ dyn = do
     unsub newEnv = do
       oldEnv <- readIORef childRef
       for_ oldEnv \HtmlEnv{..} -> do
-        subs <- readIORef htenvSubscriptions
+        subs <- readIORef htmlEnv_finalizers
         for_ subs (readIORef >=> id)
-        writeIORef htenvSubscriptions []
+        writeIORef htmlEnv_finalizers []
       writeIORef childRef newEnv
     setup html rootEl = liftIO do
       postHooks <- newIORef []
       subscriptions <- newIORef []
-      (elmRef, flush) <- flip runJSM js $ deferMutations (htenvElement env)
+      (elmRef, flush) <- flip runJSM js $ deferMutations (htmlEnv_element env)
       let
         newEnv = env
-          {htenvSubscriptions=subscriptions, htenvPostBuild=postHooks, htenvElement=elmRef}
+          { htmlEnv_finalizers = subscriptions
+          , htmlEnv_postHooks = postHooks
+          , htmlEnv_element = elmRef }
         triggerPost = runHtml newEnv . sequence_
           =<< readIORef postHooks
         commit = do
@@ -249,5 +250,5 @@ dyn_ dyn = do
 
 catchInteractive :: Html () -> (SomeException -> Html ()) -> Html ()
 catchInteractive html handle = ask >>= run where
-  run e = htmlLocal (f e) html
-  f e he = he{htenvCatchInteractive=runHtml e . handle}
+  run e = local (f e) html
+  f e he = he {htmlEnv_catchInteractive = runHtml e . handle}

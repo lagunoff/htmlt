@@ -38,7 +38,7 @@ portal rootEl render = do
   js <- askJSM
   env <- ask
   let rootRef = ElementRef (pure rootEl) (flip runJSM js . ($ rootEl))
-  local (\e -> e {htenvElement = rootRef}) render
+  local (\e -> e {htmlEnv_element = rootRef}) render
 
 withJSM :: JSM x -> IO ()
 #ifdef ghcjs_HOST_OS
