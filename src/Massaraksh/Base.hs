@@ -85,7 +85,7 @@ on :: Text -> Decoder (Html x) -> Html ()
 on name decoder = do
   env <- ask
   mutateRoot \rootEl ->
-    liftIO $ runHtml env $ domEvent rootEl name decoder
+    liftIO $ runHtmlT env $ domEvent rootEl name decoder
 
 on_ :: Text -> Html x -> Html ()
 on_ name w = on name (pure w)
@@ -101,7 +101,7 @@ domEventOpts opts elm name decoder = do
         e <- runDecoder decoder event
         maybe blank (void . liftIO . sync . k . void) e
       pure $ liftIO $ runJSM unlisten js
-  void $ htmlSubscribe event (liftIO . runHtml env)
+  void $ htmlSubscribe event (liftIO . runHtmlT env)
 
 domEvent :: Node -> Text -> Decoder (Html x) -> Html ()
 domEvent = domEventOpts def
@@ -173,7 +173,7 @@ itraverseHtml l dynRef h = do
             { htmlEnv_finalizers = subscriptions
             , htmlEnv_postHooks = postRef }
           itemRef = ElemEnv newEnv elemRef' (dynRef_modifier elemRef)
-        runHtml newEnv $ h idx elemRef'
+        runHtmlT newEnv $ h idx elemRef'
         liftIO (modifyIORef itemRefs (<> [itemRef]))
         setup s (idx + 1) [] [] xs
       (_, x:xs, []) -> do
@@ -232,14 +232,14 @@ dyn_ dyn = do
           { htmlEnv_finalizers = subscriptions
           , htmlEnv_postHooks = postHooks
           , htmlEnv_element = elmRef }
-        triggerPost = runHtml newEnv . sequence_
+        triggerPost = runHtmlT newEnv . sequence_
           =<< readIORef postHooks
         commit = do
           unsub (Just newEnv)
             <* removeAllChilds env
             <* flush
             <* triggerPost
-      runHtml newEnv html <* commit
+      runHtmlT newEnv html <* commit
     removeAllChilds env = mutate \rootEl -> do
       length <- childLength rootEl
       for_ [0..length - 1] \idx -> do
@@ -251,4 +251,4 @@ dyn_ dyn = do
 catchInteractive :: Html () -> (SomeException -> Html ()) -> Html ()
 catchInteractive html handle = ask >>= run where
   run e = local (f e) html
-  f e he = he {htmlEnv_catchInteractive = runHtml e . handle}
+  f e he = he {htmlEnv_catchInteractive = runHtmlT e . handle}

@@ -13,10 +13,12 @@ import Language.Javascript.JSaddle
 import Massaraksh.DOM
 import Control.Monad.IO.Unlift
 
-newtype Html a = Html {unHtml :: ReaderT HtmlEnv IO a}
+type Html = HtmlT IO
+
+newtype HtmlT m a = HtmlT {unHtmlT :: ReaderT HtmlEnv m a}
   deriving newtype (
     Functor, Applicative, Monad, MonadIO, MonadReader HtmlEnv,
-    MonadFix, MonadCatch, MonadThrow, MonadMask, MonadUnliftIO
+    MonadFix, MonadCatch, MonadThrow, MonadMask
   )
 
 type MonadHtml m = (MonadReader HtmlEnv m, MonadIO m, MonadUnliftIO m)
@@ -28,7 +30,7 @@ data HtmlEnv = HtmlEnv
   , htmlEnv_jsContext :: JSContextRef
   , htmlEnv_catchInteractive :: SomeException -> IO ()
   }
-  deriving stock (Generic)
+  deriving stock Generic
 
 data ElementRef = ElementRef
   { elementRef_read :: IO Node
@@ -36,15 +38,15 @@ data ElementRef = ElementRef
   }
   deriving stock (Generic)
 
-runHtml :: HtmlEnv -> Html x -> IO x
-runHtml e = flip runReaderT e . unHtml
-{-# INLINE runHtml #-}
+runHtmlT :: HtmlEnv -> HtmlT m x -> m x
+runHtmlT e = flip runReaderT e . unHtmlT
+{-# INLINE runHtmlT #-}
 
 instance Semigroup a => Semigroup (Html a) where
   (<>) = liftA2 (<>)
 
 instance Monoid a => Monoid (Html a) where
-  mempty = Html $ ReaderT \_ -> pure mempty
+  mempty = HtmlT $ ReaderT \_ -> pure mempty
 
 instance (x ~ ()) => IsString (Html x) where
   fromString = text . T.pack where
@@ -53,7 +55,11 @@ instance (x ~ ()) => IsString (Html x) where
       textNode <- liftJSM (createTextNode t)
       liftJSM (appendChild elm textNode)
 
+instance MonadUnliftIO m => MonadUnliftIO (HtmlT m) where
+  withRunInIO act = HtmlT (ReaderT f) where
+    f e = withRunInIO \toIO -> act (toIO . runHtmlT e)
+
 #ifndef ghcjs_HOST_OS
 instance MonadJSM Html where
-  liftJSM' jsm = Html $ ReaderT (runReaderT (unJSM jsm) . htmlEnv_jsContext)
+  liftJSM' jsm = HtmlT $ ReaderT (runReaderT (unJSM jsm) . htmlEnv_jsContext)
 #endif

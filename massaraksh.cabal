@@ -43,6 +43,7 @@ library
     lens,
     mtl,
     text,
+    unliftio-core,
     unliftio
 
   if impl(ghcjs)
