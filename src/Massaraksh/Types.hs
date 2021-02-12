@@ -21,7 +21,11 @@ newtype HtmlT m a = HtmlT {unHtmlT :: ReaderT HtmlEnv m a}
     MonadFix, MonadCatch, MonadThrow, MonadMask
   )
 
-type MonadHtml m = (MonadReader HtmlEnv m, MonadIO m, MonadUnliftIO m)
+type MonadHtml m =
+  ( MonadReader HtmlEnv m
+  , MonadIO m
+  , MonadUnliftIO m
+  )
 
 data HtmlEnv = HtmlEnv
   { htmlEnv_element :: ElementRef
@@ -36,7 +40,7 @@ data ElementRef = ElementRef
   { elementRef_read :: IO Node
   , elementRef_mutate :: (Node -> JSM ()) -> IO ()
   }
-  deriving stock (Generic)
+  deriving stock Generic
 
 runHtmlT :: HtmlEnv -> HtmlT m x -> m x
 runHtmlT e = flip runReaderT e . unHtmlT

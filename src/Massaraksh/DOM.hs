@@ -5,15 +5,26 @@
 module Massaraksh.DOM where
 
 import Control.Monad
+import Control.Monad.IO.Class
 import Data.Text
 import Data.Coerce
 import Data.Default
 import GHC.Generics
+import Data.IORef
 import Language.Javascript.JSaddle as JS
+
 import Massaraksh.Decode
+import Massaraksh.IdSupply
 
 newtype Node = Node {unNode :: JSVal}
   deriving newtype (MakeArgs, MakeObject, ToJSVal)
+
+data Node1
+  = JSNode { jsnode_value :: JSVal }
+  | Fragment
+    { fragment_id :: Id Node1
+    , fragment_root :: IORef (Maybe Node1)
+    , fragment_children :: IORef [Node1] }
 
 data ListenOpts = ListenOpts
   { stopPropagation :: Bool
@@ -23,6 +34,64 @@ data ListenOpts = ListenOpts
 
 instance Default ListenOpts where
   def = ListenOpts True False
+
+appendChild1 :: Node1 -> Node1 -> JSM ()
+appendChild1 root child = case (root, child) of
+  (JSNode jsRoot, JSNode jsChild) ->
+    void (jsRoot # ("appendChild"::Text) $ jsChild)
+  (Fragment{..}, JSNode{}) ->
+    liftIO $ modifyIORef fragment_children (<> [child])
+  (JSNode jsPar, Fragment{..}) -> do
+    liftIO $ writeIORef fragment_root (Just root)
+    let
+      go = mapM_ \case
+        JSNode n -> void (jsPar # ("appendChild"::Text) $ n)
+        Fragment{..} -> liftIO (readIORef fragment_children) >>= go
+    liftIO (readIORef fragment_children) >>= go
+  ((Fragment _ _ ch1), (Fragment _ r2 _)) -> do
+    liftIO $ modifyIORef ch1 (<> [child])
+    liftIO $ writeIORef r2 (Just root)
+
+removeChild1 :: Node1 -> Node1 -> JSM ()
+removeChild1 parent child = case (parent, child) of
+  (JSNode jsPar, JSNode jsChild) ->
+    void (jsPar # ("removeChild"::Text) $ jsChild)
+  (Fragment{..}, JSNode jsChild) -> do
+    childs <- liftIO $ readIORef fragment_children
+    newChilds <- flip filterM childs \case
+      JSNode jsVal -> not <$> strictEqual jsChild jsVal
+      _ -> return True
+    liftIO $ writeIORef fragment_children newChilds
+  (JSNode jsPar, Fragment{..}) -> do
+    liftIO $ writeIORef fragment_root Nothing
+    let
+      go = mapM_ \case
+        JSNode n -> void (jsPar # ("removeChild"::Text) $ n)
+        Fragment{..} -> liftIO (readIORef fragment_children) >>= go
+    liftIO (readIORef fragment_children) >>= go
+  ((Fragment _ p1 ch1), (Fragment id2 r2 _)) -> do
+    let
+      f = \case Fragment{..} -> fragment_id /= id2; _ -> True
+      go = \case
+        Just (JSNode jsVal) -> removeChild1 (JSNode jsVal) child
+        Just Fragment{..} -> liftIO (readIORef fragment_root) >>= go
+        Nothing -> return ()
+    liftIO $ modifyIORef ch1 (Prelude.filter f)
+    liftIO (readIORef p1) >>= go
+
+setAttribute1 :: Node1 -> Text -> Text -> JSM ()
+setAttribute1 n k v = case n of
+  JSNode jsNode ->
+    void $ jsNode # ("setAttribute"::Text) $ (k, v)
+  Fragment{} ->
+    return ()
+
+removeAttribute1 :: Node1 -> Text -> JSM ()
+removeAttribute1 n k = case n of
+  JSNode jsNode ->
+    void $ jsNode # ("removeAttribute"::Text) $ [k]
+  Fragment{} ->
+    return ()
 
 #ifndef ghcjs_HOST_OS
 appendChild :: Node -> Node -> JSM ()
