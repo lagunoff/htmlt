@@ -24,6 +24,7 @@ library
     Massaraksh.Decode
     Massaraksh.Element
     Massaraksh.Event
+    Massaraksh.IdSupply
     Massaraksh.Internal
     Massaraksh.Main
     Massaraksh.Types

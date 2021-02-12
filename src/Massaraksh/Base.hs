@@ -226,7 +226,7 @@ dyn_ dyn = do
     setup html rootEl = liftIO do
       postHooks <- newIORef []
       subscriptions <- newIORef []
-      (elmRef, flush) <- flip runJSM js $ deferMutations (htmlEnv_element env)
+      (elmRef, flush) <- deferMutations (htmlEnv_element env)
       let
         newEnv = env
           { htmlEnv_finalizers = subscriptions

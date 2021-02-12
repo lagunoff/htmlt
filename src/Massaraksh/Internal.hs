@@ -23,10 +23,10 @@ newElementRef elm = do
     mutate m = runJSM (m elm) jsCtx
   pure (ElementRef read mutate)
 
-deferMutations :: ElementRef -> JSM (ElementRef, IO ())
+deferMutations :: ElementRef -> IO (ElementRef, IO ())
 deferMutations ElementRef{..} = do
-  flushedRef <- liftIO (newIORef False)
-  queueRef <- liftIO (newIORef Seq.empty)
+  flushedRef <- newIORef False
+  queueRef <- newIORef Seq.empty
   let
     mutate m = readIORef flushedRef
       >>= bool (modifyIORef queueRef (Seq.>< Seq.singleton m))

@@ -4,15 +4,15 @@ import Control.Applicative
 import Control.Lens (Lens', over)
 import Control.Monad.Catch
 import Control.Monad.State
-import Data.Coerce
 import Data.Foldable
 import Data.IORef
 import Data.List
 import Debug.Trace
 import GHC.Generics
 import GHC.Int
-import System.IO.Unsafe
 import qualified Data.Map as M
+
+import Massaraksh.IdSupply
 
 -- | @Event a@ is a stream of event occurences of type @a@
 newtype Event a = Event
@@ -36,7 +36,7 @@ data Stage = Immediate | Defer
   deriving (Show, Eq, Ord, Generic)
 
 newtype ReactiveState = ReactiveState
-  { unReactiveState :: M.Map EventId (Reactive ())
+  { unReactiveState :: M.Map (Id Event) (Reactive ())
   }
   deriving stock Generic
 
@@ -63,7 +63,7 @@ newEvent :: MonadIO m => m (Event a, Trigger a)
 newEvent = liftIO do
   immediateSubs <- newIORef []
   deferredSubs <- newIORef []
-  eventId <- liftIO newEventId
+  eventId <- liftIO $ nextId @Event
   let
     event = Event \fs k -> do
       kRef <- liftIO (newIORef k) -- Need 'IORef' for an 'Eq' instance
@@ -130,14 +130,7 @@ updates :: Dynamic a -> Event a
 updates = dynamic_updates
 {-# INLINE updates #-}
 
-eventIdSupply :: IORef EventId
-eventIdSupply = unsafePerformIO (newIORef $ coerce @Int64 0)
-
-newEventId :: IO EventId
-newEventId = atomicModifyIORef eventIdSupply f where
-  f (EventId x) = (coerce (succ x), coerce (succ x))
-
-defer :: EventId -> Reactive () -> Reactive ()
+defer :: Id Event -> Reactive () -> Reactive ()
 defer k act = Reactive (modify f) where
   f (ReactiveState s) = ReactiveState (M.insert k act s)
 
@@ -255,13 +248,13 @@ instance Applicative Event where
     Immediate -> \k ->
       sync $ k a *> mempty
     Defer -> \k -> sync do
-      eventId <- liftIO newEventId
+      eventId <- liftIO $ nextId @Event
       defer eventId (k a)
       mempty
   (<*>) eF eA = Event \s k -> do
     latestF <- liftIO (newIORef Nothing)
     latestA <- liftIO (newIORef Nothing)
-    eventId <- liftIO newEventId
+    eventId <- liftIO $ nextId @Event
     let
       doFire = do
         f <- liftIO $ readIORef latestF
@@ -285,7 +278,7 @@ instance Applicative Dynamic where
   (<*>) df da = Dynamic r u where
     r = liftA2 ($) (dynamic_read df) (dynamic_read da)
     u = Event \s k -> do
-      eventId <- liftIO newEventId
+      eventId <- liftIO $ nextId @Event
       let
         doFire newF newA = do
           f <- liftIO $ maybe (dynamic_read df) pure newF
