@@ -1,5 +1,3 @@
-{-# LANGUAGE NoOverloadedStrings #-}
-{-# LANGUAGE RecursiveDo #-}
 module Massaraksh.Base where
 
 import Control.Exception
@@ -110,11 +108,9 @@ domEvent_ :: Node -> Text -> Html x -> Html ()
 domEvent_ e n act = domEvent e n (pure act)
 
 classes :: Text -> Html ()
-classes cs = do
-  mutate <- askMutateRoot
-  liftIO $ mutate \rootEl -> do
-    for_ (T.splitOn (T.pack " ") cs) \c -> do
-      classListAdd rootEl c
+classes cs = mutateRoot \rootEl -> do
+  for_ (T.splitOn (T.pack " ") cs) $
+    classListAdd rootEl
 
 toggleClass :: Text -> Dynamic Bool -> Html ()
 toggleClass cs dyn = do

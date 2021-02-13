@@ -1,19 +1,19 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE JavaScriptFFI #-}
-{-# LANGUAGE OverloadedStrings #-}
 module Massaraksh.DOM where
 
 import Control.Monad
-import Data.Text
+import Control.Monad.Reader
 import Data.Coerce
 import Data.Default
+import Data.String
+import Data.Text as T
 import GHC.Generics
 import Language.Javascript.JSaddle as JS
 import Massaraksh.Decode
-
-newtype Node = Node {unNode :: JSVal}
-  deriving newtype (MakeArgs, MakeObject, ToJSVal)
+import Massaraksh.Types
 
 data ListenOpts = ListenOpts
   { stopPropagation :: Bool
@@ -253,3 +253,10 @@ getDocument self = liftJSM (self ! ("document"::Text))
 
 getCurrentBody :: MonadJSM m => m Node
 getCurrentBody = liftJSM (Node <$> jsg ("document"::Text) ! ("body"::Text))
+
+instance (x ~ ()) => IsString (Html x) where
+  fromString = text . T.pack where
+    text t = do
+      elm <- liftIO =<< asks (elementRef_read . htmlEnv_element)
+      textNode <- liftJSM (createTextNode t)
+      liftJSM (appendChild elm textNode)

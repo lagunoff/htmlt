@@ -24,6 +24,15 @@ decodeAt keys dec = Decoder (go keys) where
       then return Nothing
       else obj ! k >>= go ks
 
+withDecoder
+  :: MonadJSM m
+  => Decoder a
+  -> (a -> m ()) -> JSVal -> m ()
+withDecoder dec f jsval =
+  maybe (return ()) f =<<
+    liftJSM (runDecoder dec jsval)
+{-# INLINE withDecoder #-}
+
 instance Functor Decoder where
   fmap f (Decoder run) = Decoder (fmap (fmap f) . run)
 

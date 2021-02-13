@@ -10,7 +10,6 @@ import Data.String
 import Data.Text as T
 import GHC.Generics
 import Language.Javascript.JSaddle
-import Massaraksh.DOM
 import Control.Monad.IO.Unlift
 
 newtype Html a = Html {unHtml :: ReaderT HtmlEnv IO a}
@@ -36,6 +35,9 @@ data ElementRef = ElementRef
   }
   deriving stock (Generic)
 
+newtype Node = Node {unNode :: JSVal}
+  deriving newtype (MakeArgs, MakeObject, ToJSVal)
+
 runHtml :: HtmlEnv -> Html x -> IO x
 runHtml e = flip runReaderT e . unHtml
 {-# INLINE runHtml #-}
@@ -45,13 +47,6 @@ instance Semigroup a => Semigroup (Html a) where
 
 instance Monoid a => Monoid (Html a) where
   mempty = Html $ ReaderT \_ -> pure mempty
-
-instance (x ~ ()) => IsString (Html x) where
-  fromString = text . T.pack where
-    text t = do
-      elm <- liftIO =<< asks (elementRef_read . htmlEnv_element)
-      textNode <- liftJSM (createTextNode t)
-      liftJSM (appendChild elm textNode)
 
 #ifndef ghcjs_HOST_OS
 instance MonadJSM Html where
