@@ -25,9 +25,9 @@ attach rootEl render = do
   let rootRef = ElementRef (pure rootEl) (flip runJSM js . ($ rootEl))
   (elRef, flush) <- liftIO (deferMutations rootRef)
   let env = HtmlEnv elRef subscriptions postHooks js throwIO
-  res <- liftIO $ runHtmlT env render
+  res <- liftIO $ runHtml env render
   liftIO flush
-  liftIO (readIORef postHooks >>= mapM_ (runHtmlT env))
+  liftIO (readIORef postHooks >>= mapM_ (runHtml env))
   pure (res, env)
 
 attachToBody :: Html a -> JSM (a, HtmlEnv)
