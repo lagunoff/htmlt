@@ -1,26 +1,22 @@
 module Main where
 
-import Control.Monad.Reader
-import Data.Text as T
+import Data.Text
 import Massaraksh
-import Text.RawString.QQ (r)
 
-type Model = Int
-
-widget :: Html ()
-widget = do
-  (dynVar, modify) <- liftIO (newDyn 0)
-  div_ do
-    "className" =: "root"
+main :: IO ()
+main = withJSM $ attachToBody do
+  colorRef <- newRef 0
+  div_ [class_ "root"] do
     h1_ do
-      "style" ~: headerStyle <$> dynVar
-      on_ "mouseenter" do liftIO $ sync $ modify (+ 1)
+      dynStyle_ $ mkStyle <$> fromRef colorRef
+      on_ "mouseenter" do modifyRef colorRef (+ 1)
       text "Hello, World!"
-    el "style" do "type" =: "text/css"; text css
+    el "style" do text styles
+  where
+    mkStyle n =
+      "color: " <> colors !! (n `mod` Prelude.length colors)
 
-headerStyle n =
- ("color: " :: T.Text) <> colors !! (n `mod` length colors)
-
+colors :: [Text]
 colors =
   [ "rgb(173,192,84)", "rgb(22,153,190)", "rgb(22,93,24)", "rgb(199,232,42)"
   , "rgb(235,206,57)", "rgb(225,57,149)", "rgb(255,134,157)", "rgb(231,251,35)"
@@ -29,28 +25,27 @@ colors =
   , "rgb(61,44,247)", "rgb(118,45,39)", "rgb(248,116,17)", "rgb(27,184,238)"
   , "rgb(117,23,222)" ]
 
-css = [r|
-  html, body {
-    margin: 0;
-    height: 100%;
-  }
-
- .root {
-   width: 100%;
-   height: 100%;
-   display: flex;
-   align-items: center;
-   justify-content: center;
- }
-
- .root > h1 {
-   font-size: 48px;
-   margin: 0;
-   font-family: "Helvetica", Arial, sans-serif;
-   font-weight: 600;
-   border: dashed 4px rgba(0,0,0,0.12);
-   cursor: default;
-   padding: 8px 16px;
- } |]
-
-main = withJSM $ attachToBodySimple widget
+styles :: Text
+styles =
+  "html, body {\
+  \   margin: 0;\
+  \   height: 100%;\
+  \ }\
+  \\
+  \.root {\
+  \  width: 100%;\
+  \  height: 100%;\
+  \  display: flex;\
+  \  align-items: center;\
+  \  justify-content: center;\
+  \}\
+  \\
+  \.root > h1 {\
+  \  font-size: 48px;\
+  \  margin: 0;\
+  \  font-family: \"Helvetica\", Arial, sans-serif;\
+  \  font-weight: 600;\
+  \  border: dashed 4px rgba(0,0,0,0.12);\
+  \  cursor: default;\
+  \  padding: 8px 16px;\
+  \}"

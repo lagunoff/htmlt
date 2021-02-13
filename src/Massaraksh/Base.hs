@@ -52,11 +52,6 @@ prop (JSS.textToJSString -> key) val = mutateRoot \rootEl -> do
   v <- toJSVal val
   unsafeSetProp key v (coerce rootEl)
 
-(=:) :: Text -> Text -> Html ()
-(=:) = prop
-infixr 3 =:
-{-# INLINE (=:) #-}
-
 dynProp :: (ToJSVal v, FromJSVal v, Eq v) => Text -> Dynamic v -> Html ()
 dynProp (JSS.textToJSString -> key) dyn = do
   mutate <- askMutateRoot
@@ -64,11 +59,6 @@ dynProp (JSS.textToJSString -> key) dyn = do
     setup txt rootEl = toJSVal txt
       >>= flip (unsafeSetProp key) (coerce rootEl)
   void $ forDyn dyn (liftIO . mutate . setup)
-
-(~:) :: (ToJSVal v, FromJSVal v, Eq v) => Text -> Dynamic v -> Html ()
-(~:) = dynProp
-infixr 3 ~:
-{-# INLINE (~:) #-}
 
 attr :: Text -> Text -> Html ()
 attr k v = mutateRoot \e -> setAttribute e k v

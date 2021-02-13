@@ -9,12 +9,14 @@ import Data.Text as T
 import GHC.Generics (Generic)
 import GHCJS.Marshal
 import Language.Javascript.JSaddle
-import Massaraksh.Text
+import Massaraksh
+
+type HtmlEmit msg = forall x. msg x -> Html x
 
 data Config s = Config
   { cfgModel :: Lens' s Model
   , cfgProps :: s -> Props
-  , cfgDynamic :: DynamicRef s
+  , cfgDynRef :: DynRef s
   }
 
 data Props = Props
@@ -42,8 +44,8 @@ data Msg a where
   EditingCancel :: Msg ()
   EditingCommit :: Msg ()
 
-itemWidget :: Config s -> HtmlEmit Msg JSM
-itemWidget Config{cfgDynamic = dynRef@(model, modify), ..} yield = \case
+itemWidget :: Config s -> HtmlEmit Msg
+itemWidget Config{..} yield = \case
   Render -> do
     li_ do
       dynClassList

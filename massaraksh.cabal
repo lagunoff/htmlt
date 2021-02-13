@@ -27,6 +27,7 @@ library
     Massaraksh.IdSupply
     Massaraksh.Internal
     Massaraksh.Main
+    Massaraksh.Property
     Massaraksh.Types
 
   other-modules: Paths_massaraksh
@@ -43,8 +44,7 @@ library
     jsaddle,
     lens,
     mtl,
-    text,
-    unliftio
+    text
 
   if impl(ghcjs)
     build-depends: ghcjs-base, ghcjs-prim
