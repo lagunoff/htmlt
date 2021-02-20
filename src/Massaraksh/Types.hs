@@ -6,8 +6,6 @@ import Control.Applicative
 import Control.Monad.Catch
 import Control.Monad.Reader
 import Data.IORef
-import Data.String
-import Data.Text as T
 import GHC.Generics
 import Language.Javascript.JSaddle
 import Control.Monad.IO.Unlift

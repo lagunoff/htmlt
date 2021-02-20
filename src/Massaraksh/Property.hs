@@ -3,7 +3,6 @@
 module Massaraksh.Property where
 
 import Massaraksh.Types
-import Data.Bool
 import Massaraksh.Base
 import Massaraksh.Event
 import Data.Text
