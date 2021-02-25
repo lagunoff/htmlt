@@ -21,17 +21,17 @@ import Massaraksh.Types
 el :: Text -> Html x -> Html x
 el tag child = do
   elm <- liftJSM (createElement tag)
-  localElement elm child
+  withElement elm child
 
 el' :: Text -> Html x -> Html Node
 el' tag child = do
   elm <- liftJSM (createElement tag)
-  elm <$ localElement elm child
+  elm <$ withElement elm child
 
-nsEl :: Text -> Text -> Html x -> Html x
-nsEl ns tag child = do
+elNs :: Text -> Text -> Html x -> Html x
+elNs ns tag child = do
   elm <- liftJSM $ createElementNS ns tag
-  localElement elm child
+  withElement elm child
 
 text :: Text -> Html ()
 text txt = do
@@ -73,7 +73,7 @@ on :: Text -> Decoder (Html x) -> Html ()
 on name decoder = do
   env <- ask
   mutateRoot \rootEl ->
-    liftIO $ runHtml env $ domEvent rootEl name decoder
+    liftIO $ runHtmlT env $ domEvent rootEl name decoder
 
 on_ :: Text -> Html x -> Html ()
 on_ name w = on name (pure w)
@@ -89,7 +89,7 @@ domEventOpts opts elm name decoder = do
         e <- runDecoder decoder event
         maybe blank (void . liftIO . sync . k . void) e
       pure $ liftIO $ runJSM unlisten js
-  void $ htmlSubscribe event (liftIO . runHtml env)
+  void $ htmlSubscribe event (liftIO . runHtmlT env)
 
 domEvent :: Node -> Text -> Decoder (Html x) -> Html ()
 domEvent = domEventOpts def
@@ -122,12 +122,11 @@ toggleAttr att dyn = do
 
 blank :: Applicative m => m ()
 blank = pure ()
-{-# INLINE blank #-}
 
 data ElemEnv a = ElemEnv
   { elemEnv_htmlEnv :: HtmlEnv
   , elemEnv_Ref :: DynRef a
-  , elemRef_modifier :: Modifier a
+  , elemEnv_modifier :: Modifier a
   }
   deriving stock Generic
 
@@ -159,7 +158,7 @@ itraverseHtml l dynRef h = do
             { htmlEnv_finalizers = subscriptions
             , htmlEnv_postHooks = postRef }
           itemRef = ElemEnv newEnv elemRef' (dynRef_modifier elemRef)
-        runHtml newEnv $ h idx elemRef'
+        runHtmlT newEnv $ h idx elemRef'
         liftIO (modifyIORef itemRefs (<> [itemRef]))
         setup s (idx + 1) [] [] xs
       (_, x:xs, []) -> do
@@ -173,7 +172,7 @@ itraverseHtml l dynRef h = do
         liftIO (writeIORef itemRefs newRefs)
       (r:rs, x:xs, y:ys) -> do
         -- Update child elemens along the way
-        liftIO $ sync $ elemRef_modifier r \_ -> y
+        liftIO $ sync $ elemEnv_modifier r \_ -> y
         setup s (idx + 1) rs xs ys
       (_, _, _) -> do
         error "itraverseHtml: Incoherent internal state"
@@ -218,14 +217,14 @@ dyn_ dyn = do
           { htmlEnv_finalizers = subscriptions
           , htmlEnv_postHooks = postHooks
           , htmlEnv_element = elmRef }
-        triggerPost = runHtml newEnv . sequence_
+        triggerPost = runHtmlT newEnv . sequence_
           =<< readIORef postHooks
         commit = do
           unsub (Just newEnv)
             <* removeAllChilds env
             <* flush
             <* triggerPost
-      runHtml newEnv html <* commit
+      runHtmlT newEnv html <* commit
     removeAllChilds env = mutate \rootEl -> do
       length <- childLength rootEl
       for_ [0..length - 1] \idx -> do
@@ -237,4 +236,4 @@ dyn_ dyn = do
 catchInteractive :: Html () -> (SomeException -> Html ()) -> Html ()
 catchInteractive html handle = ask >>= run where
   run e = local (f e) html
-  f e he = he {htmlEnv_catchInteractive = runHtml e . handle}
+  f e he = he {htmlEnv_catchInteractive = runHtmlT e . handle}

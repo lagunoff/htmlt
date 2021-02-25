@@ -39,21 +39,17 @@ deferMutations ElementRef{..} = do
 
 askElement :: Html Node
 askElement = liftIO =<< asks (elementRef_read . htmlEnv_element)
-{-# INLINE askElement #-}
 
 mutateRoot :: (Node -> JSM ()) -> Html ()
 mutateRoot f = liftIO =<< asks (($ f). elementRef_mutate . htmlEnv_element)
-{-# INLINE mutateRoot #-}
 
 askMutateRoot :: Html ((Node -> JSM ()) -> IO ())
 askMutateRoot = asks (elementRef_mutate . htmlEnv_element)
-{-# INLINE askMutateRoot #-}
 
-localElement :: Node -> Html a -> Html a
-localElement elm child = do
+withElement :: Node -> Html a -> Html a
+withElement  elm child = do
   elRef <- newElementRef elm
   local (\env -> env { htmlEnv_element = elRef }) child
-{-# INLINE localElement #-}
 
 htmlSubscribe :: Event a -> Callback a -> Html (IO ())
 htmlSubscribe e k = do

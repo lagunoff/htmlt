@@ -1,3 +1,4 @@
+{-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE NoOverloadedStrings #-}
 {-# LANGUAGE CPP #-}
 module Massaraksh.Types where
@@ -10,13 +11,11 @@ import GHC.Generics
 import Language.Javascript.JSaddle
 import Control.Monad.IO.Unlift
 
-newtype Html a = Html {unHtml :: ReaderT HtmlEnv IO a}
-  deriving newtype (
-    Functor, Applicative, Monad, MonadIO, MonadReader HtmlEnv,
-    MonadFix, MonadCatch, MonadThrow, MonadMask, MonadUnliftIO
-  )
+newtype HtmlT m a = HtmlT {unHtmlT :: ReaderT HtmlEnv m a}
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadReader HtmlEnv)
+  deriving newtype (MonadFix, MonadCatch, MonadThrow, MonadMask)
 
-type MonadHtml m = (MonadReader HtmlEnv m, MonadIO m, MonadUnliftIO m)
+type Html = HtmlT IO
 
 data HtmlEnv = HtmlEnv
   { htmlEnv_element :: ElementRef
@@ -36,17 +35,20 @@ data ElementRef = ElementRef
 newtype Node = Node {unNode :: JSVal}
   deriving newtype (MakeArgs, MakeObject, ToJSVal)
 
-runHtml :: HtmlEnv -> Html x -> IO x
-runHtml e = flip runReaderT e . unHtml
-{-# INLINE runHtml #-}
+runHtmlT :: HtmlEnv -> HtmlT m a -> m a
+runHtmlT e = flip runReaderT e . unHtmlT
+{-# INLINE runHtmlT #-}
 
 instance Semigroup a => Semigroup (Html a) where
   (<>) = liftA2 (<>)
 
 instance Monoid a => Monoid (Html a) where
-  mempty = Html $ ReaderT \_ -> pure mempty
+  mempty = HtmlT $ ReaderT \_ -> pure mempty
 
 #ifndef ghcjs_HOST_OS
 instance MonadJSM Html where
-  liftJSM' jsm = Html $ ReaderT (runReaderT (unJSM jsm) . htmlEnv_jsContext)
+  liftJSM' jsm = HtmlT $ ReaderT (runReaderT (unJSM jsm) . htmlEnv_jsContext)
 #endif
+
+instance MonadUnliftIO m => MonadUnliftIO (HtmlT m) where
+  withRunInIO inner = HtmlT $ withRunInIO \run -> inner $ run . unHtmlT
