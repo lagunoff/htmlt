@@ -14,62 +14,64 @@ import HtmlT.DOM
 import HtmlT.Event
 import HtmlT.Types
 
-newElementRef :: Node -> HtmlT ElementRef
-newElementRef elm = do
-  jsCtx <- asks htmlEnv_jsContext
-  mutateRoot (flip appendChild elm)
+newNodeRef :: Node -> HtmlT NodeRef
+newNodeRef el = do
+  js <- asks he_js_context
+  mutateRoot (`appendChild` el)
   let
-    read = pure elm
-    mutate m = runJSM (m elm) jsCtx
-  pure (ElementRef read mutate)
+    read = pure el
+    mutate m = runJSM (m el) js
+  pure (NodeRef read mutate)
 
-deferMutations :: ElementRef -> IO (ElementRef, IO ())
-deferMutations ElementRef{..} = do
+deferMutations :: NodeRef -> IO (NodeRef, IO ())
+deferMutations NodeRef{..} = do
   flushedRef <- newIORef False
   queueRef <- newIORef Seq.empty
   let
     mutate m = readIORef flushedRef
       >>= bool (modifyIORef queueRef (Seq.>< Seq.singleton m))
-        (elementRef_mutate m)
+        (nr_mutate m)
     flush = do
       writeIORef flushedRef True
       queue <- atomicModifyIORef' queueRef (Seq.empty,)
-      elementRef_mutate \rootEl -> for_ queue ($ rootEl)
-  pure (ElementRef elementRef_read mutate, flush)
+      nr_mutate \rootEl -> for_ queue ($ rootEl)
+  pure (NodeRef nr_read mutate, flush)
 
-askElement :: HtmlT Node
-askElement = liftIO =<< asks (elementRef_read . htmlEnv_element)
+askRootNode :: HtmlT Node
+askRootNode = liftIO =<< asks (nr_read . he_current_root)
 
 mutateRoot :: (Node -> JSM ()) -> HtmlT ()
-mutateRoot f = liftIO =<< asks (($ f). elementRef_mutate . htmlEnv_element)
+mutateRoot f = liftIO =<< asks (($ f). nr_mutate . he_current_root)
 
 askMutateRoot :: HtmlT ((Node -> JSM ()) -> IO ())
-askMutateRoot = asks (elementRef_mutate . htmlEnv_element)
+askMutateRoot = asks (nr_mutate . he_current_root)
 
-withElement :: Node -> HtmlT a -> HtmlT a
-withElement  elm child = do
-  elRef <- newElementRef elm
-  local (\env -> env { htmlEnv_element = elRef }) child
+withRootNode :: Node -> HtmlT a -> HtmlT a
+withRootNode rootEl child = do
+  rootRef <- newNodeRef rootEl
+  local (\env -> env { he_current_root = rootRef }) child
 
-htmlSubscribe :: Event a -> Callback a -> HtmlT (IO ())
-htmlSubscribe e k = do
-  finsRef <- asks htmlEnv_finalizers
-  handle <- asks htmlEnv_catchInteractive
-  let k' x = k x `catchSync` (liftIO . handle)
-  liftIO do
-    unsub <- e `subscribe` k'
-    unsubRef <- newIORef unsub
-    modifyIORef finsRef ((:) unsubRef)
-    pure $ modifyIORef finsRef (delete unsubRef) *> unsub
+subscribeHtmlT :: Event a -> Callback a -> HtmlT (IO ())
+subscribeHtmlT e k = do
+  finsRef <- asks he_finalizers
+  catch <- asks he_catch_interactive
+  let
+    k2 x = k x `catchSync` (liftIO . catch)
+    run = do
+      unsub <- e `subscribe` k2
+      unsubRef <- newIORef unsub
+      modifyIORef finsRef ((:) unsubRef)
+      return $ modifyIORef finsRef (delete unsubRef) *> unsub
+  liftIO run
 
-subscribeUpdates :: Dynamic s -> Callback s -> HtmlT (IO ())
-subscribeUpdates d f = dynamic_updates d `htmlSubscribe` f
-{-# INLINE subscribeUpdates #-}
+forUpdates :: Dynamic s -> Callback s -> HtmlT (IO ())
+forUpdates d f = dynamic_updates d `subscribeHtmlT` f
+{-# INLINE forUpdates #-}
 
 forDyn :: Dynamic a -> Callback a -> HtmlT (IO ())
 forDyn dyn k = do
   liftIO (dynamic_read dyn) >>= liftIO . sync . k
-  subscribeUpdates dyn k
+  forUpdates dyn k
 
 catchSync :: (MonadCatch m, MonadThrow m) => m a -> (SomeException -> m a) -> m a
 catchSync io h = io `catch` \e -> case E.fromException e of
@@ -78,6 +80,6 @@ catchSync io h = io `catch` \e -> case E.fromException e of
 
 addFinalizer :: IO () -> HtmlT ()
 addFinalizer fin = do
-  subs <- asks htmlEnv_finalizers
+  subs <- asks he_finalizers
   finRef <- liftIO $ newIORef fin
   liftIO $ modifyIORef subs (finRef :)

@@ -26,8 +26,8 @@ data Dynamic a = Dynamic
   deriving stock Generic
 
 data DynRef a = DynRef
-  { dynRef_dynamic :: Dynamic a
-  , dynRef_modifier :: Modifier a
+  { dr_dynamic :: Dynamic a
+  , dr_modifier :: Modifier a
   }
   deriving stock Generic
 
@@ -97,7 +97,7 @@ writeRef ref a = modifyRef ref (const a)
 {-# INLINE writeRef #-}
 
 readRef :: MonadIO m => DynRef a -> m a
-readRef = readDyn . dynRef_dynamic
+readRef = readDyn . dr_dynamic
 {-# INLINE readRef #-}
 
 modifyRef :: MonadIO m => DynRef a -> (a -> a) -> m ()
@@ -105,7 +105,7 @@ modifyRef (DynRef _ modifier) = liftIO . sync . modifier
 {-# INLINE modifyRef #-}
 
 modifySync :: DynRef a -> (a -> a) -> Reactive ()
-modifySync = dynRef_modifier
+modifySync = dr_modifier
 {-# INLINE modifySync #-}
 
 writeSync :: DynRef a -> a -> Reactive ()
@@ -113,7 +113,7 @@ writeSync ref a = modifySync ref (const a)
 {-# INLINE writeSync #-}
 
 fromRef :: DynRef a -> Dynamic a
-fromRef = dynRef_dynamic
+fromRef = dr_dynamic
 {-# INLINE fromRef #-}
 
 readDyn :: MonadIO m => Dynamic a -> m a
@@ -127,22 +127,19 @@ updates = dynamic_updates
 defer :: Id Event -> Reactive () -> Reactive ()
 defer k act = Reactive (modify f) where
   f (ReactiveState s) = ReactiveState (M.insert k act s)
+{-# INLINE defer #-}
 
 sync :: Reactive a -> IO a
-sync act = do
-  let
-    loop :: ReactiveState -> Reactive a -> IO a
-    loop rs (Reactive act) = do
-      (r, newRs) <- runStateT act rs
-      case popQueue newRs of
-        (Just newAct, newerRs) -> r <$ loop newerRs newAct
-        (Nothing, newerRs)     -> return r
-  loop (ReactiveState M.empty) act
-
-popQueue :: ReactiveState -> (Maybe (Reactive ()), ReactiveState)
-popQueue intact@(ReactiveState m) = case M.minViewWithKey m of
-  Just ((_, act), rest) -> (Just act, ReactiveState rest)
-  Nothing               -> (Nothing, intact)
+sync act = loop (ReactiveState M.empty) act where
+  loop :: ReactiveState -> Reactive a -> IO a
+  loop rs (Reactive act) = do
+    (r, newRs) <- runStateT act rs
+    case popQueue newRs of
+      (Just newAct, newerRs) -> r <$ loop newerRs newAct
+      (Nothing, newerRs)     -> return r
+  popQueue intact@(ReactiveState m) = case M.minViewWithKey m of
+    Just ((_, act), rest) -> (Just act, ReactiveState rest)
+    Nothing               -> (Nothing, intact)
 
 subscribe :: Event a -> Callback a -> IO Canceller
 subscribe (Event s) = s Defer
@@ -153,25 +150,6 @@ mapMaybeE :: (a -> Maybe b) -> Event a -> Event b
 mapMaybeE f e = Event \s k -> subscribe e $ maybe mempty k . f
 {-# INLINE mapMaybeE #-}
 
--- | Filter and map occurences with side effects
-mapMaybeE' :: (a -> IO (Maybe b)) -> Event a -> Event b
-mapMaybeE' f (Event e) = Event \s k ->
-  e s \a -> maybe mempty k =<< liftIO (f a)
-{-# INLINE mapMaybeE' #-}
-
-mapMaybeD :: MonadIO m => b -> (a -> Maybe b) -> Dynamic a -> IO (Dynamic b)
-mapMaybeD def f (Dynamic s u) = do
-  latestRef <- newIORef def
-  let
-    read = readIORef latestRef
-    updates = flip mapMaybeE' u \upd ->
-      case f upd of
-        Just new -> do
-          writeIORef latestRef new
-          pure (Just new)
-        Nothing  -> pure Nothing
-  pure (Dynamic read updates)
-
 lensMap :: Lens' s a -> DynRef s -> DynRef a
 lensMap stab (DynRef d m) = DynRef (Dynamic read updates) modify where
   read = fmap (getConst . stab Const) $ dynamic_read d
@@ -180,6 +158,7 @@ lensMap stab (DynRef d m) = DynRef (Dynamic read updates) modify where
 
 holdUniqDyn :: Eq a => Dynamic a -> Dynamic a
 holdUniqDyn = holdUniqDynBy (==)
+{-# INLINE holdUniqDyn #-}
 
 holdUniqDynBy :: (a -> a -> Bool) -> Dynamic a -> Dynamic a
 holdUniqDynBy equal (Dynamic r (Event s)) = Dynamic r (mapMaybeE id u') where
@@ -190,17 +169,6 @@ holdUniqDynBy equal (Dynamic r (Event s)) = Dynamic r (mapMaybeE id u') where
       old <- liftIO (readIORef oldRef)
       liftIO $ writeIORef oldRef new
       k if old `equal` new then Nothing else Just new
-
-holdUniqDynBy' :: (a -> a -> IO Bool) -> Dynamic a -> IO (Dynamic a)
-holdUniqDynBy' f (Dynamic r u) = do
-  ref <- newIORef =<< r
-  let
-    updates = flip mapMaybeE' u \new -> do
-      old <- readIORef ref
-      f old new >>= \case
-        True  -> pure Nothing
-        False -> Just new <$ writeIORef ref new
-  pure (Dynamic r updates)
 
 traceEvent :: Show a => String -> Event a -> Event a
 traceEvent = traceEventWith show
@@ -223,16 +191,20 @@ traceDynWith show' tag d = d {dynamic_updates = e} where
 withOld :: a -> Event a -> Event (a, a)
 withOld initial (Event s) = Event \x k -> do
   oldRef <- liftIO (newIORef initial)
-  s x \a -> do
-    old <- liftIO (readIORef oldRef)
-    liftIO $ writeIORef oldRef a
-    k (old, a)
+  let
+    f a = do
+      old <- liftIO (readIORef oldRef)
+      liftIO $ writeIORef oldRef a
+      k (old, a)
+  s x f
 
 instance Functor Event where
   fmap f (Event s) = Event \sel k -> s sel . (. f) $ k
+  {-# INLINE fmap #-}
 
 instance Semigroup a => Semigroup (Event a) where
   (<>) = liftA2 (<>)
+  {-# INLINE (<>) #-}
 
 instance Semigroup a => Monoid (Event a) where
   mempty = never
@@ -266,6 +238,7 @@ instance Applicative Event where
 
 instance Functor Dynamic where
   fmap f (Dynamic s u) = Dynamic (fmap f s) (fmap f u)
+  {-# INLINE fmap #-}
 
 instance Applicative Dynamic where
   pure = constDyn

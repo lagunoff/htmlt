@@ -21,18 +21,18 @@ import HtmlT.Types
 
 el :: Text -> HtmlT x -> HtmlT x
 el tag child = do
-  elm <- liftJSM (createElement tag)
-  withElement elm child
+  newRootEl <- liftJSM (createElement tag)
+  withRootNode newRootEl child
 
 el' :: Text -> HtmlT x -> HtmlT Node
 el' tag child = do
-  elm <- liftJSM (createElement tag)
-  elm <$ withElement elm child
+  newRootEl <- liftJSM (createElement tag)
+  newRootEl <$ withRootNode newRootEl child
 
-elNs :: Text -> Text -> HtmlT x -> HtmlT x
-elNs ns tag child = do
-  elm <- liftJSM $ createElementNS ns tag
-  withElement elm child
+elns :: Text -> Text -> HtmlT x -> HtmlT x
+elns ns tag child = do
+  newRootEl <- liftJSM (createElementNS ns tag)
+  withRootNode newRootEl child
 
 text :: Text -> HtmlT ()
 text txt = do
@@ -41,10 +41,10 @@ text txt = do
 
 dynText :: Dynamic Text -> HtmlT ()
 dynText d = do
-  txt <- liftIO (dynamic_read d)
+  txt <- readDyn d
   js <- askJSM
   textNode <- liftJSM (createTextNode txt)
-  dynamic_updates d `htmlSubscribe` \new -> void $ liftIO do
+  forUpdates d \new -> void $ liftIO do
     flip runJSM js $ setTextValue textNode new
   mutateRoot (flip appendChild textNode)
 
@@ -79,18 +79,18 @@ on name decoder = do
 on_ :: Text -> HtmlT x -> HtmlT ()
 on_ name w = on name (pure w)
 
-domEventOpts :: ListenOpts -> Node -> Text -> Decoder (HtmlT x) -> HtmlT ()
+domEventOpts :: ListenerOpts -> Node -> Text -> Decoder (HtmlT x) -> HtmlT ()
 domEventOpts opts elm name decoder = do
   env <- ask
   js <- askJSM
   let
     event :: Event (HtmlT ())
     event = Event \s k -> liftIO $ flip runJSM js do
-      unlisten <- addEventListener opts elm name \event -> do
+      unlisten <- addListener opts elm name \event -> do
         e <- runDecoder decoder event
         maybe blank (void . liftIO . sync . k . void) e
       pure $ liftIO $ runJSM unlisten js
-  void $ htmlSubscribe event (liftIO . runHtmlT env)
+  void $ subscribeHtmlT event (liftIO . runHtmlT env)
 
 domEvent :: Node -> Text -> Decoder (HtmlT x) -> HtmlT ()
 domEvent = domEventOpts def
@@ -125,9 +125,9 @@ blank :: Applicative m => m ()
 blank = pure ()
 
 data ElemEnv a = ElemEnv
-  { elemEnv_htmlEnv :: HtmlEnv
-  , elemEnv_Ref :: DynRef a
-  , elemEnv_modifier :: Modifier a
+  { ee_htmlEnv :: HtmlEnv
+  , ee_Ref :: DynRef a
+  , ee_modifier :: Modifier a
   }
   deriving stock Generic
 
@@ -140,7 +140,7 @@ itraverseHtml
 itraverseHtml l dynRef h = do
   hte <- ask
   js <- askJSM
-  rootEl <- askElement
+  rootEl <- askRootNode
   s <- readRef dynRef
   itemRefs <- liftIO (newIORef [])
   let
@@ -154,11 +154,11 @@ itraverseHtml l dynRef h = do
         elemRef <- newRef x
         postRef <- liftIO (newIORef [])
         let
-          elemRef' = elemRef {dynRef_modifier=mkModifier idx (fromRef elemRef)}
+          elemRef' = elemRef {dr_modifier=mkModifier idx (fromRef elemRef)}
           newEnv = hte
-            { htmlEnv_finalizers = subscriptions
-            , htmlEnv_postHooks = postRef }
-          itemRef = ElemEnv newEnv elemRef' (dynRef_modifier elemRef)
+            { he_finalizers = subscriptions
+            , he_post_hooks = postRef }
+          itemRef = ElemEnv newEnv elemRef' (dr_modifier elemRef)
         runHtmlT newEnv $ h idx elemRef'
         liftIO (modifyIORef itemRefs (<> [itemRef]))
         setup s (idx + 1) [] [] xs
@@ -173,24 +173,24 @@ itraverseHtml l dynRef h = do
         liftIO (writeIORef itemRefs newRefs)
       (r:rs, x:xs, y:ys) -> do
         -- Update child elemens along the way
-        liftIO $ sync $ elemEnv_modifier r \_ -> y
+        liftIO $ sync $ ee_modifier r \_ -> y
         setup s (idx + 1) rs xs ys
       (_, _, _) -> do
         error "itraverseHtml: Incoherent internal state"
 
     unsub = traverse_ \ElemEnv{..} -> do
-      subscriptions <- liftIO . readIORef . htmlEnv_finalizers $ elemEnv_htmlEnv
+      subscriptions <- liftIO . readIORef . he_finalizers $ ee_htmlEnv
       liftIO $ for_ subscriptions (readIORef >=> id)
 
     mkModifier :: Int -> Dynamic a -> (a -> a) -> Reactive ()
     mkModifier idx dyn f = do
-      oldA <- liftIO $ dynamic_read dyn
-      dynRef_modifier dynRef \oldS ->
+      oldA <- readDyn dyn
+      dr_modifier dynRef \oldS ->
         oldS & iover l \i x -> if i == idx then f oldA else x
   liftIO $ setup s 0 [] [] (toListOf l s)
   addFinalizer $ readIORef itemRefs >>= unsub
   let eUpdates = withOld s (dynamic_updates $ fromRef dynRef)
-  htmlSubscribe eUpdates \(old, new) -> do
+  subscribeHtmlT eUpdates \(old, new) -> do
     refs <- liftIO (readIORef itemRefs)
     liftIO $ setup new 0 refs (toListOf l old) (toListOf l new)
   pure ()
@@ -205,19 +205,19 @@ dyn_ dyn = do
     unsub newEnv = do
       oldEnv <- readIORef childRef
       for_ oldEnv \HtmlEnv{..} -> do
-        subs <- readIORef htmlEnv_finalizers
+        subs <- readIORef he_finalizers
         for_ subs (readIORef >=> id)
-        writeIORef htmlEnv_finalizers []
+        writeIORef he_finalizers []
       writeIORef childRef newEnv
     setup html rootEl = liftIO do
       postHooks <- newIORef []
       subscriptions <- newIORef []
-      (elmRef, flush) <- deferMutations (htmlEnv_element env)
+      (elmRef, flush) <- deferMutations (he_current_root env)
       let
         newEnv = env
-          { htmlEnv_finalizers = subscriptions
-          , htmlEnv_postHooks = postHooks
-          , htmlEnv_element = elmRef }
+          { he_finalizers = subscriptions
+          , he_post_hooks = postHooks
+          , he_current_root = elmRef }
         triggerPost = runHtmlT newEnv . sequence_
           =<< readIORef postHooks
         commit = do
@@ -237,4 +237,4 @@ dyn_ dyn = do
 catchInteractive :: HtmlT () -> (SomeException -> HtmlT ()) -> HtmlT ()
 catchInteractive html handle = ask >>= run where
   run e = local (f e) html
-  f e he = he {htmlEnv_catchInteractive = runHtmlT e . handle}
+  f e he = he {he_catch_interactive = runHtmlT e . handle}

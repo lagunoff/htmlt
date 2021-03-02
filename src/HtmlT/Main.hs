@@ -21,9 +21,9 @@ attach rootEl render = do
   js <- askJSM
   subscriptions <- liftIO (newIORef [])
   postHooks <- liftIO (newIORef [])
-  let rootRef = ElementRef (pure rootEl) (flip runJSM js . ($ rootEl))
-  (elRef, flush) <- liftIO (deferMutations rootRef)
-  let env = HtmlEnv elRef subscriptions postHooks js throwIO
+  let rootRef = NodeRef (pure rootEl) (flip runJSM js . ($ rootEl))
+  (elmRef, flush) <- liftIO (deferMutations rootRef)
+  let env = HtmlEnv elmRef subscriptions postHooks js throwIO
   res <- liftIO $ runHtmlT env render
   liftIO flush
   liftIO (readIORef postHooks >>= mapM_ (runHtmlT env))
@@ -36,8 +36,8 @@ portal :: Node -> HtmlT a -> HtmlT a
 portal rootEl render = do
   js <- askJSM
   env <- ask
-  let rootRef = ElementRef (pure rootEl) (flip runJSM js . ($ rootEl))
-  local (\e -> e {htmlEnv_element = rootRef}) render
+  let rootRef = NodeRef (pure rootEl) (flip runJSM js . ($ rootEl))
+  local (\e -> e {he_current_root = rootRef}) render
 
 withJSM :: JSM x -> IO ()
 #ifdef ghcjs_HOST_OS

@@ -14,7 +14,7 @@ extra-source-files:
 
 Flag production
   default: True
-  description: Adds optimisation
+  description: Add optimisations
 
 library
   exposed-modules:

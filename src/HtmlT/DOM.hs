@@ -12,17 +12,19 @@ import Data.String
 import Data.Text as T
 import GHC.Generics
 import Language.Javascript.JSaddle as JS
+
 import HtmlT.Decode
 import HtmlT.Types
 
-data ListenOpts = ListenOpts
-  { stopPropagation :: Bool
-  , preventDefault  :: Bool }
+data ListenerOpts = ListenerOpts
+  { lo_stop_propagation :: Bool
+  , lo_prevent_default :: Bool
+  }
   deriving stock (Eq, Show, Generic)
   deriving anyclass (ToJSVal)
 
-instance Default ListenOpts where
-  def = ListenOpts True False
+instance Default ListenerOpts where
+  def = ListenerOpts True False
 
 #ifndef ghcjs_HOST_OS
 appendChild :: Node -> Node -> JSM ()
@@ -154,13 +156,17 @@ foreign import javascript unsafe
   setTextValue :: Node -> Text -> JSM ()
 #endif
 
-addEventListener
-  :: ListenOpts -> Node -> Text -> (JSVal -> JSM ()) -> JSM (JSM ())
-addEventListener ListenOpts{..} target name f = do
+addListener
+  :: ListenerOpts
+  -> Node
+  -> Text
+  -> (JSVal -> JSM ())
+  -> JSM (JSM ())
+addListener ListenerOpts{..} target name f = do
   cb <- function \_ _ [event] -> do
-    when stopPropagation do
+    when lo_stop_propagation do
       void $ event # ("stopPropagation"::Text) $ ()
-    when preventDefault do
+    when lo_prevent_default do
       void $ event # ("preventDefault"::Text) $ ()
     f event
   target # ("addEventListener"::Text) $ (name, cb)
@@ -181,9 +187,10 @@ decodeChecked :: Decoder Bool
 decodeChecked = decodeAt ["target", "checked"] decoder
 
 data DeltaMouse = DeltaMouse
-  { deltaX :: Int
-  , deltaY :: Int
-  , deltaZ :: Int }
+  { dm_delta_x :: Int
+  , dm_delta_y :: Int
+  , dm_delta_z :: Int
+  }
   deriving stock (Eq, Show, Generic)
 
 decodeDeltaMouse :: Decoder DeltaMouse
@@ -193,8 +200,9 @@ decodeDeltaMouse = DeltaMouse
   <*> decodeAt ["deltaZ"] decoder
 
 data Position = Position
-  { x :: Int
-  , y :: Int }
+  { pos_x :: Int
+  , pos_y :: Int
+  }
   deriving stock (Eq, Show, Ord, Generic)
 
 decodeClientXY :: Decoder Position
@@ -213,10 +221,10 @@ decodePageXY = Position
   <*> decodeAt ["pageY"] decoder
 
 data Keys = Keys
-  { altKey :: Bool
-  , ctrlKey :: Bool
-  , metaKey :: Bool
-  , shiftKey :: Bool
+  { keys_alt_key :: Bool
+  , keys_ctrl_key :: Bool
+  , keys_meta_key :: Bool
+  , keys_shift_key :: Bool
   }
   deriving stock (Eq, Show, Generic)
 
@@ -231,10 +239,10 @@ decodeKeyCode :: Decoder Int
 decodeKeyCode = decodeAt ["keyCode"] decoder
 
 data KeyboardEvent = KeyboardEvent
-  { keys :: Keys
-  , key :: Maybe Text
-  , keyCode :: Int
-  , repeat :: Bool
+  { ke_keys :: Keys
+  , ke_key :: Maybe Text
+  , ke_key_code :: Int
+  , ke_repeat :: Bool
   }
   deriving stock (Eq, Show, Generic)
 
@@ -257,6 +265,6 @@ getCurrentBody = liftJSM (Node <$> jsg ("document"::Text) ! ("body"::Text))
 instance (x ~ ()) => IsString (HtmlT x) where
   fromString = text . T.pack where
     text t = do
-      elm <- liftIO =<< asks (elementRef_read . htmlEnv_element)
+      elm <- liftIO =<< asks (nr_read . he_current_root)
       textNode <- liftJSM (createTextNode t)
       liftJSM (appendChild elm textNode)

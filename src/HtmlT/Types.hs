@@ -13,17 +13,17 @@ newtype HtmlT a = HtmlT {unHtmlT :: ReaderT HtmlEnv IO a}
   deriving newtype (MonadFix, MonadCatch, MonadThrow, MonadMask)
 
 data HtmlEnv = HtmlEnv
-  { htmlEnv_element :: ElementRef
-  , htmlEnv_finalizers :: IORef [IORef (IO ())]
-  , htmlEnv_postHooks :: IORef [HtmlT ()]
-  , htmlEnv_jsContext :: JSContextRef
-  , htmlEnv_catchInteractive :: SomeException -> IO ()
+  { he_current_root :: NodeRef
+  , he_finalizers :: IORef [IORef (IO ())]
+  , he_post_hooks :: IORef [HtmlT ()]
+  , he_js_context :: JSContextRef
+  , he_catch_interactive :: SomeException -> IO ()
   }
   deriving stock (Generic)
 
-data ElementRef = ElementRef
-  { elementRef_read :: IO Node
-  , elementRef_mutate :: (Node -> JSM ()) -> IO ()
+data NodeRef = NodeRef
+  { nr_read :: IO Node
+  , nr_mutate :: (Node -> JSM ()) -> IO ()
   }
   deriving stock (Generic)
 
@@ -42,5 +42,5 @@ instance Monoid a => Monoid (HtmlT a) where
 
 #ifndef ghcjs_HOST_OS
 instance MonadJSM HtmlT where
-  liftJSM' jsm = HtmlT $ ReaderT (runReaderT (unJSM jsm) . htmlEnv_jsContext)
+  liftJSM' jsm = HtmlT $ ReaderT (runReaderT (unJSM jsm) . he_js_context)
 #endif
