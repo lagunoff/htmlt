@@ -1,4 +1,4 @@
-module Massaraksh.Decode where
+module HtmlT.Decode where
 
 import Control.Applicative
 import Data.Text as T

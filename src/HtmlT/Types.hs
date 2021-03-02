@@ -1,5 +1,5 @@
 {-# LANGUAGE CPP #-}
-module Massaraksh.Types where
+module HtmlT.Types where
 
 import Control.Applicative
 import Control.Monad.Catch

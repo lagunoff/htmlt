@@ -1,4 +1,4 @@
-module Massaraksh.Event where
+module HtmlT.Event where
 
 import Control.Applicative
 import Control.Lens (Lens', over)
@@ -11,7 +11,7 @@ import Debug.Trace
 import GHC.Generics
 import qualified Data.Map as M
 
-import Massaraksh.IdSupply
+import HtmlT.IdSupply
 
 -- | @Event a@ is a stream of event occurences of type @a@
 newtype Event a = Event

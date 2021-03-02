@@ -10,7 +10,7 @@ import Data.String (fromString)
 import Data.Text (Text)
 import GHC.Generics
 import Language.Javascript.JSaddle
-import Massaraksh.Text
+import HtmlT.Text
 import Text.RawString.QQ (r)
 import Utils (readTodos, writeTodos, readHash, writeHash)
 import qualified Data.Text as T

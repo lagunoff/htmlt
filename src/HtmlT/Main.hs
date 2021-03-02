@@ -1,13 +1,14 @@
 {-# LANGUAGE CPP #-}
-module Massaraksh.Main where
+module HtmlT.Main where
 
 import Control.Exception
 import Control.Monad.Reader
 import Data.IORef
 import Language.Javascript.JSaddle
-import Massaraksh.DOM
-import Massaraksh.Internal
-import Massaraksh.Types
+
+import HtmlT.DOM
+import HtmlT.Internal
+import HtmlT.Types
 
 #ifndef ghcjs_HOST_OS
 import Control.Applicative ((<|>))

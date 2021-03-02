@@ -1,4 +1,4 @@
-module Massaraksh.Base where
+module HtmlT.Base where
 
 import Control.Exception
 import Control.Lens hiding ((#))
@@ -12,11 +12,12 @@ import Data.List as L
 import Data.Text as T hiding (index)
 import GHC.Generics
 import Language.Javascript.JSaddle as JS
-import Massaraksh.DOM
-import Massaraksh.Decode
-import Massaraksh.Event
-import Massaraksh.Internal
-import Massaraksh.Types
+
+import HtmlT.DOM
+import HtmlT.Decode
+import HtmlT.Event
+import HtmlT.Internal
+import HtmlT.Types
 
 el :: Text -> HtmlT x -> HtmlT x
 el tag child = do

@@ -1,7 +1,7 @@
 module Main where
 
 import Data.Text
-import Massaraksh
+import HtmlT
 
 main :: IO ()
 main = withJSM $ attachToBody do

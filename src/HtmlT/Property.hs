@@ -1,11 +1,12 @@
 -- |Borrowed from @Miso.HtmlT.Property@
 -- https://github.com/dmjio/miso/blob/69f50b49adbff8217f8b51ae5f47727ee950f204/src/Miso/HtmlT/Property.hs
-module Massaraksh.Property where
+module HtmlT.Property where
 
-import Massaraksh.Types
-import Massaraksh.Base
-import Massaraksh.Event
 import Data.Text
+
+import HtmlT.Types
+import HtmlT.Base
+import HtmlT.Event
 
 -- | <https://developer.mozilla.org/en-US/docs/Mozilla/Tech/XUL/Attribute/title>
 title_ ::  Text -> HtmlT ()

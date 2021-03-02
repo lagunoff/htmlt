@@ -1,4 +1,4 @@
-module Massaraksh.IdSupply where
+module HtmlT.IdSupply where
 
 import Data.IORef
 import System.IO.Unsafe

@@ -2,7 +2,7 @@ module Main where
 
 import Todos
 import Utils
-import Massaraksh
+import HtmlT
 import Control.Monad.IO.Class
 import Language.Javascript.JSaddle.Types ()
 

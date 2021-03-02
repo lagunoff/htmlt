@@ -1,10 +1,11 @@
 -- |Borrowed from @Miso.Html.Element@
 -- https://github.com/dmjio/miso/blob/0576696323652ec17a921a0be8c41e82685da374/src/Miso/Html/Element.hs
-module Massaraksh.Element where
+module HtmlT.Element where
 
 import Data.Text as T
-import Massaraksh.Base
-import Massaraksh.Types
+
+import HtmlT.Base
+import HtmlT.Types
 
 class Term arg result | result -> arg where
   -- | Use this if you want to make an element which inserts some

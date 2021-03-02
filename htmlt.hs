@@ -1,8 +1,8 @@
 cabal-version: 1.12
 
-name:                massaraksh
+name:                htmlt
 version:             0.1.0.0
-homepage:            https://github.com/lagunoff/massaraksh
+homepage:            https://github.com/lagunoff/htmlt
 license:             BSD3
 author:              Vladislav Lagunov
 maintainer:          vlad.lagunoff@gmail.com
@@ -18,19 +18,19 @@ Flag production
 
 library
   exposed-modules:
-    Massaraksh
-    Massaraksh.Base
-    Massaraksh.DOM
-    Massaraksh.Decode
-    Massaraksh.Element
-    Massaraksh.Event
-    Massaraksh.IdSupply
-    Massaraksh.Internal
-    Massaraksh.Main
-    Massaraksh.Property
-    Massaraksh.Types
+    HtmlT
+    HtmlT.Base
+    HtmlT.DOM
+    HtmlT.Decode
+    HtmlT.Element
+    HtmlT.Event
+    HtmlT.IdSupply
+    HtmlT.Internal
+    HtmlT.Main
+    HtmlT.Property
+    HtmlT.Types
 
-  other-modules: Paths_massaraksh
+  other-modules: Paths_htmlt
   hs-source-dirs: src
   ghc-options:
     -Wall -Wno-missing-signatures -Wno-name-shadowing
@@ -57,10 +57,10 @@ library
     BlockArguments
     ConstraintKinds
     DataKinds
+    DeriveAnyClass
     DeriveFunctor
     DeriveGeneric
     DerivingStrategies
-    DeriveAnyClass
     DuplicateRecordFields
     FlexibleContexts
     FlexibleInstances
@@ -78,11 +78,11 @@ library
     ScopedTypeVariables
     StrictData
     TemplateHaskell
+    TupleSection
     TypeApplications
     TypeFamilies
     TypeOperators
     TypeSynonymInstances
-    UndecidableInstances
-    ViewPatterns
-        
+    UndecidableInstancesViewPatterns
+
   default-language: Haskell2010

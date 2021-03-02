@@ -2,7 +2,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE JavaScriptFFI #-}
-module Massaraksh.DOM where
+module HtmlT.DOM where
 
 import Control.Monad
 import Control.Monad.Reader
@@ -12,8 +12,8 @@ import Data.String
 import Data.Text as T
 import GHC.Generics
 import Language.Javascript.JSaddle as JS
-import Massaraksh.Decode
-import Massaraksh.Types
+import HtmlT.Decode
+import HtmlT.Types
 
 data ListenOpts = ListenOpts
   { stopPropagation :: Bool

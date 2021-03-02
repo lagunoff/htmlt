@@ -1,4 +1,4 @@
-module Massaraksh.Internal where
+module HtmlT.Internal where
 
 import Control.Monad.Catch
 import Control.Monad.Reader
@@ -7,11 +7,12 @@ import Data.Foldable
 import Data.IORef
 import Data.List
 import Language.Javascript.JSaddle
-import Massaraksh.DOM
-import Massaraksh.Event
-import Massaraksh.Types
 import qualified Control.Exception as E
 import qualified Data.Sequence as Seq
+
+import HtmlT.DOM
+import HtmlT.Event
+import HtmlT.Types
 
 newElementRef :: Node -> HtmlT ElementRef
 newElementRef elm = do

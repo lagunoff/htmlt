@@ -9,7 +9,7 @@ import Data.Text as T
 import GHC.Generics (Generic)
 import GHCJS.Marshal
 import Language.Javascript.JSaddle
-import Massaraksh
+import HtmlT
 
 type HtmlEmit msg = forall x. msg x -> Html x
 
