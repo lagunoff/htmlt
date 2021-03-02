@@ -147,7 +147,7 @@ itraverseHtml l dynRef h = do
             , he_post_hooks = postRef }
           itemRef = ElemEnv newEnv elemRef' (dr_modifier elemRef)
         runHtmlT newEnv $ h idx elemRef'
-        liftIO (modifyIORef itemRefs (<> [itemRef]))
+        liftIO (modifyIORef' itemRefs (<> [itemRef]))
         setup s (idx + 1) [] [] xs
       (_, x:xs, []) -> do
         -- New list is shorter, delete the elements that no longer

@@ -37,7 +37,7 @@ deferMutations NodeRef{..} = do
   queueRef <- newIORef Seq.empty
   let
     mutate m = readIORef flushedRef
-      >>= bool (modifyIORef queueRef (Seq.>< Seq.singleton m))
+      >>= bool (modifyIORef' queueRef (Seq.>< Seq.singleton m))
         (nr_mutate m)
     flush = do
       writeIORef flushedRef True
@@ -68,8 +68,8 @@ subscribeHtmlT e k = do
     run = do
       unsub <- e `subscribe` k2
       unsubRef <- newIORef unsub
-      modifyIORef finsRef ((:) unsubRef)
-      return $ modifyIORef finsRef (delete unsubRef) *> unsub
+      modifyIORef' finsRef ((:) unsubRef)
+      return $ modifyIORef' finsRef (delete unsubRef) *> unsub
   liftIO run
 
 forUpdates :: Dynamic s -> Callback s -> HtmlT (IO ())
@@ -90,4 +90,4 @@ addFinalizer :: IO () -> HtmlT ()
 addFinalizer fin = do
   subs <- asks he_finalizers
   finRef <- liftIO $ newIORef fin
-  liftIO $ modifyIORef subs (finRef :)
+  liftIO $ modifyIORef' subs (finRef :)

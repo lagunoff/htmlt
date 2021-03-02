@@ -62,8 +62,8 @@ newEvent = liftIO do
     event = Event \fs k -> do
       kRef <- liftIO (newIORef k) -- Need 'IORef' for an 'Eq' instance
       let ref = case fs of Immediate -> immediateSubs; Defer -> deferredSubs
-      liftIO $ modifyIORef ref ((:) kRef)
-      pure $ liftIO $ modifyIORef ref (delete kRef)
+      liftIO $ modifyIORef' ref ((:) kRef)
+      pure $ liftIO $ modifyIORef' ref (delete kRef)
     trigger = \a -> do
       fire a immediateSubs
       defer eventId do fire a deferredSubs
