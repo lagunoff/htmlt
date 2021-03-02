@@ -254,7 +254,7 @@ getDocument self = liftJSM (self ! ("document"::Text))
 getCurrentBody :: MonadJSM m => m Node
 getCurrentBody = liftJSM (Node <$> jsg ("document"::Text) ! ("body"::Text))
 
-instance (x ~ ()) => IsString (Html x) where
+instance (x ~ ()) => IsString (HtmlT x) where
   fromString = text . T.pack where
     text t = do
       elm <- liftIO =<< asks (elementRef_read . htmlEnv_element)

@@ -18,27 +18,27 @@ import Massaraksh.Event
 import Massaraksh.Internal
 import Massaraksh.Types
 
-el :: Text -> Html x -> Html x
+el :: Text -> HtmlT x -> HtmlT x
 el tag child = do
   elm <- liftJSM (createElement tag)
   withElement elm child
 
-el' :: Text -> Html x -> Html Node
+el' :: Text -> HtmlT x -> HtmlT Node
 el' tag child = do
   elm <- liftJSM (createElement tag)
   elm <$ withElement elm child
 
-elNs :: Text -> Text -> Html x -> Html x
+elNs :: Text -> Text -> HtmlT x -> HtmlT x
 elNs ns tag child = do
   elm <- liftJSM $ createElementNS ns tag
   withElement elm child
 
-text :: Text -> Html ()
+text :: Text -> HtmlT ()
 text txt = do
   textNode <- liftJSM (createTextNode txt)
   mutateRoot (flip appendChild textNode)
 
-dynText :: Dynamic Text -> Html ()
+dynText :: Dynamic Text -> HtmlT ()
 dynText d = do
   txt <- liftIO (dynamic_read d)
   js <- askJSM
@@ -47,12 +47,12 @@ dynText d = do
     flip runJSM js $ setTextValue textNode new
   mutateRoot (flip appendChild textNode)
 
-prop :: ToJSVal v => Text -> v -> Html ()
+prop :: ToJSVal v => Text -> v -> HtmlT ()
 prop (JSS.textToJSString -> key) val = mutateRoot \rootEl -> do
   v <- toJSVal val
   unsafeSetProp key v (coerce rootEl)
 
-dynProp :: (ToJSVal v, FromJSVal v, Eq v) => Text -> Dynamic v -> Html ()
+dynProp :: (ToJSVal v, FromJSVal v, Eq v) => Text -> Dynamic v -> HtmlT ()
 dynProp (JSS.textToJSString -> key) dyn = do
   mutate <- askMutateRoot
   let
@@ -60,30 +60,30 @@ dynProp (JSS.textToJSString -> key) dyn = do
       >>= flip (unsafeSetProp key) (coerce rootEl)
   void $ forDyn dyn (liftIO . mutate . setup)
 
-attr :: Text -> Text -> Html ()
+attr :: Text -> Text -> HtmlT ()
 attr k v = mutateRoot \e -> setAttribute e k v
 
-dynAttr :: Text -> Dynamic Text -> Html ()
+dynAttr :: Text -> Dynamic Text -> HtmlT ()
 dynAttr k d = do
   mutate <- askMutateRoot
   let setup v e = setAttribute e k v
   void $ forDyn d (liftIO . mutate . setup)
 
-on :: Text -> Decoder (Html x) -> Html ()
+on :: Text -> Decoder (HtmlT x) -> HtmlT ()
 on name decoder = do
   env <- ask
   mutateRoot \rootEl ->
     liftIO $ runHtmlT env $ domEvent rootEl name decoder
 
-on_ :: Text -> Html x -> Html ()
+on_ :: Text -> HtmlT x -> HtmlT ()
 on_ name w = on name (pure w)
 
-domEventOpts :: ListenOpts -> Node -> Text -> Decoder (Html x) -> Html ()
+domEventOpts :: ListenOpts -> Node -> Text -> Decoder (HtmlT x) -> HtmlT ()
 domEventOpts opts elm name decoder = do
   env <- ask
   js <- askJSM
   let
-    event :: Event (Html ())
+    event :: Event (HtmlT ())
     event = Event \s k -> liftIO $ flip runJSM js do
       unlisten <- addEventListener opts elm name \event -> do
         e <- runDecoder decoder event
@@ -91,18 +91,18 @@ domEventOpts opts elm name decoder = do
       pure $ liftIO $ runJSM unlisten js
   void $ htmlSubscribe event (liftIO . runHtmlT env)
 
-domEvent :: Node -> Text -> Decoder (Html x) -> Html ()
+domEvent :: Node -> Text -> Decoder (HtmlT x) -> HtmlT ()
 domEvent = domEventOpts def
 
-domEvent_ :: Node -> Text -> Html x -> Html ()
+domEvent_ :: Node -> Text -> HtmlT x -> HtmlT ()
 domEvent_ e n act = domEvent e n (pure act)
 
-classes :: Text -> Html ()
+classes :: Text -> HtmlT ()
 classes cs = mutateRoot \rootEl -> do
   for_ (T.splitOn (T.pack " ") cs) $
     classListAdd rootEl
 
-toggleClass :: Text -> Dynamic Bool -> Html ()
+toggleClass :: Text -> Dynamic Bool -> HtmlT ()
 toggleClass cs dyn = do
   mutate <- askMutateRoot
   let
@@ -111,7 +111,7 @@ toggleClass cs dyn = do
       False -> classListRemove rootEl cs
   void $ forDyn dyn (liftIO . mutate . setup cs)
 
-toggleAttr :: Text -> Dynamic Bool -> Html ()
+toggleAttr :: Text -> Dynamic Bool -> HtmlT ()
 toggleAttr att dyn = do
   mutate <- askMutateRoot
   let
@@ -134,8 +134,8 @@ itraverseHtml
   :: forall s a
   . IndexedTraversal' Int s a
   -> DynRef s
-  -> (Int -> DynRef a -> Html ())
-  -> Html ()
+  -> (Int -> DynRef a -> HtmlT ())
+  -> HtmlT ()
 itraverseHtml l dynRef h = do
   hte <- ask
   js <- askJSM
@@ -194,7 +194,7 @@ itraverseHtml l dynRef h = do
     liftIO $ setup new 0 refs (toListOf l old) (toListOf l new)
   pure ()
 
-dyn_ :: Dynamic (Html ()) -> Html ()
+dyn_ :: Dynamic (HtmlT ()) -> HtmlT ()
 dyn_ dyn = do
   env <- ask
   js <- askJSM
@@ -233,7 +233,7 @@ dyn_ dyn = do
   addFinalizer (unsub Nothing)
   void $ forDyn dyn (liftIO . mutate . (void .) . setup)
 
-catchInteractive :: Html () -> (SomeException -> Html ()) -> Html ()
+catchInteractive :: HtmlT () -> (SomeException -> HtmlT ()) -> HtmlT ()
 catchInteractive html handle = ask >>= run where
   run e = local (f e) html
   f e he = he {htmlEnv_catchInteractive = runHtmlT e . handle}

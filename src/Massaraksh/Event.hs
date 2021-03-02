@@ -9,7 +9,6 @@ import Data.IORef
 import Data.List
 import Debug.Trace
 import GHC.Generics
-import GHC.Int
 import qualified Data.Map as M
 
 import Massaraksh.IdSupply
@@ -41,14 +40,9 @@ newtype ReactiveState = ReactiveState
   deriving stock Generic
 
 newtype Reactive a = Reactive (StateT ReactiveState IO a)
-  deriving newtype (
-    Functor, Applicative, Monad, MonadIO, MonadState ReactiveState,
-    MonadFix, MonadCatch, MonadThrow, MonadMask
-  )
-
-newtype EventId = EventId {unEventId :: Int64}
-  deriving stock (Show, Generic)
-  deriving newtype (Eq, Ord)
+  deriving newtype (Functor, Applicative, Monad, MonadIO)
+  deriving newtype (MonadState ReactiveState,MonadFix, MonadCatch, MonadThrow)
+  deriving newtype (MonadMask)
 
 type Callback a = a -> Reactive ()
 

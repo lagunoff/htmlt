@@ -1,5 +1,3 @@
-{-# LANGUAGE RecursiveDo #-}
-{-# LANGUAGE NoOverloadedStrings #-}
 {-# LANGUAGE CPP #-}
 module Massaraksh.Main where
 
@@ -17,7 +15,7 @@ import qualified Language.Javascript.JSaddle.Warp as Warp
 import System.Environment
 #endif
 
-attach :: Node -> Html a -> JSM (a, HtmlEnv)
+attach :: Node -> HtmlT a -> JSM (a, HtmlEnv)
 attach rootEl render = do
   js <- askJSM
   subscriptions <- liftIO (newIORef [])
@@ -30,10 +28,10 @@ attach rootEl render = do
   liftIO (readIORef postHooks >>= mapM_ (runHtmlT env))
   pure (res, env)
 
-attachToBody :: Html a -> JSM (a, HtmlEnv)
+attachToBody :: HtmlT a -> JSM (a, HtmlEnv)
 attachToBody h = getCurrentBody >>= (`attach` h)
 
-portal :: Node -> Html a -> Html a
+portal :: Node -> HtmlT a -> HtmlT a
 portal rootEl render = do
   js <- askJSM
   env <- ask

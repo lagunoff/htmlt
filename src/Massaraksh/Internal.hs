@@ -1,4 +1,3 @@
-{-# LANGUAGE TupleSections #-}
 module Massaraksh.Internal where
 
 import Control.Monad.Catch
@@ -14,7 +13,7 @@ import Massaraksh.Types
 import qualified Control.Exception as E
 import qualified Data.Sequence as Seq
 
-newElementRef :: Node -> Html ElementRef
+newElementRef :: Node -> HtmlT ElementRef
 newElementRef elm = do
   jsCtx <- asks htmlEnv_jsContext
   mutateRoot (flip appendChild elm)
@@ -37,21 +36,21 @@ deferMutations ElementRef{..} = do
       elementRef_mutate \rootEl -> for_ queue ($ rootEl)
   pure (ElementRef elementRef_read mutate, flush)
 
-askElement :: Html Node
+askElement :: HtmlT Node
 askElement = liftIO =<< asks (elementRef_read . htmlEnv_element)
 
-mutateRoot :: (Node -> JSM ()) -> Html ()
+mutateRoot :: (Node -> JSM ()) -> HtmlT ()
 mutateRoot f = liftIO =<< asks (($ f). elementRef_mutate . htmlEnv_element)
 
-askMutateRoot :: Html ((Node -> JSM ()) -> IO ())
+askMutateRoot :: HtmlT ((Node -> JSM ()) -> IO ())
 askMutateRoot = asks (elementRef_mutate . htmlEnv_element)
 
-withElement :: Node -> Html a -> Html a
+withElement :: Node -> HtmlT a -> HtmlT a
 withElement  elm child = do
   elRef <- newElementRef elm
   local (\env -> env { htmlEnv_element = elRef }) child
 
-htmlSubscribe :: Event a -> Callback a -> Html (IO ())
+htmlSubscribe :: Event a -> Callback a -> HtmlT (IO ())
 htmlSubscribe e k = do
   finsRef <- asks htmlEnv_finalizers
   handle <- asks htmlEnv_catchInteractive
@@ -62,11 +61,11 @@ htmlSubscribe e k = do
     modifyIORef finsRef ((:) unsubRef)
     pure $ modifyIORef finsRef (delete unsubRef) *> unsub
 
-subscribeUpdates :: Dynamic s -> Callback s -> Html (IO ())
+subscribeUpdates :: Dynamic s -> Callback s -> HtmlT (IO ())
 subscribeUpdates d f = dynamic_updates d `htmlSubscribe` f
 {-# INLINE subscribeUpdates #-}
 
-forDyn :: Dynamic a -> Callback a -> Html (IO ())
+forDyn :: Dynamic a -> Callback a -> HtmlT (IO ())
 forDyn dyn k = do
   liftIO (dynamic_read dyn) >>= liftIO . sync . k
   subscribeUpdates dyn k
@@ -76,7 +75,7 @@ catchSync io h = io `catch` \e -> case E.fromException e of
   Just (E.SomeAsyncException _) -> throwM e
   Nothing                       -> h e
 
-addFinalizer :: IO () -> Html ()
+addFinalizer :: IO () -> HtmlT ()
 addFinalizer fin = do
   subs <- asks htmlEnv_finalizers
   finRef <- liftIO $ newIORef fin

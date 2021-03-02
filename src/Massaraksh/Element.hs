@@ -2,9 +2,9 @@
 -- https://github.com/dmjio/miso/blob/0576696323652ec17a921a0be8c41e82685da374/src/Miso/Html/Element.hs
 module Massaraksh.Element where
 
-import Massaraksh.Types
-import Massaraksh.Base
 import Data.Text as T
+import Massaraksh.Base
+import Massaraksh.Types
 
 class Term arg result | result -> arg where
   -- | Use this if you want to make an element which inserts some
@@ -13,13 +13,13 @@ class Term arg result | result -> arg where
     -> arg           -- ^ Some argument.
     -> result        -- ^ Result: either an element or an attribute.
 
-instance (f ~ Html a) => Term [Html ()] (f -> Html a) where
+instance (f ~ HtmlT a) => Term [HtmlT ()] (f -> HtmlT a) where
   term name attrs = el name . (sequence_ attrs *>)
   {-# INLINE term #-}
 
 -- | Given children immediately, just use that and expect no
 -- attributes.
-instance Term (Html a) (Html a) where
+instance Term (HtmlT a) (HtmlT a) where
   term = el
   {-# INLINE term #-}
 
