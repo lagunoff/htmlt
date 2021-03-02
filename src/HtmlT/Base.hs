@@ -209,15 +209,11 @@ dyn_ dyn = do
           =<< readIORef postHooks
         commit = do
           unsub (Just newEnv)
-            <* removeAllChilds env
+            <* emptyContent
             <* flush
             <* triggerPost
       runHtmlT newEnv html <* commit
-    removeAllChilds env = mutate \rootEl -> do
-      length <- childLength rootEl
-      for_ [0..length - 1] \idx -> do
-        childEl <- getChildNode rootEl (length - idx - 1)
-        removeChild rootEl childEl
+    emptyContent = mutate removeAllChilds
   addFinalizer (unsub Nothing)
   void $ forDyn dyn (liftIO . mutate . (void .) . setup)
 

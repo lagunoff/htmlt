@@ -28,131 +28,90 @@ instance Default ListenerOpts where
 
 type Decoding a = (a -> HtmlT ()) -> JSVal -> HtmlT ()
 
-#ifndef ghcjs_HOST_OS
 appendChild :: Node -> Node -> JSM ()
+setAttribute :: Node -> Text -> Text -> JSM ()
+removeAttribute :: Node -> Text -> JSM ()
+removeChild :: Node -> Node -> JSM ()
+removeAllChilds :: Node -> JSM ()
+replaceChild :: Node -> Node -> Node -> JSM ()
+childLength :: Node -> JSM Int
+getChildNode :: Node -> Int -> JSM Node
+createElement :: Text -> JSM Node
+createElementNS :: Text -> Text -> JSM Node
+createTextNode :: Text -> JSM Node
+classListAdd :: Node -> Text -> JSM ()
+classListRemove :: Node -> Text -> JSM ()
+setTextValue :: Node -> Text -> JSM ()
+
+#ifndef ghcjs_HOST_OS
 appendChild root child = do
   void (root # ("appendChild"::Text) $ child)
+setAttribute e k v = do
+  void $ e # ("setAttribute"::Text) $ (k, v)
+removeAttribute e k = do
+  void $ e # ("removeAttribute"::Text) $ [k]
+removeChild p ch = do
+  void $ p # ("removeChild"::Text) $ [ch]
+removeAllChilds e = do
+  void $ e <# ("innerHTML"::Text) $ (""::Text)
+replaceChild root new old = do
+  void (root # ("replaceChild"::Text) $ (new, old))
+childLength e = do
+  fromJSValUnchecked =<< e ! ("childNodes"::Text) ! ("length"::Text)
+getChildNode e ix =
+  fmap coerce (e ! ("childNodes"::Text) JS.!! ix)
+createElement tag = do
+  fmap coerce $ jsg ("document"::Text) # ("createElement"::Text) $ [tag]
+createElementNS ns tag = do
+  fmap coerce $ jsg ("document"::Text) # ("createElementNS"::Text) $ [ns, tag]
+createTextNode tag = do
+  fmap coerce $ jsg ("document"::Text) # ("createTextNode"::Text) $ [tag]
+classListAdd e c = do
+  void $ e ! ("classList"::Text) # ("add"::Text) $ [c]
+classListRemove e c = do
+  void $ e ! ("classList"::Text) # ("remove"::Text) $ [c]
+setTextValue e c = do
+  void $ e <# ("nodeValue"::Text) $ c
 #else
 foreign import javascript unsafe
   "$1.appendChild($2)"
   appendChild :: Node -> Node -> JSM ()
-#endif
-
-#ifndef ghcjs_HOST_OS
-setAttribute :: Node -> Text -> Text -> JSM ()
-setAttribute e k v = do
-  void $ e # ("setAttribute"::Text) $ (k, v)
-#else
 foreign import javascript unsafe
   "$1.setAttribute($2, $3)"
   setAttribute :: Node -> Text -> Text -> JSM ()
-#endif
-
-#ifndef ghcjs_HOST_OS
-removeAttribute :: Node -> Text -> JSM ()
-removeAttribute e k = do
-  void $ e # ("removeAttribute"::Text) $ [k]
-#else
 foreign import javascript unsafe
   "$1.removeAttribute($2)"
   removeAttribute :: Node -> Text -> JSM ()
-#endif
-
-#ifndef ghcjs_HOST_OS
-removeChild :: Node -> Node -> JSM ()
-removeChild p ch = do
-  void $ p # ("removeChild"::Text) $ [ch]
-#else
 foreign import javascript unsafe
   "$1.removeChild($2)"
   removeChild :: Node -> Node -> JSM ()
-#endif
-
-#ifndef ghcjs_HOST_OS
-replaceChild :: Node -> Node -> Node -> JSM ()
-replaceChild root new old = do
-  void (root # ("replaceChild"::Text) $ (new, old))
-#else
+foreign import javascript unsafe
+  "$1.innerHTML = ''"
+  removeAllChilds :: Node -> JSM ()
 foreign import javascript unsafe
   "$1.replaceChild($2, $3)"
   replaceChild :: Node -> Node -> Node -> JSM ()
-#endif
-
-#ifndef ghcjs_HOST_OS
-childLength :: Node -> JSM Int
-childLength e = do
-  fromJSValUnchecked =<< e ! ("childNodes"::Text) ! ("length"::Text)
-#else
 foreign import javascript unsafe
   "$1.childNodes.length"
   childLength :: Node -> JSM Int
-#endif
-
-#ifndef ghcjs_HOST_OS
-getChildNode :: Node -> Int -> JSM Node
-getChildNode e ix =
-  fmap coerce (e ! ("childNodes"::Text) JS.!! ix)
-#else
 foreign import javascript unsafe
   "$1.childNodes[$2]"
   getChildNode :: Node -> Int -> JSM Node
-#endif
-
-#ifndef ghcjs_HOST_OS
-createElement :: Text -> JSM Node
-createElement tag = do
-  fmap coerce $ jsg ("document"::Text) # ("createElement"::Text) $ [tag]
-#else
 foreign import javascript unsafe
   "document.createElement($1)"
   createElement :: Text -> JSM Node
-#endif
-
-#ifndef ghcjs_HOST_OS
-createElementNS :: Text -> Text -> JSM Node
-createElementNS ns tag = do
-  fmap coerce $ jsg ("document"::Text) # ("createElementNS"::Text) $ [ns, tag]
-#else
 foreign import javascript unsafe
   "document.createElementNS($1, $2)"
   createElementNS :: Text -> Text -> JSM Node
-#endif
-
-#ifndef ghcjs_HOST_OS
-createTextNode :: Text -> JSM Node
-createTextNode tag = do
-  fmap coerce $ jsg ("document"::Text) # ("createTextNode"::Text) $ [tag]
-#else
 foreign import javascript unsafe
   "document.createTextNode($1)"
   createTextNode :: Text -> JSM Node
-#endif
-
-#ifndef ghcjs_HOST_OS
-classListAdd :: Node -> Text -> JSM ()
-classListAdd e c = do
-  void $ e ! ("classList"::Text) # ("add"::Text) $ [c]
-#else
 foreign import javascript unsafe
   "$1.classList.add($2)"
   classListAdd :: Node -> Text -> JSM ()
-#endif
-
-#ifndef ghcjs_HOST_OS
-classListRemove :: Node -> Text -> JSM ()
-classListRemove e c = do
-  void $ e ! ("classList"::Text) # ("remove"::Text) $ [c]
-#else
 foreign import javascript unsafe
   "$1.classList.remove($2)"
   classListRemove :: Node -> Text -> JSM ()
-#endif
-
-#ifndef ghcjs_HOST_OS
-setTextValue :: Node -> Text -> JSM ()
-setTextValue e c = do
-  void $ e <# ("nodeValue"::Text) $ c
-#else
 foreign import javascript unsafe
   "$1.nodeValue = $2;"
   setTextValue :: Node -> Text -> JSM ()
