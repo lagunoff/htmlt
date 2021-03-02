@@ -14,7 +14,6 @@ import GHC.Generics
 import Language.Javascript.JSaddle as JS
 
 import HtmlT.DOM
-import HtmlT.Decode
 import HtmlT.Event
 import HtmlT.Internal
 import HtmlT.Types
@@ -37,7 +36,7 @@ elns ns tag child = do
 text :: Text -> HtmlT ()
 text txt = do
   textNode <- liftJSM (createTextNode txt)
-  mutateRoot (flip appendChild textNode)
+  mutateRoot (`appendChild` textNode)
 
 dynText :: Dynamic Text -> HtmlT ()
 dynText d = do
@@ -46,7 +45,7 @@ dynText d = do
   textNode <- liftJSM (createTextNode txt)
   forUpdates d \new -> void $ liftIO do
     flip runJSM js $ setTextValue textNode new
-  mutateRoot (flip appendChild textNode)
+  mutateRoot (`appendChild` textNode)
 
 prop :: ToJSVal v => Text -> v -> HtmlT ()
 prop (JSS.textToJSString -> key) val = mutateRoot \rootEl -> do
@@ -70,33 +69,28 @@ dynAttr k d = do
   let setup v e = setAttribute e k v
   void $ forDyn d (liftIO . mutate . setup)
 
-on :: Text -> Decoder (HtmlT x) -> HtmlT ()
-on name decoder = do
+on :: Text -> (JSVal -> HtmlT ()) -> HtmlT ()
+on name f = do
   env <- ask
-  mutateRoot \rootEl ->
-    liftIO $ runHtmlT env $ domEvent rootEl name decoder
+  let
+    listen rootEl =
+      liftIO $ runHtmlT env $ onGlobalEvent def rootEl name f
+  mutateRoot listen
 
-on_ :: Text -> HtmlT x -> HtmlT ()
-on_ name w = on name (pure w)
+on_ :: Text -> HtmlT () -> HtmlT ()
+on_ name = on name . const
 
-domEventOpts :: ListenerOpts -> Node -> Text -> Decoder (HtmlT x) -> HtmlT ()
-domEventOpts opts elm name decoder = do
+onGlobalEvent :: ListenerOpts -> Node -> Text -> (JSVal -> HtmlT ()) -> HtmlT ()
+onGlobalEvent opts target name f = do
   env <- ask
   js <- askJSM
   let
     event :: Event (HtmlT ())
     event = Event \s k -> liftIO $ flip runJSM js do
-      unlisten <- addListener opts elm name \event -> do
-        e <- runDecoder decoder event
-        maybe blank (void . liftIO . sync . k . void) e
+      unlisten <- addEventListener opts target name \event -> do
+        void . liftIO . sync . k $ f event
       pure $ liftIO $ runJSM unlisten js
   void $ subscribeHtmlT event (liftIO . runHtmlT env)
-
-domEvent :: Node -> Text -> Decoder (HtmlT x) -> HtmlT ()
-domEvent = domEventOpts def
-
-domEvent_ :: Node -> Text -> HtmlT x -> HtmlT ()
-domEvent_ e n act = domEvent e n (pure act)
 
 classes :: Text -> HtmlT ()
 classes cs = mutateRoot \rootEl -> do
@@ -123,13 +117,6 @@ toggleAttr att dyn = do
 
 blank :: Applicative m => m ()
 blank = pure ()
-
-data ElemEnv a = ElemEnv
-  { ee_htmlEnv :: HtmlEnv
-  , ee_Ref :: DynRef a
-  , ee_modifier :: Modifier a
-  }
-  deriving stock Generic
 
 itraverseHtml
   :: forall s a

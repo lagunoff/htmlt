@@ -6,6 +6,7 @@ import Data.Bool
 import Data.Foldable
 import Data.IORef
 import Data.List
+import GHC.Generics
 import Language.Javascript.JSaddle
 import qualified Control.Exception as E
 import qualified Data.Sequence as Seq
@@ -13,6 +14,13 @@ import qualified Data.Sequence as Seq
 import HtmlT.DOM
 import HtmlT.Event
 import HtmlT.Types
+
+data ElemEnv a = ElemEnv
+  { ee_htmlEnv :: HtmlEnv
+  , ee_Ref :: DynRef a
+  , ee_modifier :: Modifier a
+  }
+  deriving stock Generic
 
 newNodeRef :: Node -> HtmlT NodeRef
 newNodeRef el = do

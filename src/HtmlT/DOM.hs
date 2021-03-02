@@ -26,6 +26,8 @@ data ListenerOpts = ListenerOpts
 instance Default ListenerOpts where
   def = ListenerOpts True False
 
+type Decoding a = (a -> HtmlT ()) -> JSVal -> HtmlT ()
+
 #ifndef ghcjs_HOST_OS
 appendChild :: Node -> Node -> JSM ()
 appendChild root child = do
@@ -156,13 +158,13 @@ foreign import javascript unsafe
   setTextValue :: Node -> Text -> JSM ()
 #endif
 
-addListener
+addEventListener
   :: ListenerOpts
   -> Node
   -> Text
   -> (JSVal -> JSM ())
   -> JSM (JSM ())
-addListener ListenerOpts{..} target name f = do
+addEventListener ListenerOpts{..} target name f = do
   cb <- function \_ _ [event] -> do
     when lo_stop_propagation do
       void $ event # ("stopPropagation"::Text) $ ()
@@ -174,27 +176,15 @@ addListener ListenerOpts{..} target name f = do
     target # ("removeEventListener"::Text) $ (name, cb)
     freeFunction cb
 
-decodeTarget :: Decoder JSVal
-decodeTarget = decodeAt ["target"] decodeJSVal
-
-decodeValue :: Decoder Text
-decodeValue = decodeAt ["target", "value"] decoder
-
-decodeCurrentTarget :: Decoder JSVal
-decodeCurrentTarget = decodeAt ["currentTarget"] decodeJSVal
-
-decodeChecked :: Decoder Bool
-decodeChecked = decodeAt ["target", "checked"] decoder
-
-data DeltaMouse = DeltaMouse
-  { dm_delta_x :: Int
-  , dm_delta_y :: Int
-  , dm_delta_z :: Int
+data MouseDelta = MouseDelta
+  { md_delta_x :: Int
+  , md_delta_y :: Int
+  , md_delta_z :: Int
   }
   deriving stock (Eq, Show, Generic)
 
-decodeDeltaMouse :: Decoder DeltaMouse
-decodeDeltaMouse = DeltaMouse
+mouseDeltaDecoder :: Decoder MouseDelta
+mouseDeltaDecoder = MouseDelta
   <$> decodeAt ["deltaX"] decoder
   <*> decodeAt ["deltaY"] decoder
   <*> decodeAt ["deltaZ"] decoder
@@ -205,53 +195,90 @@ data Position = Position
   }
   deriving stock (Eq, Show, Ord, Generic)
 
-decodeClientXY :: Decoder Position
-decodeClientXY = Position
+clientXYDecoder :: Decoder Position
+clientXYDecoder = Position
   <$> decodeAt ["clientX"] decoder
   <*> decodeAt ["clientY"] decoder
 
-decodeOffsetXY :: Decoder Position
-decodeOffsetXY = Position
+offsetXYDecoder :: Decoder Position
+offsetXYDecoder = Position
   <$> decodeAt ["offsetX"] decoder
   <*> decodeAt ["offsetY"] decoder
 
-decodePageXY :: Decoder Position
-decodePageXY = Position
+pageXYDecoder :: Decoder Position
+pageXYDecoder = Position
   <$> decodeAt ["pageX"] decoder
   <*> decodeAt ["pageY"] decoder
 
-data Keys = Keys
-  { keys_alt_key :: Bool
-  , keys_ctrl_key :: Bool
-  , keys_meta_key :: Bool
-  , keys_shift_key :: Bool
+data KeyModifiers = KeyModifiers
+  { kmod_alt_key :: Bool
+  , kmod_ctrl_key :: Bool
+  , kmod_meta_key :: Bool
+  , kmod_shift_key :: Bool
   }
   deriving stock (Eq, Show, Generic)
 
-decodeKeys :: Decoder Keys
-decodeKeys = Keys
+keyModifiersDecoder :: Decoder KeyModifiers
+keyModifiersDecoder = KeyModifiers
   <$> decodeAt ["altKey"] decoder
   <*> decodeAt ["ctrlKey"] decoder
   <*> decodeAt ["metaKey"] decoder
   <*> decodeAt ["shiftKey"] decoder
 
-decodeKeyCode :: Decoder Int
-decodeKeyCode = decodeAt ["keyCode"] decoder
+keyCodeDecoder :: Decoder Int
+keyCodeDecoder = decodeAt ["keyCode"] decoder
 
 data KeyboardEvent = KeyboardEvent
-  { ke_keys :: Keys
+  { ke_modifiers :: KeyModifiers
   , ke_key :: Maybe Text
   , ke_key_code :: Int
   , ke_repeat :: Bool
   }
   deriving stock (Eq, Show, Generic)
 
-keyboardEvent :: Decoder KeyboardEvent
-keyboardEvent = KeyboardEvent
-  <$> decodeKeys
+keyboardEventDecoder :: Decoder KeyboardEvent
+keyboardEventDecoder = KeyboardEvent
+  <$> keyModifiersDecoder
   <*> decodeAt ["key"] decoder
   <*> decodeAt ["keyCode"] decoder
   <*> decodeAt ["repeat"] decoder
+
+decodeTarget :: Decoding JSVal
+decodeTarget = withDecoder d where
+  d = decodeAt ["target"] decodeJSVal
+
+decodeValue :: Decoding Text
+decodeValue = withDecoder d where
+  d = decodeAt ["target", "value"] decoder
+
+decodeCurrentTarget :: Decoding JSVal
+decodeCurrentTarget = withDecoder d where
+  d = decodeAt ["currentTarget"] decodeJSVal
+
+decodeChecked :: Decoding Bool
+decodeChecked = withDecoder d where
+  d = decodeAt ["target", "checked"] decoder
+
+decodeMouseDelta :: Decoding MouseDelta
+decodeMouseDelta = withDecoder mouseDeltaDecoder
+
+decodeKeyModifiers :: Decoding KeyModifiers
+decodeKeyModifiers = withDecoder keyModifiersDecoder
+
+decodeKeyCode :: Decoding Int
+decodeKeyCode = withDecoder keyCodeDecoder
+
+decodeOffsetXY :: Decoding Position
+decodeOffsetXY = withDecoder offsetXYDecoder
+
+decodeClientXY :: Decoding Position
+decodeClientXY = withDecoder clientXYDecoder
+
+decodePageXY :: Decoding Position
+decodePageXY = withDecoder pageXYDecoder
+
+decodeKeyboardEvent :: Decoding KeyboardEvent
+decodeKeyboardEvent = withDecoder keyboardEventDecoder
 
 getCurrentWindow :: MonadJSM m => m JSVal
 getCurrentWindow = liftJSM (jsg ("window"::Text))
