@@ -4,13 +4,11 @@ import Control.Exception
 import Control.Lens hiding ((#))
 import Control.Monad.Reader
 import Data.Coerce
-import Data.Default
 import Data.Foldable
 import Data.IORef
 import Data.JSString.Text as JSS
 import Data.List as L
 import Data.Text as T hiding (index)
-import GHC.Generics
 import Language.Javascript.JSaddle as JS
 
 import HtmlT.DOM
@@ -73,8 +71,8 @@ on :: Text -> (JSVal -> HtmlT ()) -> HtmlT ()
 on name f = do
   env <- ask
   let
-    listen rootEl =
-      liftIO $ runHtmlT env $ onGlobalEvent def rootEl name f
+    listen rootEl = liftIO $
+      runHtmlT env $ onGlobalEvent defaultListenerOpts rootEl name f
   mutateRoot listen
 
 on_ :: Text -> HtmlT () -> HtmlT ()

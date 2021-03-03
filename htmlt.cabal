@@ -39,7 +39,6 @@ library
     base,
     bytestring,
     containers,
-    data-default,
     exceptions,
     jsaddle,
     lens,
