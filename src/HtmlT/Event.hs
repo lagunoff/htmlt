@@ -100,6 +100,10 @@ readRef :: MonadIO m => DynRef a -> m a
 readRef = readDyn . dr_dynamic
 {-# INLINE readRef #-}
 
+readsRef :: MonadIO m => (a -> b) -> DynRef a -> m b
+readsRef f = readsDyn f . dr_dynamic
+{-# INLINE readsRef #-}
+
 modifyRef :: MonadIO m => DynRef a -> (a -> a) -> m ()
 modifyRef (DynRef _ modifier) = liftIO . sync . modifier
 {-# INLINE modifyRef #-}
@@ -119,6 +123,10 @@ fromRef = dr_dynamic
 readDyn :: MonadIO m => Dynamic a -> m a
 readDyn = liftIO . dynamic_read
 {-# INLINE readDyn #-}
+
+readsDyn :: MonadIO m => (a -> b) -> Dynamic a -> m b
+readsDyn f = fmap f . liftIO . dynamic_read
+{-# INLINE readsDyn #-}
 
 updates :: Dynamic a -> Event a
 updates = dynamic_updates

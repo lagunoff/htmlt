@@ -8,7 +8,7 @@
 **/.directory
 **/.dir-locals.el
 **/.envrc
-**/.envrc.cache
+**/.envrc-ghcjs
 /dist
 /tmp
 **/.stack-work

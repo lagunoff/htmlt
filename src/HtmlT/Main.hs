@@ -32,13 +32,6 @@ attach rootEl render = do
 attachToBody :: HtmlT a -> JSM (a, HtmlEnv)
 attachToBody h = getCurrentBody >>= (`attach` h)
 
-portal :: Node -> HtmlT a -> HtmlT a
-portal rootEl render = do
-  js <- askJSM
-  env <- ask
-  let rootRef = NodeRef (pure rootEl) (flip runJSM js . ($ rootEl))
-  local (\e -> e {he_current_root = rootRef}) render
-
 withJSM :: JSM x -> IO ()
 #ifdef ghcjs_HOST_OS
 withJSM = void

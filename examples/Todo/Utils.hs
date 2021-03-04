@@ -50,12 +50,12 @@ writeTodos :: ToJSVal item => [item] -> JSM ()
 writeTodos xs = do
   value <- toJSVal xs
   stringValue <- jsg "JSON" # "stringify" $ value
-  key <- toJSVal "todomvc-massaraksh"
+  key <- toJSVal "todomvc-htmlt"
   void $ jsg "localStorage" # "setItem" $ (key, stringValue)
 
 readTodos :: FromJSVal item => JSM [item]
 readTodos = fromMaybe [] <$> runMaybeT do
-  strOrNull <- lift (jsg "localStorage" # "getItem" $ ["todomvc-massaraksh"])
+  strOrNull <- lift (jsg "localStorage" # "getItem" $ ["todomvc-htmlt"])
   strValue <- MaybeT (maybeNullOrUndefined strOrNull)
   value <- lift (jsg "JSON" # "parse" $ strValue)
   MaybeT (fromJSVal value)

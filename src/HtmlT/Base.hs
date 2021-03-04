@@ -133,7 +133,7 @@ itraverseHtml l dynRef h = do
     setup :: s -> Int -> [ElemEnv a] -> [a] -> [a] -> IO ()
     setup s idx refs old new = case (refs, old, new) of
       (_, [], [])    -> pure ()
-      ([], [], x:xs) -> mdo
+      ([], [], x:xs) -> do
         -- New list is longer, append new elements
         subscriptions <- newIORef []
         elemRef <- newRef x
@@ -219,3 +219,9 @@ catchInteractive :: HtmlT () -> (SomeException -> HtmlT ()) -> HtmlT ()
 catchInteractive html handle = ask >>= run where
   run e = local (f e) html
   f e he = he {he_catch_interactive = runHtmlT e . handle}
+
+portal :: Node -> HtmlT a -> HtmlT a
+portal rootEl h = do
+  js <- askJSM
+  let rootRef = NodeRef (pure rootEl) ((`runJSM` js) . ($ rootEl))
+  local (\e -> e {he_current_root = rootRef}) h
