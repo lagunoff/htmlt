@@ -1,18 +1,18 @@
 cabal-version: 1.12
 
-name:           massaraksh-examples
+name:           htmlt-examples
 version:        0.1.0.0
 category:       Web
-homepage:       https://github.com/lagunoff/massaraksh
+homepage:       https://github.com/lagunoff/htmlt
 author:         Vladislav Lagunov
 maintainer:     vlad.lagunov@gmail.com
 copyright:      2019 Vladislav Lagunov
 license:        BSD3
 build-type:     Simple
 
-executable massaraksh-helloworld
-  main-is: Main.hs
-  hs-source-dirs: . ../../src
+executable htmlt-hello
+  main-is: hello.hs
+  hs-source-dirs: . ../src
   ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -Wno-unused-do-bind -O0
   build-depends:
     array,
@@ -21,10 +21,8 @@ executable massaraksh-helloworld
     jsaddle,
     lens,
     mtl,
-    natural-transformation,
-    raw-strings-qq,
     text,
-    unliftio-core
+    transformers
 
   if impl(ghcjs)
     ghc-options: -dedupe
@@ -49,7 +47,6 @@ executable massaraksh-helloworld
     LambdaCase
     MultiParamTypeClasses
     NamedFieldPuns
-    OverloadedStrings
     PolyKinds
     QuasiQuotes
     RankNTypes
@@ -62,4 +59,53 @@ executable massaraksh-helloworld
     TypeSynonymInstances
     UndecidableInstances
     ViewPatterns
+
+executable htmlt-todo
+  main-is: todo.hs
+  hs-source-dirs: . ../src
+  ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -Wno-unused-do-bind -O0
+  build-depends:
+    array,
+    base >=4.7 && <5,
+    bytestring,
+    jsaddle,
+    lens,
+    mtl,
+    text,
+    transformers
+
+  if impl(ghcjs)
+    ghc-options: -dedupe
+    build-depends: ghcjs-base
+  else
+    build-depends: jsaddle-warp
+  default-language: Haskell2010
+
+  default-extensions:
+    BlockArguments
+    ConstraintKinds
+    DataKinds
+    DeriveFunctor
+    DeriveGeneric
+    DerivingStrategies
+    DuplicateRecordFields
+    FlexibleContexts
+    FlexibleInstances
+    FunctionalDependencies
+    GADTs
+    GeneralizedNewtypeDeriving
+    LambdaCase
+    MultiParamTypeClasses
+    NamedFieldPuns
+    PolyKinds
+    QuasiQuotes
+    RankNTypes
+    RecordWildCards
+    ScopedTypeVariables
+    TemplateHaskell
+    TypeApplications
+    TypeFamilies
+    TypeOperators
+    TypeSynonymInstances
+    UndecidableInstances
     ViewPatterns

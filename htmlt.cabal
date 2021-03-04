@@ -1,8 +1,8 @@
 cabal-version: 1.12
 
-name:                massaraksh
+name:                htmlt
 version:             0.1.0.0
-homepage:            https://github.com/lagunoff/massaraksh
+homepage:            https://github.com/lagunoff/htmlt
 license:             BSD3
 author:              Vladislav Lagunov
 maintainer:          vlad.lagunoff@gmail.com
@@ -14,36 +14,33 @@ extra-source-files:
 
 Flag production
   default: True
-  description: Adds optimisation
+  description: Add optimisations
 
 library
   exposed-modules:
-    Massaraksh
-    Massaraksh.Base
-    Massaraksh.DOM
-    Massaraksh.DOM.Decoders
-    Massaraksh.DOM.Impl
-    Massaraksh.Decode
-    Massaraksh.Element
-    Massaraksh.Event
-    Massaraksh.Internal
-    Massaraksh.Main
-    Massaraksh.Types
+    HtmlT
+    HtmlT.Base
+    HtmlT.DOM
+    HtmlT.Decode
+    HtmlT.Element
+    HtmlT.Event
+    HtmlT.IdSupply
+    HtmlT.Internal
+    HtmlT.Main
+    HtmlT.Property
+    HtmlT.Types
 
-  other-modules: Paths_massaraksh
-  hs-source-dirs: src-ssr, src
+  other-modules: Paths_htmlt
+  hs-source-dirs: src
   ghc-options:
     -Wall -Wno-missing-signatures -Wno-name-shadowing
     -Wno-unused-matches -Wno-unused-do-bind
   build-depends:
     base,
     bytestring,
-    exceptions,
     containers,
-    data-default,
-    hashtables,
+    exceptions,
     jsaddle,
-    blaze-builder,
     lens,
     mtl,
     text
@@ -59,10 +56,10 @@ library
     BlockArguments
     ConstraintKinds
     DataKinds
+    DeriveAnyClass
     DeriveFunctor
     DeriveGeneric
     DerivingStrategies
-    DeriveAnyClass
     DuplicateRecordFields
     FlexibleContexts
     FlexibleInstances
@@ -73,6 +70,7 @@ library
     LambdaCase
     MultiParamTypeClasses
     NamedFieldPuns
+    OverloadedStrings
     PolyKinds
     QuasiQuotes
     RankNTypes
@@ -80,11 +78,12 @@ library
     ScopedTypeVariables
     StrictData
     TemplateHaskell
+    TupleSections
     TypeApplications
     TypeFamilies
     TypeOperators
     TypeSynonymInstances
     UndecidableInstances
     ViewPatterns
-        
+    
   default-language: Haskell2010

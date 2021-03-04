@@ -1,5 +1,6 @@
-%.envrc: ./*.nix ./*.cabal
-	nix-shell -A shells.ghc --pure --run 'export -p > .envrc'
+.envrc: ./*.nix ./*.cabal
+	nix-shell -A shell --arg isGhcjs false --pure --run 'export -p > .envrc'
+.envrc-ghcjs: ./*.nix ./*.cabal
+	nix-shell -A shell --arg isGhcjs true --pure --run 'export -p > .envrc-ghcjs'
 
-%.ghcjs.envrc: ./*.nix ./*.cabal
-	nix-shell -A shells.ghcjs --pure --run 'export -p > .ghcjs.envrc'
+default: .envrc

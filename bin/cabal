@@ -1,4 +1,4 @@
 #!/usr/bin/env sh
 
 source $(dirname "${BASH_SOURCE[0]}")/include.sh
-hoogle "$@"
+cabal "$@"

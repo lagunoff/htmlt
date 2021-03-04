@@ -1,31 +1,52 @@
-# Same arguments as for reflex-platform/default.nix
-# https://github.com/reflex-frp/reflex-platform/blob/develop/default.nix
-{}:
+{ nixpkgs ? <nixpkgs>
+, isGhcjs ? false }:
 let
-  reflex-platform = import (builtins.fetchTarball {
-    url = "https://github.com/reflex-frp/reflex-platform/archive/846964a0895e819946c1a415202aee414d27cfa3.tar.gz";
-  }) { config.allowBroken = true; };
+  pkgs = import nixpkgs {};
+  combine = lib.foldr lib.composeExtensions (_: _: {});
+  cure = with pkgs.haskell.lib; x: dontCheck (doJailbreak x);
+  reflexPlatform = import reflexPlatformSrc {};
+  inherit (pkgs) lib fetchgit;
 
-in reflex-platform.project({ pkgs, ... }:{
-  useWarp = true;
-  withHoogle = true;
-  name = "massaraksh";
-
-  packages = {
-    massaraksh = ./.;
-    massaraksh-todomvc = ./examples/todomvc;
+  reflexPlatformSrc = fetchgit {
+    url = "https://github.com/reflex-frp/reflex-platform.git";
+    rev = "f019863c21ee85498e6a6e0072e617b2462b70ed";
+    sha256 = "146xfjqdwd55s9jg1ggi6akcxxxd5c0pvc4bpjx3whwiikpcv8y4";
   };
 
-  shells = {
-    ghc = ["massaraksh"];
-    ghcjs = ["massaraksh"];
-    wasm = ["massaraksh"];
+  localPackages = {
+    htmlt = ./.;
+    htmlt-examples = ./examples;
   };
 
-  shellToolOverrides = ghc: super: {
-    inherit (pkgs) pkgconfig zlib;
-    ghc-mod = null;
-    haskell-ide-engine = null;
-    cabal-cargs = pkgs.haskell.lib.dontCheck pkgs.haskellPackages.cabal-cargs;
+  overrides = super: {
+    cabal-cargs = cure;
   };
-})
+
+  extensions = [
+    (self: super:
+      lib.mapAttrs (k: v: self.callCabal2nix k v {}) localPackages
+    )
+    (self: super:
+      lib.mapAttrs (k: v: v super.${k}) (overrides super)
+    )
+  ];
+
+  haskellBase = if isGhcjs
+    then reflexPlatform.ghcjs
+    else pkgs.haskellPackages;
+
+  nativeHaskellPackages = pkgs.haskellPackages.override {
+    overrides = combine extensions;
+  };
+
+  haskellPackages = haskellBase.override {
+    overrides = combine extensions;
+  };
+in
+  haskellPackages // {
+    shell = with haskellPackages; pkgs.mkShell {
+      inputsFrom = [htmlt.env];
+      buildInputs = lib.optionals (!isGhcjs) [hoogle];
+      nativeBuildInputs = with nativeHaskellPackages; [cabal-cargs];
+    };
+  }
