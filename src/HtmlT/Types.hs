@@ -30,6 +30,9 @@ data NodeRef = NodeRef
 newtype Node = Node {unNode :: JSVal}
   deriving newtype (MakeArgs, MakeObject, ToJSVal)
 
+newtype DOMEvent = DOMEvent {unDOMEvent :: JSVal}
+  deriving newtype (MakeArgs, MakeObject, ToJSVal)
+
 runHtmlT :: HtmlEnv -> HtmlT a -> IO a
 runHtmlT e = flip runReaderT e . unHtmlT
 {-# INLINE runHtmlT #-}

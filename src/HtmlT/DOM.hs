@@ -22,7 +22,7 @@ data ListenerOpts = ListenerOpts
   deriving stock (Eq, Show, Generic)
   deriving anyclass (ToJSVal)
 
-type Decoding a = (a -> HtmlT ()) -> JSVal -> HtmlT ()
+type Decoding a = (a -> HtmlT ()) -> DOMEvent -> HtmlT ()
 
 defaultListenerOpts :: ListenerOpts
 defaultListenerOpts = ListenerOpts True False

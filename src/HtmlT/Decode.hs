@@ -1,6 +1,7 @@
 module HtmlT.Decode where
 
 import Control.Applicative
+import Data.Coerce
 import Data.Text as T
 import GHCJS.Prim
 import Language.Javascript.JSaddle hiding (Result)
@@ -26,12 +27,13 @@ decodeAt keys dec = Decoder (go keys) where
 
 withDecoder
   :: MonadJSM m
+  => Coercible domEvent JSVal
   => Decoder a
-  -> (a -> m ()) -> JSVal -> m ()
-withDecoder dec f jsval =
+  -> (a -> m ()) -> domEvent -> m ()
+withDecoder dec f (coerce -> jsval) =
   maybe (return ()) f =<<
     liftJSM (runDecoder dec jsval)
-{-# INLINE withDecoder #-}
+{-# INLINEABLE withDecoder #-}
 
 instance Functor Decoder where
   fmap f (Decoder run) = Decoder (fmap (fmap f) . run)

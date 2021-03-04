@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
 
-source ./include.sh
+source $(dirname "${BASH_SOURCE[0]}")/include.sh
 HADDOCK_ARGS=$(for a in $CABAL_CARGS; do echo "--optghc=$a"; done | tr '\r\n' ' ')
 haddock $HADDOCK_ARGS $@
