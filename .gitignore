@@ -19,4 +19,5 @@
 result
 dist
 out
+doc
 locals.nix

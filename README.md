@@ -1,38 +1,32 @@
 **:fire:API is unstable and incomplete, do not use in production:fire:**
 
-## Explanation
-Experimental GUI library in haskell based on Phil Freeman's
-[idea](https://blog.functorial.com/posts/2018-03-12-You-Might-Not-Need-The-Virtual-DOM.html)
-and [implementation](https://github.com/paf31/purescript-sdom)
+Small experimental GUI library in haskell 
 
 ## Quick API summary
 
 ### Constructing DOM
 ```hs
-el :: Text -> Html x -> Html x
-el' :: Text -> Html x -> Html (x, Node)
-nsEl :: Text -> Text -> Html x -> Html x
-text :: Text -> Html ()
-dynText :: Dynamic Text -> Html ()
+el :: Text -> HtmlT x -> HtmlT x
+el' :: Text -> HtmlT x -> HtmlT (x, Node)
+elns :: Text -> Text -> HtmlT x -> HtmlT x
+text :: Text -> HtmlT ()
+dynText :: Dynamic Text -> HtmlT ()
 ```
 
-`el`, `el'` and `nsEl` create a new HTML element and attach it to the
-parent, which is given by Reader-like enviroment inside `Html`. There
+`el`, `el'` and `elns` create a new HTML element and attach it to the
+root, which is given by Reader-like enviroment inside `HtmlT`. There
 are shortcut versions (`div_`, `h1_`, `span_` etc) for the most common
 HTML5 tags declared in
-[Massaraksh.Element](./src/Massaraksh/Element.hs)
+[HtmlT.Element](./src/HtmlT/Element.hs)
 
-### Applying attributes and props
+### Applying attributes and properties
 
 ```hs
-prop :: Text -> v -> Html ()
-dynProp :: Text -> Dynamic v -> Html ()
+prop :: Text -> v -> HtmlT ()
+dynProp :: Text -> Dynamic v -> HtmlT ()
 
-(=:) :: Text -> Text -> Html () -- Infix of 'prop'
-(~:) :: Text -> Dynamic v -> Html () -- Infix of 'dynProp'
-
-attr :: Text -> Text -> Html ()
-dynAttr :: Text -> Text -> Html ()
+attr :: Text -> Text -> HtmlT ()
+dynAttr :: Text -> Text -> HtmlT ()
 ```
 
 `prop` assignes a property (like `value` to HTMLInputElement) to a
@@ -42,70 +36,63 @@ properties (there is a suble
 [difference](https://stackoverflow.com/questions/6003819/what-is-the-difference-between-properties-and-attributes-in-html)).
 
 ```hs
--- Example applying properties to tags
-menuWidget :: Html () 
+-- Example applying properties to elements
+menuWidget :: HtmlT () 
 menuWidget = 
-  ul_ do
-    "className" =: "menu"
-    li_ do
-      a_ do "One"; "href" =: "#one" -- Html has IsString instance 
-    li_ do
-      a_ do "Two"; "href" =: "#two" -- It is possible to add props after children
-    li_ do
-      a_ do "Three"; "href" =: "#three"
+  ul_ [class_ "menu"] do
+    li_ $
+      a_ [href_ "#one"] $ "One" -- HtmlT has IsString instance 
+    li_ $
+      a_ [href_ "#two"] $ "Two"
+    li_ $
+      a_ [href_ "#three"] $ "Three"
 ```
 
 ### Reacting to events
 
 ```hs
-on :: Text -> Decoder (Html x) -> Html ()
-on_ :: Text -> Html x -> Html ()
+on :: Text -> (DOMEvent -> HtmlT ()) -> HtmlT ()
+on_ :: Text -> HtmlT () -> HtmlT ()
 ```
 
-`on` and `on_` essentially call `addEventListener` for the parent html
-element, the differens is that `on` runs a `Decoder` (think Aeson
-parser) against the DOM `Event` usually to extract some information
-(like `value` from `InputEvent`), `on_` is used where no additional
-information about the event is needed (clicks for example).
-
+`on` and `on_` essentially call `addEventListener` on the root element
+element and run the given action when DOM event fires 
 
 ```hs
-counterWidget :: Html ()
+counterWidget :: HtmlT ()
 counterWidget = do
-  (dCounter, modify) <- newDyn (0::Int)
+  counterRef <- newRef @Int 0
   div_ do
-    span_ $ dynText (showt <$> dCounter)
+    span_ $
+      dynText $ T.pack . show <$> fromRef counterRef
     button_ do
-      "Decrease"
-      on_ "click" do modify pred
+      on_ "click" $ modifyRef counterRef pred
+      text "Decrease"
     button_ do
-      "Increase"
-      on_ "click" do modify (+ 1)
+      on_ "click" $ modifyRef counterRef succ
+      text "Increase"
 ```
-
 
 ## Minimal complete app
 
 ```hs
-import Massaraksh
-import Data.Text as T
+import Data.Text
+import HtmlT
 
-type Model = Int
-
-widget :: Html ()
-widget = do
-  (dynVar, modify) <- liftIO (newDyn 0)
-  div_ do
-    "className" =: "root"
+main :: IO ()
+main = withJSM $ attachToBody do
+  colorRef <- newRef 0
+  div_ [class_ "root"] do
     h1_ do
-      "style" ~: headerStyle <$> dynVar
-      on_ "mouseenter" do liftIO $ sync $ modify (+ 1)
+      dynStyle "color" $ getColor <$> fromRef colorRef
+      on_ "mouseenter" do modifyRef colorRef (+ 1)
       text "Hello, World!"
-    el "style" do "type" =: "text/css"; text css
+    el "style" do text styles
+  where
+    getColor n =
+      colors !! (n `mod` Prelude.length colors)
 
-headerStyle n =
- ("color: "::Text) <> colors !! (n `mod` length colors)
-
+colors :: [Text]
 colors =
   [ "rgb(173,192,84)", "rgb(22,153,190)", "rgb(22,93,24)", "rgb(199,232,42)"
   , "rgb(235,206,57)", "rgb(225,57,149)", "rgb(255,134,157)", "rgb(231,251,35)"
@@ -113,9 +100,6 @@ colors =
   , "rgb(155,247,3)", "rgb(199,31,74)", "rgb(109,198,34)", "rgb(170,52,228)"
   , "rgb(61,44,247)", "rgb(118,45,39)", "rgb(248,116,17)", "rgb(27,184,238)"
   , "rgb(117,23,222)" ]
-
-
-main = defaultMain view 0
 ```
 
 ## Other examples
@@ -125,14 +109,14 @@ main = defaultMain view 0
     <tr>
       <td>Hello World</td>
       <td>
-	    <a href=./examples/hello-world/Main.hs target=_blank>source</a> |
+	    <a href=./examples/hello.hs target=_blank>source</a> |
 		<a href=https://lagunoff.github.io/massaraksh-hello-world/ target=_blank>demo<a>
 	  </td>
     </tr>
     <tr>
       <td>TodoMVC</td>
       <td>
-	    <a href=./examples/todomvc/Main.hs target=_blank>source</a> |
+	    <a href=./examples/todo.hs target=_blank>source</a> |
 		<a href=https://lagunoff.github.io/massaraksh-todomvc target=_blank>demo<a>
 	  </td>
     </tr>
@@ -146,4 +130,4 @@ main = defaultMain view 0
  - [ ] Faster updates for large lists, using similar technique to
        [diffarray](https://hackage.haskell.org/package/diffarray-0.1.1/docs/Data-Array-Diff.html)
  - [ ] Bindings to non-web GUIs (e.g. GTK or ReactNative)
- - [ ] Split library into multiple packages `massaraksh, massaraksh-html, massaraksh-*, etc`
+ - [ ] Add benchmarks

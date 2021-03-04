@@ -8,13 +8,13 @@ main = withJSM $ attachToBody do
   colorRef <- newRef 0
   div_ [class_ "root"] do
     h1_ do
-      dynStyle $ mkStyle <$> fromRef colorRef
+      dynStyle "color" $ getColor <$> fromRef colorRef
       on_ "mouseenter" do modifyRef colorRef (+ 1)
       text "Hello, World!"
     el "style" do text styles
   where
-    mkStyle n =
-      "color: " <> colors !! (n `mod` Prelude.length colors)
+    getColor n =
+      colors !! (n `mod` Prelude.length colors)
 
 colors :: [Text]
 colors =
