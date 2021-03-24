@@ -111,6 +111,15 @@ on name f = ask >>= run where
 on_ :: Text -> HtmlT () -> HtmlT ()
 on_ name = on name . const
 
+onOpts :: Text -> ListenerOpts -> (DOMEvent -> HtmlT ()) -> HtmlT ()
+onOpts name opts f = ask >>= run where
+  listen e rootEl = liftIO $ runHtmlT e $
+    onGlobalEvent opts rootEl name f
+  run e = mutateRoot $ listen e
+
+onOpts_ :: Text -> ListenerOpts -> HtmlT () -> HtmlT ()
+onOpts_ name opts = onOpts name opts . const
+
 -- | Attach a listener to arbitrary target, not just the current root
 -- element (usually that would be @window@, @document@ or @body@
 -- objects)

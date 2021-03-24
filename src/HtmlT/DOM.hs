@@ -11,6 +11,7 @@ import Data.String
 import Data.Text as T
 import GHC.Generics
 import Language.Javascript.JSaddle as JS
+import Debug.Trace
 
 import HtmlT.Decode
 import HtmlT.Types
@@ -117,6 +118,7 @@ addEventListener
   -> JSM (JSM ())
 addEventListener ListenerOpts{..} target name f = do
   cb <- function \_ _ [event] -> do
+    traceShowM $ "addEventListener" <> name
     when lo_stop_propagation do
       void $ event # ("stopPropagation"::Text) $ ()
     when lo_prevent_default do

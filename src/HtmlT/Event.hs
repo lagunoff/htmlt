@@ -15,6 +15,8 @@ import Data.List
 import Debug.Trace
 import GHC.Generics
 import qualified Data.Map as M
+import System.IO.Unsafe
+import GHC.Exts
 
 import HtmlT.IdSupply
 
@@ -199,8 +201,8 @@ defer k act = Reactive (modify f) where
   f (ReactiveState s) = ReactiveState (M.insert k act s)
 
 -- | Run a reactive transaction
-sync :: Reactive a -> IO a
-sync act = loop (ReactiveState M.empty) act where
+sync :: MonadIO m => Reactive a -> m a
+sync act = liftIO $ loop (ReactiveState M.empty) act where
   loop :: ReactiveState -> Reactive a -> IO a
   loop rs (Reactive act) = do
     (r, newRs) <- runStateT act rs
@@ -257,13 +259,17 @@ traceEvent = traceEventWith show
 -- function
 traceEventWith :: (a -> String) -> String -> Event a -> Event a
 traceEventWith show' tag (Event f) = Event \s c ->
-  f s (c . (\x -> trace (tag ++ ": " ++ show' x) x))
+  f s (c . (\x -> if s == Defer then trace (tag ++ ": " ++ show' x) x else x))
 {-# INLINE traceEventWith #-}
 
 -- | Print a debug message when value inside Dynamic changes
 traceDyn :: Show a => String -> Dynamic a -> Dynamic a
 traceDyn = traceDynWith show
 {-# INLINE traceDyn #-}
+
+-- | Print a debug message when value inside Dynamic changes
+traceRef :: Show a => String -> DynRef a -> DynRef a
+traceRef s DynRef{..} = DynRef{dr_dynamic = traceDynWith show s dr_dynamic, ..}
 
 -- | Print a debug message when value inside Dynamic changes using
 -- given printing function
@@ -284,6 +290,47 @@ withOld initial (Event s) = Event \x k -> do
       liftIO $ writeIORef oldRef a
       k (old, a)
   s x f
+
+fmapHold :: MonadIO m => (a -> b) -> Dynamic a -> m (Dynamic b)
+fmapHold f Dynamic{..} = liftIO do
+  initialA <- dynamic_read
+  bRef <- newIORef (f initialA)
+  eventId <- liftIO $ nextId @Event
+  (updates, trigUpdates) <- newEvent
+  -- FIXME: Memory leak!
+  unEvent dynamic_updates Defer \newA -> do
+    let newB = f newA
+    bRef <- liftIO $ writeIORef bRef newB
+    trigUpdates newB
+  return $ Dynamic (readIORef bRef) updates
+
+splatIO :: MonadIO m => Dynamic (a -> b) -> Dynamic a -> m (Dynamic b)
+splatIO df da = liftIO do
+  fRef <- newIORef =<< dynamic_read df
+  aRef <- newIORef =<< dynamic_read da
+  bRef <- newIORef =<< liftA2 ($) (readIORef fRef) (readIORef aRef)
+  let
+    r = readIORef bRef
+    u = Event \s k -> do
+      eventId <- liftIO $ nextId @Event
+      let
+        doFire = do
+          f <- liftIO $ readIORef fRef
+          a <- liftIO $ readIORef aRef
+          let newB = f a
+          liftIO $ writeIORef bRef newB
+          k newB
+        fire = case s of
+          Immediate -> doFire
+          Defer     -> defer eventId doFire
+      c1 <- unEvent (dynamic_updates df) s \f -> do
+        liftIO $ writeIORef fRef f
+        fire
+      c2 <- unEvent (dynamic_updates da) s \a -> do
+        liftIO $ writeIORef aRef a
+        fire
+      pure (c1 *> c2)
+  return $ Dynamic r u
 
 instance Functor Event where
   fmap f (Event s) = Event \sel k -> s sel . (. f) $ k
@@ -314,39 +361,22 @@ instance Applicative Event where
         a <- liftIO $ readIORef latestA
         for_ (liftA2 (,) f a) (k . uncurry ($))
       fire = case s of Immediate -> doFire; Defer -> defer eventId doFire
-      subscribe (Event s) = s Immediate
-    c1 <- eF `subscribe` \f -> do
+    c1 <- unEvent eF s \f -> do
       liftIO $ writeIORef latestF (Just f)
       fire
-    c2 <- eA `subscribe` \a -> do
+    c2 <- unEvent eA s \a -> do
       liftIO $ writeIORef latestA (Just a)
       fire
     pure (c1 *> c2)
 
 instance Functor Dynamic where
-  fmap f (Dynamic s u) = Dynamic (fmap f s) (fmap f u)
-  {-# INLINE fmap #-}
+  fmap f d = unsafePerformIO $ fmapHold f d
+  {-# NOINLINE fmap #-}
 
 instance Applicative Dynamic where
   pure = constDyn
-  (<*>) df da = Dynamic r u where
-    r = liftA2 ($) (dynamic_read df) (dynamic_read da)
-    u = Event \s k -> do
-      eventId <- liftIO $ nextId @Event
-      let
-        doFire newF newA = do
-          f <- liftIO $ maybe (dynamic_read df) pure newF
-          a <- liftIO $ maybe (dynamic_read da) pure newA
-          k (f a)
-        fire newF newA = case s of
-          Immediate -> doFire newF newA
-          Defer     -> defer eventId (doFire newF newA)
-        subscribe (Event s) = s Immediate
-      c1 <- dynamic_updates df `subscribe` \f ->
-        fire (Just f) Nothing
-      c2 <- dynamic_updates da `subscribe` \a ->
-        fire Nothing (Just a)
-      pure (c1 *> c2)
+  (<*>) df da = unsafePerformIO $ splatIO df da
+  {-# NOINLINE (<*>) #-}
 
 instance Semigroup x => Semigroup (Reactive x) where
   (<>) = liftA2 (<>)
