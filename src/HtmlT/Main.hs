@@ -9,6 +9,8 @@ import Language.Javascript.JSaddle
 import HtmlT.DOM
 import HtmlT.Internal
 import HtmlT.Types
+import HtmlT.Event
+import qualified HtmlT.HashMap as H
 
 #ifndef ghcjs_HOST_OS
 import Control.Applicative ((<|>))
@@ -19,11 +21,12 @@ import System.Environment
 attach :: Node -> HtmlT a -> JSM (a, HtmlEnv)
 attach rootEl render = do
   js <- askJSM
-  subscriptions <- liftIO (newIORef [])
+  fins <- liftIO $ Finalizers <$> newIORef []
+  subs <- liftIO $ Subscriptions <$> H.new
   postHooks <- liftIO (newIORef [])
   let rootRef = NodeRef (pure rootEl) (flip runJSM js . ($ rootEl))
   (elmRef, flush) <- liftIO (deferMutations rootRef)
-  let env = HtmlEnv elmRef subscriptions postHooks js throwIO
+  let env = HtmlEnv elmRef fins subs postHooks js throwIO
   res <- liftIO $ runHtmlT env render
   liftIO flush
   liftIO (readIORef postHooks >>= mapM_ (runHtmlT env))

@@ -59,35 +59,13 @@ withRootNode rootEl child = do
   rootRef <- newNodeRef rootEl
   local (\env -> env { he_current_root = rootRef }) child
 
-subscribeHtmlT :: Event a -> Callback a -> HtmlT (IO ())
-subscribeHtmlT e k = do
-  finsRef <- asks he_finalizers
-  catch <- asks he_catch_interactive
-  let
-    k2 x = k x `catchSync` (liftIO . catch)
-    run = do
-      unsub <- e `subscribe` k2
-      unsubRef <- newIORef unsub
-      modifyIORef' finsRef ((:) unsubRef)
-      return $ modifyIORef' finsRef (delete unsubRef) *> unsub
-  liftIO run
-
-forUpdates :: Dynamic s -> Callback s -> HtmlT (IO ())
-forUpdates d f = dynamic_updates d `subscribeHtmlT` f
-{-# INLINE forUpdates #-}
-
-forDyn :: Dynamic a -> Callback a -> HtmlT (IO ())
-forDyn dyn k = do
-  liftIO (dynamic_read dyn) >>= liftIO . sync . k
-  forUpdates dyn k
-
 catchSync :: (MonadCatch m, MonadThrow m) => m a -> (SomeException -> m a) -> m a
 catchSync io h = io `catch` \e -> case E.fromException e of
   Just (E.SomeAsyncException _) -> throwM e
   Nothing                       -> h e
 
-addFinalizer :: IO () -> HtmlT ()
+addFinalizer :: (MonadIO m, MonadFinalize m) => IO () -> m ()
 addFinalizer fin = do
-  subs <- asks he_finalizers
+  fins <- askFinalizers
   finRef <- liftIO $ newIORef fin
-  liftIO $ modifyIORef' subs (finRef :)
+  liftIO $ modifyIORef (unFinalizers fins) (fin:)

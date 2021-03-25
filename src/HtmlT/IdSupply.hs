@@ -2,9 +2,11 @@ module HtmlT.IdSupply where
 
 import Data.IORef
 import System.IO.Unsafe
+import Data.Hashable
 
 newtype Id a = Id {unId :: Int}
-  deriving (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show)
+  deriving newtype Hashable
 
 globalRef :: IORef Int
 globalRef = unsafePerformIO (newIORef 0)
