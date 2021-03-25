@@ -1,3 +1,14 @@
+-- module HtmlT.HashMap
+--   ( HashMap
+--   , module HT
+--   ) where
+
+-- import Control.Monad.ST
+-- import Data.HashTable.IO as HT
+-- import Data.Hashable
+
+-- type HashMap k v = CuckooHashTable k v
+
 module HtmlT.HashMap where
 
 import Data.IORef

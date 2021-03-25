@@ -317,43 +317,46 @@ withOld initial (Event s) = Event \k -> do
       k (old, a)
   s f
 
-fmapM :: (MonadIO m, MonadSubscribe m) => (a -> b) -> Dynamic a -> m (Dynamic b)
-fmapM f Dynamic{..} = do
-  initialA <- liftIO dynamic_read
-  bRef <- liftIO $ newIORef (f initialA)
+mapDyn :: MonadReactive m => Dynamic a -> (a -> b) -> m (Dynamic b)
+mapDyn dynA f = do
+  initialA <- liftIO $ dynamic_read dynA
+  latestA <- liftIO $ newIORef initialA
+  latestB <- liftIO $ newIORef (f initialA)
   eventId <- liftIO $ nextId @Event
-  (updates, trigUpdates) <- newEvent
-  -- FIXME: Memory leak!
-  liftIO $ unEvent dynamic_updates \newA -> do
-    let newB = f newA
-    bRef <- liftIO $ writeIORef bRef newB
-    trigUpdates newB
-  return $ Dynamic (readIORef bRef) updates
-
-splatM :: MonadReactive m => m (Dynamic (a -> b)) -> Dynamic a -> m (Dynamic b)
-splatM mdf da = do
-  df <- mdf
-  fRef <- liftIO $ newIORef =<< dynamic_read df
-  aRef <- liftIO $ newIORef =<< dynamic_read da
-  bRef <- liftIO $ newIORef =<< liftA2 ($) (readIORef fRef) (readIORef aRef)
   subs <- askSubscribe
-  eventId <- liftIO $ nextId @Event
   let
-    r = readIORef bRef
-    u = Event $ subscribeImpl subs eventId
-    doFire = do
-      f <- liftIO $ readIORef fRef
-      a <- liftIO $ readIORef aRef
-      let newB = f a
-      liftIO $ writeIORef bRef newB
+    updates = Event $ subscribeImpl subs eventId
+    fire = defer eventId do
+      newB <- liftIO $ f <$> readIORef latestA
+      liftIO $ writeIORef latestB newB
       triggerImpl subs eventId newB
-  dynamic_updates df `subscribe` \f -> do
-    liftIO $ writeIORef fRef f
-    defer eventId doFire
-  dynamic_updates da `subscribe` \a -> do
-    liftIO $ writeIORef aRef a
-    defer eventId doFire
-  return $ Dynamic r u
+  dynamic_updates dynA `subscribe` \newA -> do
+    liftIO $ writeIORef latestA newA
+    defer eventId fire
+  return $ Dynamic (readIORef latestB) updates
+
+mapDyn2 :: MonadReactive m => Dynamic a -> Dynamic b -> (a -> b -> c) -> m (Dynamic c)
+mapDyn2 aDyn bDyn f = do
+  initialA <- liftIO $ dynamic_read aDyn
+  initialB <- liftIO $ dynamic_read bDyn
+  latestA <- liftIO $ newIORef initialA
+  latestB <- liftIO $ newIORef initialB
+  latestC <- liftIO $ newIORef (f initialA initialB)
+  eventId <- liftIO $ nextId @Event
+  subs <- askSubscribe
+  let
+    fire = defer eventId do
+      newC <- liftIO $ liftA2 f (readIORef latestA) (readIORef latestB)
+      liftIO $ writeIORef latestC newC
+      triggerImpl subs eventId newC
+    updates = Event $ subscribeImpl subs eventId
+  dynamic_updates aDyn `subscribe` \newA -> do
+    liftIO $ writeIORef latestA newA
+    defer eventId fire
+  dynamic_updates bDyn `subscribe` \newB -> do
+    liftIO $ writeIORef latestB newB
+    defer eventId fire
+  return $ Dynamic (readIORef latestC) updates
 
 subscribeImpl :: forall a. Subscriptions -> Id Event -> Callback a -> IO Canceller
 subscribeImpl (Subscriptions ht) eventId k = do
@@ -373,7 +376,11 @@ instance Functor Event where
   {-# INLINE fmap #-}
 
 instance Semigroup a => Semigroup (Event a) where
-  (<>) = undefined
+  (<>) (Event e1) (Event e2) = Event \k -> do
+    eventId <- nextId @Event
+    c1 <- e1 (defer eventId . k)
+    c2 <- e2 (defer eventId . k)
+    return (c1 *> c2)
 
 instance Semigroup a => Monoid (Event a) where
   mempty = never
@@ -386,18 +393,15 @@ instance Applicative Dynamic where
   (<*>) df da = Dynamic read updates where
     read = liftA2 ($) (dynamic_read df) (dynamic_read da)
     updates = Event \k -> do
-      eventId <- liftIO $ nextId @Event
+      eventId <- nextId @Event
       let
-        doFire newF newA = do
+        fire newF newA = defer eventId do
           f <- liftIO $ maybe (dynamic_read df) pure newF
           a <- liftIO $ maybe (dynamic_read da) pure newA
           k (f a)
-        fire newF newA =
-          defer eventId (doFire newF newA)
-        subscribe (Event s) = s
-      c1 <- dynamic_updates df `subscribe` \f ->
+      c1 <- dynamic_updates df `unEvent` \f ->
         fire (Just f) Nothing
-      c2 <- dynamic_updates da `subscribe` \a ->
+      c2 <- dynamic_updates da `unEvent` \a ->
         fire Nothing (Just a)
       pure (c1 *> c2)
 

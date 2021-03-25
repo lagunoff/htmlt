@@ -305,13 +305,9 @@ itraverseHtml dynRef l h = do
 -- >   text "Show my blog page"
 dyn_ :: Dynamic (HtmlT ()) -> HtmlT ()
 dyn_ dyn = do
-  traceM "env <- ask"
   env <- ask
-  traceM "js <- askJSM"
   js <- askJSM
-  traceM "childRef <- liftIO (newIORef Nothing)"
   childRef <- liftIO (newIORef Nothing)
-  traceM "mutate <- askMutateRoot"
   mutate <- askMutateRoot
   let
     unsub newEnv = do
@@ -339,9 +335,7 @@ dyn_ dyn = do
             <* triggerPost
       runHtmlT newEnv html <* commit
     emptyContent = mutate removeAllChilds
-  traceM "addFinalizer (unsub Nothing)"
   addFinalizer (unsub Nothing)
-  traceM "void $ forDyn dyn (liftIO . mutate . (void .) . setup)"
   void $ forDyn dyn (liftIO . mutate . (void .) . setup)
 
 catchInteractive :: HtmlT () -> (SomeException -> HtmlT ()) -> HtmlT ()
