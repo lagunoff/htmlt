@@ -4,6 +4,7 @@ module HtmlT.Main where
 import Control.Exception
 import Control.Monad.Reader
 import Data.IORef
+import Data.Text
 import Language.Javascript.JSaddle
 
 import HtmlT.DOM
@@ -18,19 +19,32 @@ import qualified Language.Javascript.JSaddle.Warp as Warp
 import System.Environment
 #endif
 
-attach :: Node -> HtmlT a -> JSM (a, HtmlEnv)
-attach rootEl render = do
+data InitOpts = InitOpts
+  { initopts_finalizers :: Finalizers
+  , initopts_subscriptions :: Subscriptions
+  , initopts_root_element :: Node
+  }
+
+attachOpts :: InitOpts -> HtmlT a -> JSM (a, HtmlEnv)
+attachOpts InitOpts{..} render = do
   js <- askJSM
-  fins <- liftIO $ Finalizers <$> newIORef []
-  subs <- liftIO $ Subscriptions <$> H.new
   postHooks <- liftIO (newIORef [])
-  let rootRef = NodeRef (pure rootEl) (flip runJSM js . ($ rootEl))
-  (elmRef, flush) <- liftIO (deferMutations rootRef)
-  let env = HtmlEnv elmRef fins subs postHooks js throwIO
+  let rootRef = NodeRef (pure initopts_root_element) (flip runJSM js . ($ initopts_root_element))
+  (rootRef', flush) <- liftIO (deferMutations rootRef)
+  let env = HtmlEnv rootRef' initopts_finalizers initopts_subscriptions postHooks js throwIO
   res <- liftIO $ runHtmlT env render
   liftIO flush
   liftIO (readIORef postHooks >>= mapM_ (runHtmlT env))
+  onBeforeUnload do
+    fins <- readIORef (unFinalizers initopts_finalizers)
+    sequence_ fins
   pure (res, env)
+
+attach :: Node -> HtmlT a -> JSM (a, HtmlEnv)
+attach rootEl render = do
+  fins <- liftIO $ Finalizers <$> newIORef []
+  subs <- liftIO $ Subscriptions <$> H.new
+  attachOpts (InitOpts fins subs rootEl) render
 
 attachToBody :: HtmlT a -> JSM (a, HtmlEnv)
 attachToBody h = getCurrentBody >>= (`attach` h)

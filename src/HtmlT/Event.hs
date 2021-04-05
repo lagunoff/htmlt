@@ -60,7 +60,7 @@ newtype ReactiveState = ReactiveState
   }
   deriving stock Generic
 
--- | Evaluation of effects triggered by firing of an event
+-- | Evaluation of effects triggered by event firing
 newtype Reactive a = Reactive (StateT ReactiveState IO a)
   deriving newtype (Functor, Applicative, Monad, MonadIO)
   deriving newtype (MonadState ReactiveState, MonadFix, MonadCatch, MonadThrow)
@@ -266,15 +266,15 @@ holdUniqDyn = holdUniqDynBy (==)
 -- | Same as 'holdUniqDyn' but accepts arbitrary equality test
 -- function
 holdUniqDynBy :: (a -> a -> Bool) -> Dynamic a -> Dynamic a
-holdUniqDynBy equal Dynamic{..} = newDyn where
-  update = Event \k -> do
+holdUniqDynBy equal Dynamic{..} = dynamic where
+  updates = mapMaybeE id $ Event \k -> do
     old <- liftIO dynamic_read
     oldRef <- liftIO (newIORef old)
     unEvent dynamic_updates \new -> do
       old <- liftIO (readIORef oldRef)
       liftIO $ writeIORef oldRef new
       k if old `equal` new then Nothing else Just new
-  newDyn = Dynamic dynamic_read (mapMaybeE id update)
+  dynamic = Dynamic dynamic_read updates
 
 -- | Print a debug message when given event fires
 traceEvent :: Show a => String -> Event a -> Event a

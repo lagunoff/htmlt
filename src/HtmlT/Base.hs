@@ -1,7 +1,7 @@
 -- | Most basic functions and definitions exported by the library
 module HtmlT.Base where
 
-import Control.Exception
+import Control.Exception as Ex
 import Control.Lens hiding ((#))
 import Control.Monad.Reader
 import Data.Coerce
@@ -136,12 +136,13 @@ onGlobalEvent
   -- ^ Callback that accepts reference to the DOM event
   -> HtmlT ()
 onGlobalEvent opts target name f = ask >>= run where
-  mkEvent js = Event \k -> liftIO $ flip runJSM js do
+  mkEvent e js = Event \k -> liftIO $ flip runJSM js do
     unlisten <- addEventListener opts target name \event -> do
-      void . liftIO . sync . k . f $ coerce event
+      void . liftIO . catc e . sync . k . f $ coerce event
     pure $ liftIO $ runJSM unlisten js
   run e@HtmlEnv{..} = void $
-    subscribe (mkEvent he_js_context) (liftIO . runHtmlT e)
+    subscribe (mkEvent e he_js_context) (liftIO . runHtmlT e)
+  catc e = flip Ex.catch (he_catch_interactive e)
 
 -- | Assign CSS classes to the current root element. Compare to @prop
 -- "className"@ can be used multiple times for the same root
