@@ -11,6 +11,9 @@ import Data.String
 import Data.Text as T
 import GHC.Generics
 import Language.Javascript.JSaddle as JS
+#ifdef ghcjs_HOST_OS
+import GHCJS.Foreign.Callback
+#endif
 
 import HtmlT.Decode
 import HtmlT.Types
@@ -67,6 +70,8 @@ classListRemove e c = do
 setTextValue :: Node -> Text -> JSM ()
 setTextValue e c = do
   void $ e <# ("nodeValue"::Text) $ c
+onBeforeUnload :: IO () -> JSM ()
+onBeforeUnload _ = return ()
 #else
 foreign import javascript unsafe
   "$1.appendChild($2)"
@@ -107,6 +112,18 @@ foreign import javascript unsafe
 foreign import javascript unsafe
   "$1.nodeValue = $2;"
   setTextValue :: Node -> Text -> JSM ()
+foreign import javascript unsafe
+  "(function(cb){\
+    window.addEventListener('beforeunload', function(e) {\
+      delete e['returnEvent'];\
+      cb();\
+    })\
+   })($1)"
+  js_onBeforeUnload :: Callback a -> JSM ()
+onBeforeUnload :: IO () -> JSM ()
+onBeforeUnload cb = do
+  syncCb <- syncCallback ThrowWouldBlock cb
+  js_onBeforeUnload syncCb
 #endif
 
 addEventListener

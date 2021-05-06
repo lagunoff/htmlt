@@ -1,7 +1,7 @@
 -- | Most basic functions and definitions exported by the library
 module HtmlT.Base where
 
-import Control.Exception
+import Control.Exception as Ex
 import Control.Lens hiding ((#))
 import Control.Monad.Reader
 import Data.Coerce
@@ -11,6 +11,7 @@ import Data.JSString.Text as JSS
 import Data.List as L
 import Data.Text as T hiding (index)
 import Language.Javascript.JSaddle as JS
+import Debug.Trace
 
 import HtmlT.DOM
 import HtmlT.Event
@@ -60,7 +61,7 @@ dynText d = do
   txt <- readDyn d
   js <- askJSM
   textNode <- liftJSM (createTextNode txt)
-  forUpdates d \new -> void $ liftIO do
+  forEvent_ (updates d) \new -> void $ liftIO do
     flip runJSM js $ setTextValue textNode new
   mutateRoot (`appendChild` textNode)
 
@@ -111,6 +112,15 @@ on name f = ask >>= run where
 on_ :: Text -> HtmlT () -> HtmlT ()
 on_ name = on name . const
 
+onOpts :: Text -> ListenerOpts -> (DOMEvent -> HtmlT ()) -> HtmlT ()
+onOpts name opts f = ask >>= run where
+  listen e rootEl = liftIO $ runHtmlT e $
+    onGlobalEvent opts rootEl name f
+  run e = mutateRoot $ listen e
+
+onOpts_ :: Text -> ListenerOpts -> HtmlT () -> HtmlT ()
+onOpts_ name opts = onOpts name opts . const
+
 -- | Attach a listener to arbitrary target, not just the current root
 -- element (usually that would be @window@, @document@ or @body@
 -- objects)
@@ -126,12 +136,13 @@ onGlobalEvent
   -- ^ Callback that accepts reference to the DOM event
   -> HtmlT ()
 onGlobalEvent opts target name f = ask >>= run where
-  mkEvent js = Event \s k -> liftIO $ flip runJSM js do
+  mkEvent e js = Event \k -> liftIO $ flip runJSM js do
     unlisten <- addEventListener opts target name \event -> do
-      void . liftIO . sync . k . f $ coerce event
+      void . liftIO . catc e . sync . k . f $ coerce event
     pure $ liftIO $ runJSM unlisten js
   run e@HtmlEnv{..} = void $
-    subscribeHtmlT (mkEvent he_js_context) (liftIO . runHtmlT e)
+    subscribe (mkEvent e he_js_context) (liftIO . runHtmlT e)
+  catc e = flip Ex.catch (he_catch_interactive e)
 
 -- | Assign CSS classes to the current root element. Compare to @prop
 -- "className"@ can be used multiple times for the same root
@@ -233,13 +244,13 @@ itraverseHtml dynRef l h = do
       (_, [], [])    -> pure ()
       ([], [], x:xs) -> do
         -- New list is longer, append new elements
-        subscriptions <- newIORef []
-        elemRef <- newRef x
+        fins <- Finalizers <$> newIORef []
+        elemRef <- runSubscribeT (he_subscriptions hte) $ newRef x
         postRef <- liftIO (newIORef [])
         let
           elemRef' = elemRef {dr_modifier=mkModifier idx (fromRef elemRef)}
           newEnv = hte
-            { he_finalizers = subscriptions
+            { he_finalizers = fins
             , he_post_hooks = postRef }
           itemRef = ElemEnv newEnv elemRef' (dr_modifier elemRef)
         runHtmlT newEnv $ h idx elemRef'
@@ -262,8 +273,8 @@ itraverseHtml dynRef l h = do
         error "itraverseHtml: Incoherent internal state"
 
     unsub = traverse_ \ElemEnv{..} -> do
-      subscriptions <- liftIO . readIORef . he_finalizers $ ee_htmlEnv
-      liftIO $ for_ subscriptions (readIORef >=> id)
+      let fins = he_finalizers ee_htmlEnv
+      liftIO $ readIORef (unFinalizers fins) >>= sequence_
 
     mkModifier :: Int -> Dynamic a -> (a -> a) -> Reactive ()
     mkModifier idx dyn f = do
@@ -273,7 +284,7 @@ itraverseHtml dynRef l h = do
   liftIO $ setup s 0 [] [] (toListOf l s)
   addFinalizer $ readIORef itemRefs >>= unsub
   let eUpdates = withOld s (dynamic_updates $ fromRef dynRef)
-  subscribeHtmlT eUpdates \(old, new) -> do
+  forEvent_ eUpdates \(old, new) -> do
     refs <- liftIO (readIORef itemRefs)
     liftIO $ setup new 0 refs (toListOf l old) (toListOf l new)
   pure ()
@@ -303,17 +314,17 @@ dyn_ dyn = do
     unsub newEnv = do
       oldEnv <- readIORef childRef
       for_ oldEnv \HtmlEnv{..} -> do
-        subs <- readIORef he_finalizers
-        for_ subs (readIORef >=> id)
-        writeIORef he_finalizers []
+        subs <- readIORef $ unFinalizers he_finalizers
+        sequence_ subs
+        writeIORef (unFinalizers he_finalizers) []
       writeIORef childRef newEnv
     setup html rootEl = liftIO do
       postHooks <- newIORef []
-      subscriptions <- newIORef []
+      fins <- Finalizers <$> newIORef []
       (elmRef, flush) <- deferMutations (he_current_root env)
       let
         newEnv = env
-          { he_finalizers = subscriptions
+          { he_finalizers = fins
           , he_post_hooks = postHooks
           , he_current_root = elmRef }
         triggerPost = runHtmlT newEnv . sequence_

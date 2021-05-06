@@ -4,7 +4,7 @@ import Data.IORef
 import System.IO.Unsafe
 
 newtype Id a = Id {unId :: Int}
-  deriving (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show)
 
 globalRef :: IORef Int
 globalRef = unsafePerformIO (newIORef 0)

@@ -6,23 +6,28 @@
 module HtmlT.Event where
 
 import Control.Applicative
+import Control.Monad.Reader
 import Control.Lens (Lens', over)
 import Control.Monad.Catch
 import Control.Monad.State
 import Data.Foldable
 import Data.IORef
+import Data.Maybe
 import Data.List
 import Debug.Trace
 import GHC.Generics
+import GHC.Exts
 import qualified Data.Map as M
+import Unsafe.Coerce
 
 import HtmlT.IdSupply
+import qualified HtmlT.HashMap as H
 
 -- | Stream of event occurences of type @a@. Actual representation is
 -- just a function that subscribes to the event and returns the action
 -- to unsubscribe.
 newtype Event a = Event
-  { unEvent :: Stage -> Callback a -> IO Canceller
+  { unEvent :: Callback a -> IO Canceller
   }
   deriving stock Generic
 
@@ -49,25 +54,42 @@ data DynRef a = DynRef
   }
   deriving stock Generic
 
--- | Used as an argument to internal subscribe function. If caller
--- subscribes to an event using 'Immediate' it will receive all
--- (possibly more than one) intermediate notifications throughout
--- execution of 'sync'. If 'Defer' is used then listener will be only
--- notified once
-data Stage = Immediate | Defer
-  deriving (Show, Eq, Ord, Generic)
-
 -- | State inside 'Reactive'
 newtype ReactiveState = ReactiveState
   { unReactiveState :: M.Map (Id Event) (Reactive ())
   }
   deriving stock Generic
 
--- | Evaluation of effects triggered by firing of an event
+-- | Evaluation of effects triggered by event firing
 newtype Reactive a = Reactive (StateT ReactiveState IO a)
   deriving newtype (Functor, Applicative, Monad, MonadIO)
-  deriving newtype (MonadState ReactiveState,MonadFix, MonadCatch, MonadThrow)
+  deriving newtype (MonadState ReactiveState, MonadFix, MonadCatch, MonadThrow)
   deriving newtype (MonadMask)
+
+class MonadSubscribe m where
+  askSubscribe :: m Subscriptions
+
+class MonadFinalize m where
+  askFinalizers :: m Finalizers
+
+newtype Subscriptions = Subscriptions
+  { unSubscriptions :: H.HashMap (Id Event) [IORef (Callback Any)]
+  }
+
+newtype Finalizers = Finalizers
+  { unFinalizers :: IORef [Canceller]
+  }
+
+type MonadReactive m = (MonadIO m, MonadSubscribe m, MonadFinalize m)
+
+newtype SubscribeT m a = SubscribeT {unSubscribeT :: ReaderT Subscriptions m a}
+  deriving newtype (MonadIO, Monad, Functor, Applicative)
+
+instance Applicative m => MonadSubscribe (SubscribeT m) where
+  askSubscribe = SubscribeT $ ReaderT \s -> pure s
+
+runSubscribeT :: Subscriptions -> SubscribeT m a -> m a
+runSubscribeT s = (`runReaderT` s) . unSubscribeT
 
 type Callback a = a -> Reactive ()
 
@@ -81,32 +103,20 @@ type Canceller = IO ()
 --
 -- > (event, push) <- newEvent @String
 -- > push "New Value" -- event fires with given value
-newEvent :: forall a m. MonadIO m => m (Event a, Trigger a)
-newEvent = liftIO do
-  immediateSubs <- newIORef []
-  deferredSubs <- newIORef []
+newEvent :: forall a m. (MonadIO m, MonadSubscribe m) => m (Event a, Trigger a)
+newEvent = do
+  subs <- askSubscribe
   eventId <- liftIO $ nextId @Event
-  let
-    event = Event \fs k -> do
-      kRef <- liftIO (newIORef k) -- Need 'IORef' for an 'Eq' instance
-      let ref = case fs of Immediate -> immediateSubs; Defer -> deferredSubs
-      liftIO $ modifyIORef' ref ((:) kRef)
-      pure $ liftIO $ modifyIORef' ref (delete kRef)
-    trigger = \a -> do
-      fire a immediateSubs
-      defer eventId do fire a deferredSubs
-    fire a ref = do
-      callbacks <- liftIO (readIORef ref)
-      for_ callbacks $ liftIO . readIORef >=> ($ a)
-  pure (event, trigger)
+  let event = Event $ subscribeImpl subs eventId
+  return (event, triggerImpl subs eventId)
 
 -- | Create new 'DynRef' using given initial value
 --
 -- > showRef <- newRef False
 -- > writeRef showRef True -- update event fires for showRef
-newRef :: forall a m. MonadIO m => a -> m (DynRef a)
-newRef initial = liftIO do
-  ref <- newIORef initial
+newRef :: forall a m. (MonadIO m, MonadSubscribe m) => a -> m (DynRef a)
+newRef initial = do
+  ref <- liftIO $ newIORef initial
   (ev, push) <- newEvent
   let
     modify f = do
@@ -199,8 +209,8 @@ defer k act = Reactive (modify f) where
   f (ReactiveState s) = ReactiveState (M.insert k act s)
 
 -- | Run a reactive transaction
-sync :: Reactive a -> IO a
-sync act = loop (ReactiveState M.empty) act where
+sync :: MonadIO m => Reactive a -> m a
+sync act = liftIO $ loop (ReactiveState M.empty) act where
   loop :: ReactiveState -> Reactive a -> IO a
   loop rs (Reactive act) = do
     (r, newRs) <- runStateT act rs
@@ -213,13 +223,31 @@ sync act = loop (ReactiveState M.empty) act where
 
 -- | Attach a listener to an event and return a function that removes
 -- this listener
-subscribe :: Event a -> Callback a -> IO Canceller
-subscribe (Event s) = s Defer
-{-# INLINE subscribe #-}
+subscribe :: MonadReactive m => Event a -> Callback a -> m Canceller
+subscribe (Event s) k = do
+  subs <- askSubscribe
+  fins <- askFinalizers
+  cancel <- liftIO $ s k
+  liftIO $ modifyIORef (unFinalizers fins) (cancel:)
+  return cancel
+
+forEvent :: MonadReactive m => Event a -> Callback a -> m Canceller
+forEvent = subscribe
+
+forEvent_ :: MonadReactive m => Event a -> Callback a -> m ()
+forEvent_ = (void .) . forEvent
+
+forDyn :: MonadReactive m => Dynamic a -> Callback a -> m Canceller
+forDyn d k = do
+  liftIO $ dynamic_read d >>= sync . k
+  subscribe (dynamic_updates d) k
+
+forDyn_ :: MonadReactive m => Dynamic a -> Callback a -> m ()
+forDyn_ = (void .) . forDyn
 
 -- | Filter and map occurences
 mapMaybeE :: (a -> Maybe b) -> Event a -> Event b
-mapMaybeE f e = Event \s k -> subscribe e $ maybe mempty k . f
+mapMaybeE f e = Event \k -> unEvent e $ maybe mempty k . f
 {-# INLINE mapMaybeE #-}
 
 -- | Apply a lens to the value inside 'DynRef'
@@ -238,15 +266,15 @@ holdUniqDyn = holdUniqDynBy (==)
 -- | Same as 'holdUniqDyn' but accepts arbitrary equality test
 -- function
 holdUniqDynBy :: (a -> a -> Bool) -> Dynamic a -> Dynamic a
-holdUniqDynBy equal Dynamic{..} = newDyn where
-  upd = Event \x k -> do
+holdUniqDynBy equal Dynamic{..} = dynamic where
+  updates = mapMaybeE id $ Event \k -> do
     old <- liftIO dynamic_read
     oldRef <- liftIO (newIORef old)
-    unEvent dynamic_updates x \new -> do
+    unEvent dynamic_updates \new -> do
       old <- liftIO (readIORef oldRef)
       liftIO $ writeIORef oldRef new
       k if old `equal` new then Nothing else Just new
-  newDyn = Dynamic dynamic_read (mapMaybeE id upd)
+  dynamic = Dynamic dynamic_read updates
 
 -- | Print a debug message when given event fires
 traceEvent :: Show a => String -> Event a -> Event a
@@ -256,14 +284,18 @@ traceEvent = traceEventWith show
 -- | Print a debug message when the event fires using given printing
 -- function
 traceEventWith :: (a -> String) -> String -> Event a -> Event a
-traceEventWith show' tag (Event f) = Event \s c ->
-  f s (c . (\x -> trace (tag ++ ": " ++ show' x) x))
+traceEventWith show' tag (Event f) = Event \c ->
+  f (c . (\x -> trace (tag ++ ": " ++ show' x) x))
 {-# INLINE traceEventWith #-}
 
 -- | Print a debug message when value inside Dynamic changes
 traceDyn :: Show a => String -> Dynamic a -> Dynamic a
 traceDyn = traceDynWith show
 {-# INLINE traceDyn #-}
+
+-- | Print a debug message when value inside Dynamic changes
+traceRef :: Show a => String -> DynRef a -> DynRef a
+traceRef s DynRef{..} = DynRef{dr_dynamic = traceDynWith show s dr_dynamic, ..}
 
 -- | Print a debug message when value inside Dynamic changes using
 -- given printing function
@@ -276,75 +308,100 @@ traceDynWith show' tag d = d {dynamic_updates = e} where
 -- as the current value from the given event
 {-# DEPRECATED #-}
 withOld :: a -> Event a -> Event (a, a)
-withOld initial (Event s) = Event \x k -> do
+withOld initial (Event s) = Event \k -> do
   oldRef <- liftIO (newIORef initial)
   let
     f a = do
       old <- liftIO (readIORef oldRef)
       liftIO $ writeIORef oldRef a
       k (old, a)
-  s x f
+  s f
+
+mapDyn :: MonadReactive m => Dynamic a -> (a -> b) -> m (Dynamic b)
+mapDyn dynA f = do
+  initialA <- liftIO $ dynamic_read dynA
+  latestA <- liftIO $ newIORef initialA
+  latestB <- liftIO $ newIORef (f initialA)
+  eventId <- liftIO $ nextId @Event
+  subs <- askSubscribe
+  let
+    updates = Event $ subscribeImpl subs eventId
+    fire = defer eventId do
+      newB <- liftIO $ f <$> readIORef latestA
+      liftIO $ writeIORef latestB newB
+      triggerImpl subs eventId newB
+  dynamic_updates dynA `subscribe` \newA -> do
+    liftIO $ writeIORef latestA newA
+    defer eventId fire
+  return $ Dynamic (readIORef latestB) updates
+
+mapDyn2 :: MonadReactive m => Dynamic a -> Dynamic b -> (a -> b -> c) -> m (Dynamic c)
+mapDyn2 aDyn bDyn f = do
+  initialA <- liftIO $ dynamic_read aDyn
+  initialB <- liftIO $ dynamic_read bDyn
+  latestA <- liftIO $ newIORef initialA
+  latestB <- liftIO $ newIORef initialB
+  latestC <- liftIO $ newIORef (f initialA initialB)
+  eventId <- liftIO $ nextId @Event
+  subs <- askSubscribe
+  let
+    fire = defer eventId do
+      newC <- liftIO $ liftA2 f (readIORef latestA) (readIORef latestB)
+      liftIO $ writeIORef latestC newC
+      triggerImpl subs eventId newC
+    updates = Event $ subscribeImpl subs eventId
+  dynamic_updates aDyn `subscribe` \newA -> do
+    liftIO $ writeIORef latestA newA
+    defer eventId fire
+  dynamic_updates bDyn `subscribe` \newB -> do
+    liftIO $ writeIORef latestB newB
+    defer eventId fire
+  return $ Dynamic (readIORef latestC) updates
+
+subscribeImpl :: forall a. Subscriptions -> Id Event -> Callback a -> IO Canceller
+subscribeImpl (Subscriptions ht) eventId k = do
+  kref <- newIORef (\(a::Any) -> k (unsafeCoerce a)) -- Need 'IORef' for an 'Eq' instance
+  H.mutate ht eventId \mss ->
+    (Just (kref : fromMaybe [] mss), ())
+  pure $ H.mutate ht eventId \mss ->
+    (mfilter (/=[]) $ Just (delete kref $ fromMaybe [] mss), ())
+
+triggerImpl :: Subscriptions -> Id Event -> a -> Reactive ()
+triggerImpl (Subscriptions ht) eventId a = defer eventId do
+  callbacks <- liftIO $ fromMaybe [] <$> H.lookup ht eventId
+  for_ callbacks $ liftIO . readIORef >=> ($ unsafeCoerce @_ @Any a)
 
 instance Functor Event where
-  fmap f (Event s) = Event \sel k -> s sel . (. f) $ k
+  fmap f (Event s) = Event \k -> s . (. f) $ k
   {-# INLINE fmap #-}
 
 instance Semigroup a => Semigroup (Event a) where
-  (<>) = liftA2 (<>)
-  {-# INLINE (<>) #-}
+  (<>) (Event e1) (Event e2) = Event \k -> do
+    eventId <- nextId @Event
+    c1 <- e1 (defer eventId . k)
+    c2 <- e2 (defer eventId . k)
+    return (c1 *> c2)
 
 instance Semigroup a => Monoid (Event a) where
   mempty = never
 
-instance Applicative Event where
-  pure a = Event \case
-    Immediate -> \k ->
-      sync $ k a *> mempty
-    Defer -> \k -> sync do
-      eventId <- liftIO $ nextId @Event
-      defer eventId (k a)
-      mempty
-  (<*>) eF eA = Event \s k -> do
-    latestF <- liftIO (newIORef Nothing)
-    latestA <- liftIO (newIORef Nothing)
-    eventId <- liftIO $ nextId @Event
-    let
-      doFire = do
-        f <- liftIO $ readIORef latestF
-        a <- liftIO $ readIORef latestA
-        for_ (liftA2 (,) f a) (k . uncurry ($))
-      fire = case s of Immediate -> doFire; Defer -> defer eventId doFire
-      subscribe (Event s) = s Immediate
-    c1 <- eF `subscribe` \f -> do
-      liftIO $ writeIORef latestF (Just f)
-      fire
-    c2 <- eA `subscribe` \a -> do
-      liftIO $ writeIORef latestA (Just a)
-      fire
-    pure (c1 *> c2)
-
 instance Functor Dynamic where
   fmap f (Dynamic s u) = Dynamic (fmap f s) (fmap f u)
-  {-# INLINE fmap #-}
 
 instance Applicative Dynamic where
   pure = constDyn
-  (<*>) df da = Dynamic r u where
-    r = liftA2 ($) (dynamic_read df) (dynamic_read da)
-    u = Event \s k -> do
-      eventId <- liftIO $ nextId @Event
+  (<*>) df da = Dynamic read updates where
+    read = liftA2 ($) (dynamic_read df) (dynamic_read da)
+    updates = Event \k -> do
+      eventId <- nextId @Event
       let
-        doFire newF newA = do
+        fire newF newA = defer eventId do
           f <- liftIO $ maybe (dynamic_read df) pure newF
           a <- liftIO $ maybe (dynamic_read da) pure newA
           k (f a)
-        fire newF newA = case s of
-          Immediate -> doFire newF newA
-          Defer     -> defer eventId (doFire newF newA)
-        subscribe (Event s) = s Immediate
-      c1 <- dynamic_updates df `subscribe` \f ->
+      c1 <- dynamic_updates df `unEvent` \f ->
         fire (Just f) Nothing
-      c2 <- dynamic_updates da `subscribe` \a ->
+      c2 <- dynamic_updates da `unEvent` \a ->
         fire Nothing (Just a)
       pure (c1 *> c2)
 
