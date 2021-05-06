@@ -5,9 +5,7 @@ import Control.Monad.Reader
 import Data.Bool
 import Data.Foldable
 import Data.IORef
-import Data.List
 import GHC.Generics
-import Language.Javascript.JSaddle
 import qualified Control.Exception as E
 import qualified Data.Sequence as Seq
 
@@ -24,12 +22,8 @@ data ElemEnv a = ElemEnv
 
 newNodeRef :: Node -> HtmlT NodeRef
 newNodeRef el = do
-  js <- asks he_js_context
   mutateRoot (`appendChild` el)
-  let
-    read = pure el
-    mutate m = runJSM (m el) js
-  pure (NodeRef read mutate)
+  return $ NodeRef (pure el) ($ el)
 
 deferMutations :: NodeRef -> IO (NodeRef, IO ())
 deferMutations NodeRef{..} = do
@@ -48,10 +42,10 @@ deferMutations NodeRef{..} = do
 askRootNode :: HtmlT Node
 askRootNode = liftIO =<< asks (nr_read . he_current_root)
 
-mutateRoot :: (Node -> JSM ()) -> HtmlT ()
+mutateRoot :: (Node -> IO ()) -> HtmlT ()
 mutateRoot f = liftIO =<< asks (($ f). nr_mutate . he_current_root)
 
-askMutateRoot :: HtmlT ((Node -> JSM ()) -> IO ())
+askMutateRoot :: HtmlT ((Node -> IO ()) -> IO ())
 askMutateRoot = asks (nr_mutate . he_current_root)
 
 withRootNode :: Node -> HtmlT a -> HtmlT a

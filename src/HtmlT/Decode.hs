@@ -1,13 +1,17 @@
 module HtmlT.Decode where
 
 import Control.Applicative
+import Control.Monad.IO.Class
 import Data.Coerce
+import Data.JSString.Text
 import Data.Text as T
+import GHCJS.Marshal
 import GHCJS.Prim
-import Language.Javascript.JSaddle hiding (Result)
+import JavaScript.Object.Internal (Object(..))
+import qualified JavaScript.Object as Object
 
 newtype Decoder a = Decoder
-  {runDecoder :: JSVal -> JSM (Maybe a)}
+  {runDecoder :: JSVal -> IO (Maybe a)}
 
 decodeJSVal :: Decoder JSVal
 decodeJSVal = Decoder (pure . pure)
@@ -19,20 +23,20 @@ decodeAt :: [Text] -> Decoder a -> Decoder a
 decodeAt keys dec = Decoder (go keys) where
   go [] obj = runDecoder dec obj
   go (k:ks) obj = do
-    izNull <- ghcjsPure (isNull obj)
-    izUndefined <- ghcjsPure (isUndefined obj)
+    izNull <- return (isNull obj)
+    izUndefined <- return (isUndefined obj)
     if izNull || izUndefined
       then return Nothing
-      else obj ! k >>= go ks
+      else Object.getProp (textToJSString k) (coerce obj) >>= go ks
 
 withDecoder
-  :: MonadJSM m
+  :: MonadIO m
   => Coercible domEvent JSVal
   => Decoder a
   -> (a -> m ()) -> domEvent -> m ()
 withDecoder dec f (coerce -> jsval) =
   maybe (return ()) f =<<
-    liftJSM (runDecoder dec jsval)
+    liftIO (runDecoder dec jsval)
 {-# INLINEABLE withDecoder #-}
 
 instance Functor Decoder where

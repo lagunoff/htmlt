@@ -9,11 +9,12 @@ import Control.Monad.Reader
 import Data.Coerce
 import Data.String
 import Data.Text as T
+import Data.JSString.Text
 import GHC.Generics
-import Language.Javascript.JSaddle as JS
-#ifdef ghcjs_HOST_OS
 import GHCJS.Foreign.Callback
-#endif
+import GHCJS.Prim as Prim
+import GHCJS.Marshal
+import GHCJS.Types
 
 import HtmlT.Decode
 import HtmlT.Types
@@ -31,87 +32,86 @@ defaultListenerOpts :: ListenerOpts
 defaultListenerOpts = ListenerOpts True False
 
 #ifndef ghcjs_HOST_OS
-appendChild :: Node -> Node -> JSM ()
-appendChild root child = do
-  void (root # ("appendChild"::Text) $ child)
-setAttribute :: Node -> Text -> Text -> JSM ()
-setAttribute e k v = do
-  void $ e # ("setAttribute"::Text) $ (k, v)
-removeAttribute :: Node -> Text -> JSM ()
-removeAttribute e k = do
-  void $ e # ("removeAttribute"::Text) $ [k]
-removeChild :: Node -> Node -> JSM ()
-removeChild p ch = do
-  void $ p # ("removeChild"::Text) $ [ch]
-removeAllChilds :: Node -> JSM ()
-removeAllChilds e = do
-  void $ e <# ("innerHTML"::Text) $ (""::Text)
-replaceChild :: Node -> Node -> Node -> JSM ()
-replaceChild root new old = do
-  void (root # ("replaceChild"::Text) $ (new, old))
-getChildNode :: Node -> Int -> JSM Node
-getChildNode e ix =
-  fmap coerce (e ! ("childNodes"::Text) JS.!! ix)
-createElement :: Text -> JSM Node
-createElement tag = do
-  fmap coerce $ jsg ("document"::Text) # ("createElement"::Text) $ [tag]
-createElementNS :: Text -> Text -> JSM Node
-createElementNS ns tag = do
-  fmap coerce $ jsg ("document"::Text) # ("createElementNS"::Text) $ [ns, tag]
-createTextNode :: Text -> JSM Node
-createTextNode tag = do
-  fmap coerce $ jsg ("document"::Text) # ("createTextNode"::Text) $ [tag]
-classListAdd :: Node -> Text -> JSM ()
-classListAdd e c = do
-  void $ e ! ("classList"::Text) # ("add"::Text) $ [c]
-classListRemove :: Node -> Text -> JSM ()
-classListRemove e c = do
-  void $ e ! ("classList"::Text) # ("remove"::Text) $ [c]
-setTextValue :: Node -> Text -> JSM ()
-setTextValue e c = do
-  void $ e <# ("nodeValue"::Text) $ c
-onBeforeUnload :: IO () -> JSM ()
-onBeforeUnload _ = return ()
+appendChild :: Node -> Node -> IO ()
+appendChild root child = error "Only GHCJS is supported"
+setAttribute :: Node -> Text -> Text -> IO ()
+setAttribute e k v =  error "Only GHCJS is supported"
+removeAttribute :: Node -> Text -> IO ()
+removeAttribute e k =  error "Only GHCJS is supported"
+removeChild :: Node -> Node -> IO ()
+removeChild p ch = error "Only GHCJS is supported"
+removeAllChilds :: Node -> IO ()
+removeAllChilds e = error "Only GHCJS is supported"
+replaceChild :: Node -> Node -> Node -> IO ()
+replaceChild root new old = error "Only GHCJS is supported"
+getChildNode :: Node -> Int -> IO Node
+getChildNode e ix = error "Only GHCJS is supported"
+createElement :: Text -> IO Node
+createElement tag = error "Only GHCJS is supported"
+createElementNS :: Text -> Text -> IO Node
+createElementNS ns tag = error "Only GHCJS is supported"
+createTextNode :: Text -> IO Node
+createTextNode tag = error "Only GHCJS is supported"
+classListAdd :: Node -> Text -> IO ()
+classListAdd e c = error "Only GHCJS is supported"
+classListRemove :: Node -> Text -> IO ()
+classListRemove e c = error "Only GHCJS is supported"
+setTextValue :: Node -> Text -> IO ()
+setTextValue e c = error "Only GHCJS is supported"
+onBeforeUnload :: IO () -> IO ()
+onBeforeUnload _ = error "Only GHCJS is supported"
+js0 :: JSVal -> IO JSVal
+js0 _ = error "Only GHCJS is supported"
+js1 :: JSVal -> JSVal -> IO JSVal
+js1 _ _ = error "Only GHCJS is supported"
+js2 :: JSVal -> JSVal -> JSVal -> IO JSVal
+js2 _ _ _ = error "Only GHCJS is supported"
+js_getWindow :: IO JSVal
+js_getWindow = error "Only GHCJS is supported"
+js_getDocument :: IO JSVal
+js_getDocument = error "Only GHCJS is supported"
+js_getBody :: IO Node
+js_getBody = error "Only GHCJS is supported"
 #else
 foreign import javascript unsafe
   "$1.appendChild($2)"
-  appendChild :: Node -> Node -> JSM ()
+  appendChild :: Node -> Node -> IO ()
 foreign import javascript unsafe
   "$1.setAttribute($2, $3)"
-  setAttribute :: Node -> Text -> Text -> JSM ()
+  setAttribute :: Node -> Text -> Text -> IO ()
 foreign import javascript unsafe
   "$1.removeAttribute($2)"
-  removeAttribute :: Node -> Text -> JSM ()
+  removeAttribute :: Node -> Text -> IO ()
 foreign import javascript unsafe
   "$1.removeChild($2)"
-  removeChild :: Node -> Node -> JSM ()
+  removeChild :: Node -> Node -> IO ()
 foreign import javascript unsafe
   "$1.innerHTML = ''"
-  removeAllChilds :: Node -> JSM ()
+  removeAllChilds :: Node -> IO ()
 foreign import javascript unsafe
   "$1.replaceChild($2, $3)"
-  replaceChild :: Node -> Node -> Node -> JSM ()
+  replaceChild :: Node -> Node -> Node -> IO ()
 foreign import javascript unsafe
   "$1.childNodes[$2]"
-  getChildNode :: Node -> Int -> JSM Node
+  getChildNode :: Node -> Int -> IO Node
 foreign import javascript unsafe
   "document.createElement($1)"
-  createElement :: Text -> JSM Node
+  createElement :: Text -> IO Node
 foreign import javascript unsafe
   "document.createElementNS($1, $2)"
-  createElementNS :: Text -> Text -> JSM Node
+  createElementNS :: Text -> Text -> IO Node
 foreign import javascript unsafe
   "document.createTextNode($1)"
-  createTextNode :: Text -> JSM Node
+  createTextNode :: Text -> IO Node
 foreign import javascript unsafe
   "$1.classList.add($2)"
-  classListAdd :: Node -> Text -> JSM ()
+  classListAdd :: Node -> Text -> IO ()
 foreign import javascript unsafe
   "$1.classList.remove($2)"
-  classListRemove :: Node -> Text -> JSM ()
+  classListRemove :: Node -> Text -> IO ()
 foreign import javascript unsafe
   "$1.nodeValue = $2;"
-  setTextValue :: Node -> Text -> JSM ()
+  setTextValue :: Node -> Text -> IO ()
 foreign import javascript unsafe
   "(function(cb){\
     window.addEventListener('beforeunload', function(e) {\
@@ -119,30 +119,40 @@ foreign import javascript unsafe
       cb();\
     })\
    })($1)"
-  js_onBeforeUnload :: Callback a -> JSM ()
-onBeforeUnload :: IO () -> JSM ()
+  js_onBeforeUnload :: Callback a -> IO ()
+onBeforeUnload :: IO () -> IO ()
 onBeforeUnload cb = do
   syncCb <- syncCallback ThrowWouldBlock cb
   js_onBeforeUnload syncCb
+foreign import javascript unsafe "$1()" js0 :: JSVal -> IO ()
+foreign import javascript unsafe "$1($2)" js1 :: JSVal -> JSVal -> IO ()
+foreign import javascript unsafe "$1($2, $3)" js2 :: JSVal -> JSVal -> JSVal -> IO ()
+foreign import javascript unsafe "(window)" js_getWindow :: IO JSVal
+foreign import javascript unsafe "(window.document)" js_getDocument :: IO JSVal
+foreign import javascript unsafe "(window.document.body)" js_getBody :: IO JSVal
 #endif
 
 addEventListener
   :: ListenerOpts
   -> Node
   -> Text
-  -> (JSVal -> JSM ())
-  -> JSM (JSM ())
+  -> (JSVal -> IO ())
+  -> IO (IO ())
 addEventListener ListenerOpts{..} target name f = do
-  cb <- function \_ _ [event] -> do
+  cb <- syncCallback1 ThrowWouldBlock \event -> do
     when lo_stop_propagation do
-      void $ event # ("stopPropagation"::Text) $ ()
+      stopPropagation <- event `Prim.getProp` "stopPropagation"
+      void $ js0 stopPropagation
     when lo_prevent_default do
-      void $ event # ("preventDefault"::Text) $ ()
+      preventDefault <- event `Prim.getProp` "preventDefault"
+      void $ js0 preventDefault
     f event
-  target # ("addEventListener"::Text) $ (name, cb)
-  pure do
-    target # ("removeEventListener"::Text) $ (name, cb)
-    freeFunction cb
+  addEventListener <- coerce target `Prim.getProp` "addEventListener"
+  removeEventListener <- coerce target `Prim.getProp` "removeEventListener"
+  js2 addEventListener (jsval (textToJSString name)) (jsval cb)
+  return do
+    js2 removeEventListener (jsval (textToJSString name)) (jsval cb)
+    releaseCallback cb
 
 data MouseDelta = MouseDelta
   { md_delta_x :: Int
@@ -248,18 +258,18 @@ decodePageXY = withDecoder pageXYDecoder
 decodeKeyboardEvent :: Decoding KeyboardEvent
 decodeKeyboardEvent = withDecoder keyboardEventDecoder
 
-getCurrentWindow :: MonadJSM m => m JSVal
-getCurrentWindow = liftJSM (jsg ("window"::Text))
+getWindow :: MonadIO m => m JSVal
+getWindow = liftIO js_getWindow
 
-getDocument :: MonadJSM m => JSVal -> m JSVal
-getDocument self = liftJSM (self ! ("document"::Text))
+getDocument :: MonadIO m => m JSVal
+getDocument = liftIO js_getDocument
 
-getCurrentBody :: MonadJSM m => m Node
-getCurrentBody = liftJSM (Node <$> jsg ("document"::Text) ! ("body"::Text))
+getBody :: MonadIO m => m Node
+getBody = liftIO js_getBody
 
 instance (x ~ ()) => IsString (HtmlT x) where
   fromString = text . T.pack where
     text t = do
       elm <- liftIO =<< asks (nr_read . he_current_root)
-      textNode <- liftJSM (createTextNode t)
-      liftJSM (appendChild elm textNode)
+      textNode <- liftIO (createTextNode t)
+      liftIO (appendChild elm textNode)

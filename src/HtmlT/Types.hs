@@ -6,8 +6,9 @@ import Control.Monad.Catch
 import Control.Monad.Reader
 import Data.IORef
 import GHC.Generics
+import GHCJS.Marshal
+import GHCJS.Prim
 import HtmlT.Event
-import Language.Javascript.JSaddle
 
 newtype HtmlT a = HtmlT {unHtmlT :: ReaderT HtmlEnv IO a}
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadReader HtmlEnv)
@@ -18,22 +19,21 @@ data HtmlEnv = HtmlEnv
   , he_finalizers :: Finalizers
   , he_subscriptions :: Subscriptions
   , he_post_hooks :: IORef [HtmlT ()]
-  , he_js_context :: JSContextRef
   , he_catch_interactive :: SomeException -> IO ()
   }
   deriving stock (Generic)
 
 data NodeRef = NodeRef
   { nr_read :: IO Node
-  , nr_mutate :: (Node -> JSM ()) -> IO ()
+  , nr_mutate :: (Node -> IO ()) -> IO ()
   }
   deriving stock (Generic)
 
 newtype Node = Node {unNode :: JSVal}
-  deriving newtype (MakeArgs, MakeObject, ToJSVal)
+  deriving newtype (ToJSVal)
 
 newtype DOMEvent = DOMEvent {unDOMEvent :: JSVal}
-  deriving newtype (MakeArgs, MakeObject, ToJSVal)
+  deriving newtype (ToJSVal)
 
 runHtmlT :: HtmlEnv -> HtmlT a -> IO a
 runHtmlT e = flip runReaderT e . unHtmlT
@@ -50,8 +50,3 @@ instance MonadSubscribe HtmlT where
 
 instance MonadFinalize HtmlT where
   askFinalizers = asks he_finalizers
-
-#ifndef ghcjs_HOST_OS
-instance MonadJSM HtmlT where
-  liftJSM' jsm = HtmlT $ ReaderT (runReaderT (unJSM jsm) . he_js_context)
-#endif

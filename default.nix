@@ -13,18 +13,26 @@ let
     sha256 = "146xfjqdwd55s9jg1ggi6akcxxxd5c0pvc4bpjx3whwiikpcv8y4";
   };
 
-  localPackages = {
+  ghcjsBaseDummySrc = builtins.fetchGit {
+    url = "git@github.com:lagunoff/ghcjs-base-dummy.git";
+    rev = "ec549b970fc7d0f8031e8f2fc943dac89e443f69";
+  };
+
+  localPackages = super: {
     htmlt = ./.;
-    htmlt-examples = ./examples;
+  } // lib.optionalAttrs (!(super.ghc.isGhcjs or false)) {
+    ghcjs-base = ghcjsBaseDummySrc;
   };
 
   overrides = super: {
     cabal-cargs = cure;
+  } // lib.optionalAttrs (!(super.ghc.isGhcjs or false)) {
+    ghcjs-base = cure;
   };
 
   extensions = [
     (self: super:
-      lib.mapAttrs (k: v: self.callCabal2nix k v {}) localPackages
+      lib.mapAttrs (k: v: self.callCabal2nix k v {}) (localPackages super)
     )
     (self: super:
       lib.mapAttrs (k: v: v super.${k}) (overrides super)

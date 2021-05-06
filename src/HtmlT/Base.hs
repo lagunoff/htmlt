@@ -10,8 +10,9 @@ import Data.IORef
 import Data.JSString.Text as JSS
 import Data.List as L
 import Data.Text as T hiding (index)
-import Language.Javascript.JSaddle as JS
-import Debug.Trace
+import GHCJS.Marshal
+import JavaScript.Object as Object
+import JavaScript.Object.Internal
 
 import HtmlT.DOM
 import HtmlT.Event
@@ -27,13 +28,13 @@ import HtmlT.Types
 -- >   el "span" $ text "Lorem Ipsum"
 el :: Text -> HtmlT x -> HtmlT x
 el tag child = do
-  newRootEl <- liftJSM (createElement tag)
+  newRootEl <- liftIO (createElement tag)
   withRootNode newRootEl child
 
 -- | Same as 'el' but also returns the reference to the new element
 el' :: Text -> HtmlT x -> HtmlT (x, Node)
 el' tag child = do
-  newRootEl <- liftJSM (createElement tag)
+  newRootEl <- liftIO (createElement tag)
   (,newRootEl) <$> withRootNode newRootEl child
 
 -- | Same as 'el' but allows to specify element's namespace, see more
@@ -46,23 +47,22 @@ el' tag child = do
 -- >     prop "d" "M150 0 L75 200 L225 200 Z"
 elns :: Text -> Text -> HtmlT x -> HtmlT x
 elns ns tag child = do
-  newRootEl <- liftJSM (createElementNS ns tag)
+  newRootEl <- liftIO (createElementNS ns tag)
   withRootNode newRootEl child
 
 -- | Create a TextNode and attach it to the root
 text :: Text -> HtmlT ()
 text txt = do
-  textNode <- liftJSM (createTextNode txt)
+  textNode <- liftIO (createTextNode txt)
   mutateRoot (`appendChild` textNode)
 
 -- | Create a TextNode with dynamic content
 dynText :: Dynamic Text -> HtmlT ()
 dynText d = do
   txt <- readDyn d
-  js <- askJSM
-  textNode <- liftJSM (createTextNode txt)
+  textNode <- liftIO (createTextNode txt)
   forEvent_ (updates d) \new -> void $ liftIO do
-    flip runJSM js $ setTextValue textNode new
+    setTextValue textNode new
   mutateRoot (`appendChild` textNode)
 
 -- | Assign a property to the root element. Don't confuse attributes
@@ -71,7 +71,7 @@ dynText d = do
 prop :: ToJSVal v => Text -> v -> HtmlT ()
 prop (JSS.textToJSString -> key) val = mutateRoot \rootEl -> do
   v <- toJSVal val
-  unsafeSetProp key v (coerce rootEl)
+  Object.setProp key v (coerce rootEl)
 
 -- | Assign a property with dynamic content to the root element
 dynProp :: (ToJSVal v, FromJSVal v, Eq v) => Text -> Dynamic v -> HtmlT ()
@@ -136,12 +136,12 @@ onGlobalEvent
   -- ^ Callback that accepts reference to the DOM event
   -> HtmlT ()
 onGlobalEvent opts target name f = ask >>= run where
-  mkEvent e js = Event \k -> liftIO $ flip runJSM js do
+  mkEvent e = Event \k -> liftIO do
     unlisten <- addEventListener opts target name \event -> do
       void . liftIO . catc e . sync . k . f $ coerce event
-    pure $ liftIO $ runJSM unlisten js
+    pure $ liftIO unlisten
   run e@HtmlEnv{..} = void $
-    subscribe (mkEvent e he_js_context) (liftIO . runHtmlT e)
+    subscribe (mkEvent e) (liftIO . runHtmlT e)
   catc e = flip Ex.catch (he_catch_interactive e)
 
 -- | Assign CSS classes to the current root element. Compare to @prop
@@ -198,7 +198,7 @@ toggleAttr att dyn = askMutateRoot >>= run where
 dynStyle :: Text -> Dynamic Text -> HtmlT ()
 dynStyle cssProp dyn = askMutateRoot >>= run where
   setup t el = do
-    styleVal <- unsafeGetProp "style" (coerce el)
+    styleVal <- Object.getProp "style" (coerce el)
     cssVal <- toJSVal t
     unsafeSetProp jsCssProp cssVal (coerce styleVal)
   run mutate = void $ forDyn dyn (liftIO . mutate . setup)
@@ -233,7 +233,6 @@ itraverseHtml
   -> HtmlT ()
 itraverseHtml dynRef l h = do
   hte <- ask
-  js <- askJSM
   rootEl <- askRootNode
   s <- readRef dynRef
   itemRefs <- liftIO (newIORef [])
@@ -262,8 +261,8 @@ itraverseHtml dynRef l h = do
         itemRefsValue <- liftIO (readIORef itemRefs)
         let (newRefs, tailRefs) = L.splitAt idx itemRefsValue
         unsub tailRefs
-        childEl <- flip runJSM js $ getChildNode rootEl idx
-        flip runJSM js (removeChild rootEl childEl)
+        childEl <- getChildNode rootEl idx
+        removeChild rootEl childEl
         liftIO (writeIORef itemRefs newRefs)
       (r:rs, x:xs, y:ys) -> do
         -- Update child elemens along the way
@@ -307,7 +306,6 @@ itraverseHtml dynRef l h = do
 dyn_ :: Dynamic (HtmlT ()) -> HtmlT ()
 dyn_ dyn = do
   env <- ask
-  js <- askJSM
   childRef <- liftIO (newIORef Nothing)
   mutate <- askMutateRoot
   let
@@ -346,6 +344,5 @@ catchInteractive html handle = ask >>= run where
 
 portal :: Node -> HtmlT a -> HtmlT a
 portal rootEl h = do
-  js <- askJSM
-  let rootRef = NodeRef (pure rootEl) ((`runJSM` js) . ($ rootEl))
+  let rootRef = NodeRef (pure rootEl) ($ rootEl)
   local (\e -> e {he_current_root = rootRef}) h

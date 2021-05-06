@@ -37,20 +37,18 @@ library
     -Wno-unused-matches -Wno-unused-do-bind
   build-depends:
     base,
+    ghcjs-base,
     bytestring,
     containers,
     exceptions,
-    jsaddle,
     lens,
     mtl,
     text
 
   if impl(ghcjs)
-    build-depends: ghcjs-base, ghcjs-prim
+    build-depends: ghcjs-prim
     if flag(production)
       ghc-options: -dedupe -O2
-  else
-    build-depends: jsaddle-warp
 
   default-extensions:
     BlockArguments
