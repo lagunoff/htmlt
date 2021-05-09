@@ -127,9 +127,9 @@ onBeforeUnload cb = do
 foreign import javascript unsafe "$1()" js0 :: JSVal -> IO ()
 foreign import javascript unsafe "$1($2)" js1 :: JSVal -> JSVal -> IO ()
 foreign import javascript unsafe "$1($2, $3)" js2 :: JSVal -> JSVal -> JSVal -> IO ()
-foreign import javascript unsafe "(window)" js_getWindow :: IO JSVal
-foreign import javascript unsafe "(window.document)" js_getDocument :: IO JSVal
-foreign import javascript unsafe "(window.document.body)" js_getBody :: IO JSVal
+foreign import javascript unsafe "(function(){ return window; })()" js_getWindow :: IO JSVal
+foreign import javascript unsafe "(function(){ return window.document; })()" js_getDocument :: IO JSVal
+foreign import javascript unsafe "(function(){ return window.document.body; })()" js_getBody :: IO JSVal
 #endif
 
 addEventListener
@@ -265,7 +265,7 @@ getDocument :: MonadIO m => m JSVal
 getDocument = liftIO js_getDocument
 
 getBody :: MonadIO m => m Node
-getBody = liftIO js_getBody
+getBody = liftIO $ coerce <$> js_getBody
 
 instance (x ~ ()) => IsString (HtmlT x) where
   fromString = text . T.pack where

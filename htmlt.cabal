@@ -48,8 +48,8 @@ library
 
   if impl(ghcjs)
     build-depends: ghcjs-prim
-    if flag(production)
-      ghc-options: -dedupe -O2
+    -- if flag(production)
+    --   ghc-options: -dedupe -O2
 
   default-extensions:
     BlockArguments
