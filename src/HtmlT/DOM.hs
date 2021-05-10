@@ -22,6 +22,7 @@ import HtmlT.Types
 data ListenerOpts = ListenerOpts
   { lo_stop_propagation :: Bool
   , lo_prevent_default :: Bool
+  , lo_sync_callback :: Bool
   }
   deriving stock (Eq, Show, Generic)
   deriving anyclass (ToJSVal)
@@ -29,7 +30,7 @@ data ListenerOpts = ListenerOpts
 type Decoding a = (a -> HtmlT ()) -> DOMEvent -> HtmlT ()
 
 defaultListenerOpts :: ListenerOpts
-defaultListenerOpts = ListenerOpts True False
+defaultListenerOpts = ListenerOpts True False False
 
 #ifndef ghcjs_HOST_OS
 appendChild :: Node -> Node -> IO ()
@@ -66,6 +67,12 @@ js1 :: JSVal -> JSVal -> IO JSVal
 js1 _ _ = error "Only GHCJS is supported"
 js2 :: JSVal -> JSVal -> JSVal -> IO JSVal
 js2 _ _ _ = error "Only GHCJS is supported"
+jscall0 :: JSVal -> JSString -> IO JSVal
+jscall0 _ _ = error "Only GHCJS is supported"
+jscall1 :: JSVal -> JSString -> JSVal -> IO JSVal
+jscall1 _ _ _ = error "Only GHCJS is supported"
+jscall2 :: JSVal -> JSString -> JSVal -> JSVal -> IO JSVal
+jscall2 _ _ _ _ = error "Only GHCJS is supported"
 js_getWindow :: IO JSVal
 js_getWindow = error "Only GHCJS is supported"
 js_getDocument :: IO JSVal
@@ -130,6 +137,9 @@ foreign import javascript unsafe "$1($2, $3)" js2 :: JSVal -> JSVal -> JSVal -> 
 foreign import javascript unsafe "(function(){ return window; })()" js_getWindow :: IO JSVal
 foreign import javascript unsafe "(function(){ return window.document; })()" js_getDocument :: IO JSVal
 foreign import javascript unsafe "(function(){ return window.document.body; })()" js_getBody :: IO JSVal
+foreign import javascript unsafe "$1[$2]()" jscall0 :: JSVal -> JSString -> IO ()
+foreign import javascript unsafe "$1[$2]($3)" jscall1 :: JSVal -> JSString -> JSVal -> IO ()
+foreign import javascript unsafe "$1[$2]($3, $4)" jscall2 :: JSVal -> JSString -> JSVal -> JSVal -> IO ()
 #endif
 
 addEventListener
@@ -139,19 +149,19 @@ addEventListener
   -> (JSVal -> IO ())
   -> IO (IO ())
 addEventListener ListenerOpts{..} target name f = do
-  cb <- syncCallback1 ThrowWouldBlock \event -> do
+  let
+    mkcallback = if lo_sync_callback
+      then syncCallback1 ThrowWouldBlock
+      else asyncCallback1
+  cb <- mkcallback \event -> do
     when lo_stop_propagation do
-      stopPropagation <- event `Prim.getProp` "stopPropagation"
-      void $ js0 stopPropagation
+      void $ jscall0 event "stopPropagation"
     when lo_prevent_default do
-      preventDefault <- event `Prim.getProp` "preventDefault"
-      void $ js0 preventDefault
+      void $ jscall0 event "preventDefault"
     f event
-  addEventListener <- coerce target `Prim.getProp` "addEventListener"
-  removeEventListener <- coerce target `Prim.getProp` "removeEventListener"
-  js2 addEventListener (jsval (textToJSString name)) (jsval cb)
+  jscall2 (coerce target) "addEventListener" (jsval (textToJSString name)) (jsval cb)
   return do
-    js2 removeEventListener (jsval (textToJSString name)) (jsval cb)
+    jscall2 (coerce target) "removeEventListener" (jsval (textToJSString name)) (jsval cb)
     releaseCallback cb
 
 data MouseDelta = MouseDelta
