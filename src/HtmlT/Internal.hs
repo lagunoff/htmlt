@@ -13,9 +13,6 @@ data ElemEnv a = ElemEnv
   , ee_modifier :: Modifier a
   } deriving Generic
 
-mutateRoot :: MonadIO m => (Node -> IO ()) -> HtmlT m ()
-mutateRoot f = liftIO =<< asks (f . he_current_root)
-
 appendHtmlT :: MonadIO m => Node -> HtmlT m a -> HtmlT m a
 appendHtmlT newRootEl html = do
   rootEl <- asks he_current_root

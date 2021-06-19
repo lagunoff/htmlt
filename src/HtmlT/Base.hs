@@ -53,17 +53,19 @@ elns ns tag child = do
 -- | Create a TextNode and attach it to the root
 text :: Text -> HtmlIO ()
 text txt = do
+  rootEl <- asks he_current_root
   textNode <- liftIO (createTextNode txt)
-  mutateRoot (`appendChild` textNode)
+  liftIO $ appendChild rootEl textNode
 
 -- | Create a TextNode with dynamic content
 dynText :: Dynamic Text -> HtmlIO ()
 dynText d = do
   txt <- readDyn d
+  rootEl <- asks he_current_root
   textNode <- liftIO (createTextNode txt)
   forEvent_ (updates d) \new -> void $ liftIO do
     setTextValue textNode new
-  mutateRoot (`appendChild` textNode)
+  liftIO $ appendChild rootEl textNode
 
 -- | Assign a property to the root element. Don't confuse attributes
 -- and properties see
@@ -78,9 +80,9 @@ prop (JSS.textToJSString -> key) val = do
 dynProp :: (ToJSVal v, FromJSVal v, Eq v) => Text -> Dynamic v -> HtmlIO ()
 dynProp textKey dyn = do
   rootEl <- asks he_current_root
-  void $ forDyn dyn (liftIO . ($ rootEl) . setup)
+  void $ forDyn dyn (liftIO . setup rootEl)
   where
-    setup t el = toJSVal t
+    setup el t = toJSVal t
       >>= flip (unsafeSetProp jsKey) (coerce el)
     jsKey = JSS.textToJSString textKey
 
@@ -88,14 +90,14 @@ dynProp textKey dyn = do
 -- and properties see
 -- https://stackoverflow.com/questions/6003819/what-is-the-difference-between-properties-and-attributes-in-html
 attr :: Text -> Text -> HtmlIO ()
-attr k v = mutateRoot \e -> setAttribute e k v
+attr k v = asks he_current_root
+  >>= \e -> liftIO (setAttribute e k v)
 
 -- | Assign an attribute with dynamic content to the root element
 dynAttr :: Text -> Dynamic Text -> HtmlIO ()
 dynAttr k d = do
   rootEl <- asks he_current_root
-  let setup v e = setAttribute e k v
-  void $ forDyn d (liftIO . ($ rootEl) . setup)
+  void $ forDyn d $ liftIO . setAttribute rootEl k
 
 -- | Attach a listener to the root element. First agument is the name
 -- of the DOM event to listen. Second is the callback that accepts the fired
@@ -106,20 +108,18 @@ dynAttr k d = do
 -- >     liftIO $ putStrLn "Clicked!"
 -- >   text "Click here"
 on :: Text -> (DOMEvent -> HtmlIO ()) -> HtmlIO ()
-on name f = ask >>= run where
-  listen e rootEl = liftIO $ runHtmlT e $
-    onGlobalEvent defaultListenerOpts rootEl name f
-  run e = mutateRoot $ listen e
+on name f = ask >>= listen where
+  listen HtmlEnv{..} =
+    onGlobalEvent defaultListenerOpts he_current_root name f
 
 -- | Same as 'on' but ignores 'DOMEvent' inside the callback
 on_ :: Text -> HtmlIO () -> HtmlIO ()
 on_ name = on name . const
 
 onOpts :: Text -> ListenerOpts -> (DOMEvent -> HtmlIO ()) -> HtmlIO ()
-onOpts name opts f = ask >>= run where
-  listen e rootEl = liftIO $ runHtmlT e $
-    onGlobalEvent opts rootEl name f
-  run e = mutateRoot $ listen e
+onOpts name opts f = ask >>= listen where
+  listen HtmlEnv{..} =
+    onGlobalEvent opts he_current_root name f
 
 onOpts_ :: Text -> ListenerOpts -> HtmlIO () -> HtmlIO ()
 onOpts_ name opts = onOpts name opts . const
@@ -154,9 +154,10 @@ onGlobalEvent opts target name f = ask >>= run where
 -- >   classes "container row"
 -- >   classes "mt-1 mb-2"
 classes :: Text -> HtmlIO ()
-classes cs = mutateRoot \rootEl -> do
-  for_ (T.splitOn (T.pack " ") cs) $
-    classListAdd rootEl
+classes cs = do
+  rootEl <- asks he_current_root
+  for_ (T.splitOn " " cs) $
+    liftIO . classListAdd rootEl
 
 -- | Assign a single CSS classe dynamically based on the value held by
 -- the given Dynamic
@@ -170,9 +171,9 @@ classes cs = mutateRoot \rootEl -> do
 toggleClass :: Text -> Dynamic Bool -> HtmlIO ()
 toggleClass cs dyn = do
   rootEl <- asks he_current_root
-  void $ forDyn dyn (liftIO . ($ rootEl) . setup cs)
+  void $ forDyn dyn (liftIO . setup rootEl cs)
   where
-    setup cs enable rootEl = case enable of
+    setup rootEl cs enable = case enable of
       True  -> classListAdd rootEl cs
       False -> classListRemove rootEl cs
 
@@ -188,10 +189,10 @@ toggleClass cs dyn = do
 toggleAttr :: Text -> Dynamic Bool -> HtmlIO ()
 toggleAttr att dyn = do
   rootEl <- asks he_current_root
-  void $ forDyn dyn (liftIO . ($ rootEl) . setup ($ rootEl) att)
+  void $ forDyn dyn (liftIO . setup rootEl att)
   where
-    setup mutate name enable rootEl = case enable of
-      True -> setAttribute rootEl name (T.pack "on")
+    setup rootEl name enable = case enable of
+      True -> setAttribute rootEl name "on"
       False -> removeAttribute rootEl name
 
 -- | Assign a CSS property to the root dynamically based on the value
@@ -205,9 +206,9 @@ toggleAttr att dyn = do
 dynStyle :: Text -> Dynamic Text -> HtmlIO ()
 dynStyle cssProp dyn = do
   rootEl <- asks he_current_root
-  void $ forDyn dyn (liftIO . ($ rootEl) . setup)
+  void $ forDyn dyn (liftIO . setup rootEl)
   where
-    setup t el = do
+    setup el t = do
       styleVal <- Object.getProp "style" (coerce el)
       cssVal <- toJSVal t
       unsafeSetProp jsCssProp cssVal (coerce styleVal)
@@ -326,7 +327,7 @@ dyn_ dyn = do
           writeIORef (unFinalizers he_finalizers) []
         Nothing -> return ()
       writeIORef childRef newEnv
-    setup html rootEl = liftIO do
+    setup rootEl html = liftIO do
       postHooks <- newIORef []
       fins <- Finalizers <$> newIORef []
       let
@@ -339,7 +340,7 @@ dyn_ dyn = do
           <* (readIORef postHooks >>= sequence_)
       commit *> runHtmlT newEnv html
   addFinalizer (unsub Nothing)
-  void $ forDyn dyn (liftIO . ($ rootEl) . (void .) . setup)
+  void $ forDyn dyn (liftIO . setup rootEl)
 
 catchInteractive :: HtmlIO () -> (SomeException -> HtmlIO ()) -> HtmlIO ()
 catchInteractive html handle = ask >>= run where
