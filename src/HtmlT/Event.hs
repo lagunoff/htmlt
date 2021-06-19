@@ -62,9 +62,9 @@ newtype ReactiveState = ReactiveState
 
 -- | Evaluation of effects triggered by event firing
 newtype Reactive a = Reactive (StateT ReactiveState IO a)
-  deriving newtype (Functor, Applicative, Monad, MonadIO)
-  deriving newtype (MonadState ReactiveState, MonadFix, MonadCatch, MonadThrow)
-  deriving newtype (MonadMask)
+  deriving newtype (Functor, Applicative, Monad, MonadIO
+    , MonadState ReactiveState, MonadFix, MonadCatch, MonadThrow
+    , MonadMask)
 
 class MonadSubscribe m where
   askSubscribe :: m Subscriptions

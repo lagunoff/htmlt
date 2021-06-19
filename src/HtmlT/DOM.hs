@@ -27,7 +27,7 @@ data ListenerOpts = ListenerOpts
   deriving stock (Eq, Show, Generic)
   deriving anyclass (ToJSVal)
 
-type Decoding a = (a -> HtmlT ()) -> DOMEvent -> HtmlT ()
+type Decoding a = (a -> HtmlIO ()) -> DOMEvent -> HtmlIO ()
 
 defaultListenerOpts :: ListenerOpts
 defaultListenerOpts = ListenerOpts True False False
@@ -277,9 +277,9 @@ getDocument = liftIO js_getDocument
 getBody :: MonadIO m => m Node
 getBody = liftIO $ coerce <$> js_getBody
 
-instance (x ~ ()) => IsString (HtmlT x) where
-  fromString = text . T.pack where
-    text t = do
-      elm <- liftIO =<< asks (nr_read . he_current_root)
+instance (x ~ (), MonadIO m) => IsString (HtmlT m x) where
+  fromString = f . T.pack where
+    f t = do
+      rootEl <- liftIO =<< asks (nr_read . he_current_root)
       textNode <- liftIO (createTextNode t)
-      liftIO (appendChild elm textNode)
+      liftIO (appendChild rootEl textNode)

@@ -17,10 +17,9 @@ data ElemEnv a = ElemEnv
   { ee_htmlEnv :: HtmlEnv
   , ee_Ref :: DynRef a
   , ee_modifier :: Modifier a
-  }
-  deriving stock Generic
+  } deriving Generic
 
-newNodeRef :: Node -> HtmlT NodeRef
+newNodeRef :: Node -> HtmlIO NodeRef
 newNodeRef el = do
   mutateRoot (`appendChild` el)
   return $ NodeRef (pure el) ($ el)
@@ -39,16 +38,16 @@ deferMutations NodeRef{..} = do
       nr_mutate \rootEl -> for_ queue ($ rootEl)
   pure (NodeRef nr_read mutate, flush)
 
-askRootNode :: HtmlT Node
+askRootNode :: HtmlIO Node
 askRootNode = liftIO =<< asks (nr_read . he_current_root)
 
-mutateRoot :: (Node -> IO ()) -> HtmlT ()
+mutateRoot :: (Node -> IO ()) -> HtmlIO ()
 mutateRoot f = liftIO =<< asks (($ f). nr_mutate . he_current_root)
 
-askMutateRoot :: HtmlT ((Node -> IO ()) -> IO ())
+askMutateRoot :: HtmlIO ((Node -> IO ()) -> IO ())
 askMutateRoot = asks (nr_mutate . he_current_root)
 
-withRootNode :: Node -> HtmlT a -> HtmlT a
+withRootNode :: Node -> HtmlIO a -> HtmlIO a
 withRootNode rootEl child = do
   rootRef <- newNodeRef rootEl
   local (\env -> env { he_current_root = rootRef }) child
