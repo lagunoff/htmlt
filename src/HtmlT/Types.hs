@@ -6,8 +6,8 @@ import Control.Monad.Catch
 import Control.Monad.Reader
 import Data.IORef
 import GHC.Generics
-import GHCJS.Marshal
 import GHCJS.Prim
+import GHCJS.Types
 import HtmlT.Event
 
 newtype HtmlT m a = HtmlT {unHtmlT :: ReaderT HtmlEnv m a}
@@ -17,23 +17,18 @@ newtype HtmlT m a = HtmlT {unHtmlT :: ReaderT HtmlEnv m a}
 type HtmlIO = HtmlT IO
 
 data HtmlEnv = HtmlEnv
-  { he_current_root :: NodeRef
+  { he_current_root :: Node
   , he_finalizers :: Finalizers
   , he_subscriptions :: Subscriptions
   , he_post_hooks :: IORef [IO ()]
   , he_catch_interactive :: SomeException -> IO ()
   } deriving Generic
 
-data NodeRef = NodeRef
-  { nr_read :: IO Node
-  , nr_mutate :: (Node -> IO ()) -> IO ()
-  } deriving Generic
-
 newtype Node = Node {unNode :: JSVal}
-  deriving newtype (ToJSVal)
+  deriving anyclass (IsJSVal)
 
 newtype DOMEvent = DOMEvent {unDOMEvent :: JSVal}
-  deriving newtype (ToJSVal)
+  deriving anyclass (IsJSVal)
 
 runHtmlT :: HtmlEnv -> HtmlT m a -> m a
 runHtmlT e = flip runReaderT e . unHtmlT

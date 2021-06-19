@@ -6,19 +6,19 @@
 module HtmlT.Event where
 
 import Control.Applicative
-import Control.Monad.Reader
 import Control.Lens (Lens', over)
 import Control.Monad.Catch
+import Control.Monad.Reader
 import Control.Monad.State
 import Data.Foldable
 import Data.IORef
-import Data.Maybe
 import Data.List
+import Data.Maybe
 import Debug.Trace
-import GHC.Generics
 import GHC.Exts
-import qualified Data.Map as M
+import GHC.Generics
 import Unsafe.Coerce
+import qualified Data.Map as M
 
 import HtmlT.IdSupply
 import qualified HtmlT.HashMap as H
@@ -36,9 +36,9 @@ newtype Event a = Event
 -- and subscribe to its future changes.
 data Dynamic a = Dynamic
   { dynamic_read :: IO a
-  -- ^ Read current value, use its public alias 'readDyn' instead
+  -- ^ Read current value. Use public alias 'readDyn' instead
   , dynamic_updates :: Event a
-  -- ^ Event that fires when the value changes, use its public alias
+  -- ^ Event that fires when the value changes. Use public alias
   -- 'updates' instead
   }
   deriving stock Generic

@@ -12,7 +12,7 @@ import HtmlT.Types
 -- in the first argument. This is why shortcuts like 'div_' can have
 -- one or two arguments.
 --
--- Unceremoniously taken from @lucid@ code) see
+-- Unceremoniously taken from awesome @lucid@ code see
 -- https://github.com/chrisdone/lucid/blob/fb3b0e7c189c2acd8d88838d4a13923f24542ee8/src/Lucid/Base.hs#L272
 class Term arg result | result -> arg where
   term

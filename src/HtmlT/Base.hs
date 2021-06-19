@@ -1,5 +1,5 @@
 -- | Most basic functions and definitions exported by the library
-module HtmlIO.Base where
+module HtmlT.Base where
 
 import Control.Exception as Ex
 import Control.Lens hiding ((#))
@@ -29,13 +29,13 @@ import HtmlT.Types
 el :: Text -> HtmlIO x -> HtmlIO x
 el tag child = do
   newRootEl <- liftIO (createElement tag)
-  withRootNode newRootEl child
+  appendHtmlT newRootEl child
 
 -- | Same as 'el' but also returns the reference to the new element
 el' :: Text -> HtmlIO x -> HtmlIO (x, Node)
 el' tag child = do
   newRootEl <- liftIO (createElement tag)
-  (,newRootEl) <$> withRootNode newRootEl child
+  (,newRootEl) <$> appendHtmlT newRootEl child
 
 -- | Same as 'el' but allows to specify element's namespace, see more
 -- https://developer.mozilla.org/en-US/docs/Web/API/Document/createElementNS
@@ -48,7 +48,7 @@ el' tag child = do
 elns :: Text -> Text -> HtmlIO x -> HtmlIO x
 elns ns tag child = do
   newRootEl <- liftIO (createElementNS ns tag)
-  withRootNode newRootEl child
+  appendHtmlT newRootEl child
 
 -- | Create a TextNode and attach it to the root
 text :: Text -> HtmlIO ()
@@ -69,17 +69,20 @@ dynText d = do
 -- and properties see
 -- https://stackoverflow.com/questions/6003819/what-is-the-difference-between-properties-and-attributes-in-html
 prop :: ToJSVal v => Text -> v -> HtmlIO ()
-prop (JSS.textToJSString -> key) val = mutateRoot \rootEl -> do
-  v <- toJSVal val
-  Object.setProp key v (coerce rootEl)
+prop (JSS.textToJSString -> key) val = do
+  rootEl <- asks he_current_root
+  v <- liftIO $ toJSVal val
+  liftIO $ Object.setProp key v (coerce rootEl)
 
 -- | Assign a property with dynamic content to the root element
 dynProp :: (ToJSVal v, FromJSVal v, Eq v) => Text -> Dynamic v -> HtmlIO ()
-dynProp textKey dyn = askMutateRoot >>= run where
-  setup t el = toJSVal t
-    >>= flip (unsafeSetProp jsKey) (coerce el)
-  run mutate = void $ forDyn dyn (liftIO . mutate . setup)
-  jsKey = JSS.textToJSString textKey
+dynProp textKey dyn = do
+  rootEl <- asks he_current_root
+  void $ forDyn dyn (liftIO . ($ rootEl) . setup)
+  where
+    setup t el = toJSVal t
+      >>= flip (unsafeSetProp jsKey) (coerce el)
+    jsKey = JSS.textToJSString textKey
 
 -- | Assign an attribute to the root element. Don't confuse attributes
 -- and properties see
@@ -90,9 +93,9 @@ attr k v = mutateRoot \e -> setAttribute e k v
 -- | Assign an attribute with dynamic content to the root element
 dynAttr :: Text -> Dynamic Text -> HtmlIO ()
 dynAttr k d = do
-  mutate <- askMutateRoot
+  rootEl <- asks he_current_root
   let setup v e = setAttribute e k v
-  void $ forDyn d (liftIO . mutate . setup)
+  void $ forDyn d (liftIO . ($ rootEl) . setup)
 
 -- | Attach a listener to the root element. First agument is the name
 -- of the DOM event to listen. Second is the callback that accepts the fired
@@ -165,11 +168,13 @@ classes cs = mutateRoot \rootEl -> do
 -- >   on_ "click" $ modifyRef showRef not
 -- >   text "Toggle visibility"
 toggleClass :: Text -> Dynamic Bool -> HtmlIO ()
-toggleClass cs dyn = askMutateRoot >>= run where
-  setup cs enable rootEl = case enable of
-    True  -> classListAdd rootEl cs
-    False -> classListRemove rootEl cs
-  run mutate = void $ forDyn dyn (liftIO . mutate . setup cs)
+toggleClass cs dyn = do
+  rootEl <- asks he_current_root
+  void $ forDyn dyn (liftIO . ($ rootEl) . setup cs)
+  where
+    setup cs enable rootEl = case enable of
+      True  -> classListAdd rootEl cs
+      False -> classListRemove rootEl cs
 
 -- | Assign a boolean attribute dynamically based on the value held by
 -- the given Dynamic
@@ -181,11 +186,13 @@ toggleClass cs dyn = askMutateRoot >>= run where
 -- >   on_ "click" $ modifyRef hiddenRef not
 -- >   text "Toggle visibility"
 toggleAttr :: Text -> Dynamic Bool -> HtmlIO ()
-toggleAttr att dyn = askMutateRoot >>= run where
-  setup mutate name enable rootEl = case enable of
-    True -> setAttribute rootEl name (T.pack "on")
-    False -> removeAttribute rootEl name
-  run mutate = void $ forDyn dyn (liftIO . mutate . setup mutate att)
+toggleAttr att dyn = do
+  rootEl <- asks he_current_root
+  void $ forDyn dyn (liftIO . ($ rootEl) . setup ($ rootEl) att)
+  where
+    setup mutate name enable rootEl = case enable of
+      True -> setAttribute rootEl name (T.pack "on")
+      False -> removeAttribute rootEl name
 
 -- | Assign a CSS property to the root dynamically based on the value
 -- held by the given Dynamic
@@ -196,13 +203,15 @@ toggleAttr att dyn = askMutateRoot >>= run where
 -- >   on_ "click" $ modifyRef colorRef not
 -- >   text "Toggle background color"
 dynStyle :: Text -> Dynamic Text -> HtmlIO ()
-dynStyle cssProp dyn = askMutateRoot >>= run where
-  setup t el = do
-    styleVal <- Object.getProp "style" (coerce el)
-    cssVal <- toJSVal t
-    unsafeSetProp jsCssProp cssVal (coerce styleVal)
-  run mutate = void $ forDyn dyn (liftIO . mutate . setup)
-  jsCssProp = JSS.textToJSString cssProp
+dynStyle cssProp dyn = do
+  rootEl <- asks he_current_root
+  void $ forDyn dyn (liftIO . ($ rootEl) . setup)
+  where
+    setup t el = do
+      styleVal <- Object.getProp "style" (coerce el)
+      cssVal <- toJSVal t
+      unsafeSetProp jsCssProp cssVal (coerce styleVal)
+    jsCssProp = JSS.textToJSString cssProp
 
 -- | Alias for @pure ()@, useful when some HtmlIO action is expected.
 blank :: Applicative m => m ()
@@ -216,12 +225,12 @@ blank = pure ()
 --
 -- > listRef <- newRef ["One", "Two", "Three"]
 -- > el "ul" do
--- >   itraverseHtml listRef traversed \_idx elemRef -> do
+-- >   simpleList listRef traversed \_idx elemRef -> do
 -- >     el "li" $ dynText $ fromRef elemRef
 -- > el "button" do
 -- >   on_ "click" $ modifyRef listRef ("New Item":)
 -- >   text "Append new item"
-itraverseHtml
+simpleList
   :: forall s a
   . DynRef s
   -- ^ Some dynamic data from the above scope
@@ -231,9 +240,9 @@ itraverseHtml
   -- ^ Function to build children widget. Accepts the index inside the
   -- collection and dynamic data for that particular element
   -> HtmlIO ()
-itraverseHtml dynRef l h = do
+simpleList dynRef l h = do
   hte <- ask
-  rootEl <- askRootNode
+  rootEl <- asks he_current_root
   s <- readRef dynRef
   itemRefs <- liftIO (newIORef [])
   let
@@ -269,10 +278,10 @@ itraverseHtml dynRef l h = do
         liftIO $ sync $ ee_modifier r \_ -> y
         setup s (idx + 1) rs xs ys
       (_, _, _) -> do
-        error "itraverseHtml: Incoherent internal state"
+        error "simpleList: Incoherent internal state"
 
     unsub = traverse_ \ElemEnv{..} -> do
-      let fins = he_finalizers ee_htmlEnv
+      let fins = he_finalizers ee_html_env
       liftIO $ readIORef (unFinalizers fins) >>= sequence_
 
     mkModifier :: Int -> Dynamic a -> (a -> a) -> Reactive ()
@@ -307,42 +316,41 @@ dyn_ :: Dynamic (HtmlIO ()) -> HtmlIO ()
 dyn_ dyn = do
   env <- ask
   childRef <- liftIO (newIORef Nothing)
-  mutate <- askMutateRoot
   let
+    rootEl = he_current_root env
     unsub newEnv = do
-      oldEnv <- readIORef childRef
-      for_ oldEnv \HtmlEnv{..} -> do
-        subs <- readIORef $ unFinalizers he_finalizers
-        sequence_ subs
-        writeIORef (unFinalizers he_finalizers) []
+      readIORef childRef >>= \case
+        Just HtmlEnv{..} -> do
+          subs <- readIORef $ unFinalizers he_finalizers
+          sequence_ subs
+          writeIORef (unFinalizers he_finalizers) []
+        Nothing -> return ()
       writeIORef childRef newEnv
     setup html rootEl = liftIO do
       postHooks <- newIORef []
       fins <- Finalizers <$> newIORef []
-      (elmRef, flush) <- deferMutations (he_current_root env)
       let
         newEnv = env
           { he_finalizers = fins
-          , he_post_hooks = postHooks
-          , he_current_root = elmRef }
-        triggerPost = runHtmlT newEnv . sequence_
-          =<< readIORef postHooks
-        commit = do
+          , he_post_hooks = postHooks }
+        commit =
           unsub (Just newEnv)
-            <* emptyContent
-            <* flush
-            <* triggerPost
-      runHtmlT newEnv html <* commit
-    emptyContent = mutate removeAllChilds
+          <* removeAllChilds rootEl
+          <* (readIORef postHooks >>= sequence_)
+      commit *> runHtmlT newEnv html
   addFinalizer (unsub Nothing)
-  void $ forDyn dyn (liftIO . mutate . (void .) . setup)
+  void $ forDyn dyn (liftIO . ($ rootEl) . (void .) . setup)
 
 catchInteractive :: HtmlIO () -> (SomeException -> HtmlIO ()) -> HtmlIO ()
 catchInteractive html handle = ask >>= run where
   run e = local (f e) html
   f e he = he {he_catch_interactive = runHtmlT e . handle}
 
-portal :: Node -> HtmlIO a -> HtmlIO a
-portal rootEl h = do
-  let rootRef = NodeRef (pure rootEl) ($ rootEl)
-  local (\e -> e {he_current_root = rootRef}) h
+addFinalizer :: IO () -> HtmlIO ()
+addFinalizer fin = do
+  fins <- askFinalizers
+  finRef <- liftIO $ newIORef fin
+  liftIO $ modifyIORef (unFinalizers fins) (fin:)
+
+portal :: Node -> HtmlIO x -> HtmlIO x
+portal rootEl = local (\e -> e {he_current_root = rootEl})
