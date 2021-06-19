@@ -14,8 +14,6 @@ newtype HtmlT m a = HtmlT {unHtmlT :: ReaderT HtmlEnv m a}
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadReader HtmlEnv
     , MonadFix, MonadCatch, MonadThrow, MonadMask, MonadTrans)
 
-type HtmlIO = HtmlT IO
-
 data HtmlEnv = HtmlEnv
   { he_current_root :: Node
   , he_finalizers :: Finalizers

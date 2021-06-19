@@ -1,6 +1,6 @@
 module HtmlT.Main where
 
-import Control.Exception
+import Control.Monad.Catch
 import Control.Monad.Reader
 import Data.IORef
 import GHC.Generics
@@ -15,7 +15,7 @@ data StartOpts = StartOpts
   , startopts_root_element :: Node
   } deriving Generic
 
-attachOpts :: StartOpts -> HtmlIO a -> IO (a, HtmlEnv)
+attachOpts :: StartOpts -> HtmlT IO a -> IO (a, HtmlEnv)
 attachOpts StartOpts{..} render = do
   postHooks <- liftIO (newIORef [])
   let
@@ -24,22 +24,22 @@ attachOpts StartOpts{..} render = do
       , he_finalizers = startopts_finalizers
       , he_subscriptions = startopts_subscriptions
       , he_post_hooks = postHooks
-      , he_catch_interactive = throwIO
+      , he_catch_interactive = throwM
       }
-  result <- liftIO $ runHtmlT htmlEnv render
+  result <- runHtmlT htmlEnv render
   liftIO (readIORef postHooks >>= sequence_)
   onBeforeUnload do
     fins <- readIORef (unFinalizers startopts_finalizers)
     sequence_ fins
   pure (result, htmlEnv)
 
-attach :: Node -> HtmlIO a -> IO (a, HtmlEnv)
+attach :: Node -> HtmlT IO a -> IO (a, HtmlEnv)
 attach rootEl render = do
   fins <- liftIO $ Finalizers <$> newIORef []
   subs <- liftIO $ Subscriptions <$> H.new
   attachOpts (StartOpts fins subs rootEl) render
 
-attachToBody :: HtmlIO a -> IO (a, HtmlEnv)
+attachToBody :: HtmlT IO a -> IO (a, HtmlEnv)
 attachToBody h = getBody >>= (`attach` h)
 
 detach :: HtmlEnv -> IO ()
