@@ -10,8 +10,10 @@ import GHCJS.Prim
 import JavaScript.Object.Internal (Object(..))
 import qualified JavaScript.Object as Object
 
-newtype Decoder a = Decoder
-  {runDecoder :: JSVal -> IO (Maybe a)}
+-- | Extract some value from 'JSVal'. Name comes from the Elm
+-- ecosystem and it's main purpose is to parse information from DOM
+-- events (like mouse coordinates, keyboard keys, input values etc)
+newtype Decoder a = Decoder {unDecoder :: JSVal -> IO (Maybe a)}
 
 decodeJSVal :: Decoder JSVal
 decodeJSVal = Decoder (pure . pure)
@@ -21,7 +23,7 @@ decoder = Decoder fromJSVal
 
 decodeAt :: [Text] -> Decoder a -> Decoder a
 decodeAt keys dec = Decoder (go keys) where
-  go [] obj = runDecoder dec obj
+  go [] obj = unDecoder dec obj
   go (k:ks) obj = do
     izNull <- return (isNull obj)
     izUndefined <- return (isUndefined obj)
@@ -30,13 +32,11 @@ decodeAt keys dec = Decoder (go keys) where
       else Object.getProp (textToJSString k) (coerce obj) >>= go ks
 
 withDecoder
-  :: MonadIO m
-  => Coercible domEvent JSVal
+  :: (MonadIO m, Coercible domEvent JSVal)
   => Decoder a
   -> (a -> m ()) -> domEvent -> m ()
 withDecoder dec f (coerce -> jsval) =
-  maybe (return ()) f =<<
-    liftIO (runDecoder dec jsval)
+  maybe (return ()) f =<< liftIO (unDecoder dec jsval)
 {-# INLINEABLE withDecoder #-}
 
 instance Functor Decoder where

@@ -1,8 +1,8 @@
--- | Very simplistic implementation of FRP-like functionality. Most
--- notable definiions are 'Event', 'Dynamic' and 'DynRef'. 'Event' and
--- 'Dynamic' have the same meaning as in reflex. 'DynRef' is a new
--- construction it has similar API to 'IORef' and can be thought of as
--- a 'Dynamic' with a function to update its value
+-- | Very simple FRP-like functionality implemented for internal
+-- use. 'Event' and 'Dynamic' are similar to the same concepts from
+-- Reflex unlike 'DynRef' which is another important definition, not
+-- used in other FRP libraries. Some functions also bear the same name
+-- as their Reflex counterparts to make API easier to learn
 module HtmlT.Event where
 
 import Control.Applicative
@@ -94,7 +94,7 @@ runSubscribeT s = (`runReaderT` s) . unSubscribeT
 --
 -- > (event, push) <- newEvent @String
 -- > push "New Value" -- event fires with given value
-newEvent :: (MonadIO m, MonadSubscribe m) => m (Event a, Trigger a)
+newEvent :: forall a m. (MonadIO m, MonadSubscribe m) => m (Event a, Trigger a)
 newEvent = do
   subs <- askSubscribe
   eventId <- liftIO $ nextId @Event
@@ -105,7 +105,7 @@ newEvent = do
 --
 -- > showRef <- newRef False
 -- > writeRef showRef True -- update event fires for showRef
-newRef :: (MonadIO m, MonadSubscribe m) => a -> m (DynRef a)
+newRef :: forall a m. (MonadIO m, MonadSubscribe m) => a -> m (DynRef a)
 newRef initial = do
   ref <- liftIO $ newIORef initial
   (ev, push) <- newEvent

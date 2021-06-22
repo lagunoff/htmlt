@@ -1,5 +1,4 @@
--- |Borrowed from @Miso.HtmlT.Property@
--- https://github.com/dmjio/miso/blob/69f50b49adbff8217f8b51ae5f47727ee950f204/src/Miso/HtmlT/Property.hs
+-- | Shortcuts for common HTML5 attributes and properties
 module HtmlT.Property where
 
 import Data.Text

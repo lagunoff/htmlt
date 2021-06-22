@@ -1,3 +1,4 @@
+-- | Start and stop browser application
 module HtmlT.Main where
 
 import Control.Monad.Catch

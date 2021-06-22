@@ -1,18 +1,18 @@
--- | Shortcuts for constructing most widely used html5 elements
+-- | Shortcuts for most common HTML5 elements
 module HtmlT.Element where
 
 import Data.Text as T
 import HtmlT.Base
 import HtmlT.Types
 
--- | Used to make possible for shortcut constructors to have variable
--- length arguments. Although there is no need to pass attributes and
--- children separately because they are of the same type @HtmlT a@ the
--- layout code looks more readable with attributes passed separately
--- in the first argument. This is why shortcuts like 'div_' can have
--- one or two arguments.
+-- | This typeclass allows for tag constructors to have variable
+-- length arguments. Each tag constructor like 'div_' defined below
+-- can be called with one or two arguments
 --
--- Unceremoniously taken from awesome @lucid@ code see
+-- > div_ $ text "A Div without attributes"
+-- > div_ [class_ "wrapper"] $ text "A Div with a class"
+--
+-- Unceremoniously copied from the great @lucid@ library, see
 -- https://github.com/chrisdone/lucid/blob/fb3b0e7c189c2acd8d88838d4a13923f24542ee8/src/Lucid/Base.hs#L272
 class Term arg result | result -> arg where
   term

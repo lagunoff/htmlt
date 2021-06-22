@@ -1,4 +1,5 @@
--- | Most basic functions and definitions exported by the library
+-- | This module exports the most essential definions that users of
+-- this library would need
 module HtmlT.Base where
 
 import Control.Exception as Exception
@@ -161,8 +162,7 @@ onGlobalEvent opts target name f = do
 classes :: Text -> Html ()
 classes cs = do
   rootEl <- asks html_current_root
-  for_ (T.splitOn " " cs) $
-    liftIO . classListAdd rootEl
+  for_ (T.splitOn " " cs) $ liftIO . classListAdd rootEl
 
 -- | Assign a single CSS classe dynamically based on the value held by
 -- the given Dynamic

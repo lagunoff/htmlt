@@ -1,3 +1,6 @@
+-- | Functions and definitions to work with DOM. ghcjs-dom is too
+-- heavy, takes about an hour to compile and increases size of the
+-- generated JavaScript
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
