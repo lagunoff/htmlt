@@ -53,7 +53,7 @@ elns ns tag child = do
 -- | Create a TextNode and attach it to the root
 text :: Text -> Html ()
 text txt = do
-  rootEl <- asks he_current_root
+  rootEl <- asks html_current_root
   textNode <- liftIO (createTextNode txt)
   liftIO $ appendChild rootEl textNode
 
@@ -61,7 +61,7 @@ text txt = do
 dynText :: Dynamic Text -> Html ()
 dynText d = do
   txt <- readDyn d
-  rootEl <- asks he_current_root
+  rootEl <- asks html_current_root
   textNode <- liftIO (createTextNode txt)
   forEvent_ (updates d) \new -> void $ liftIO do
     setTextValue textNode new
@@ -72,7 +72,7 @@ dynText d = do
 -- https://stackoverflow.com/questions/6003819/what-is-the-difference-between-properties-and-attributes-in-html
 prop :: ToJSVal v => Text -> v -> Html ()
 prop (JSS.textToJSString -> key) val = do
-  rootEl <- asks he_current_root
+  rootEl <- asks html_current_root
   v <- liftIO $ toJSVal val
   liftIO $ Object.setProp key v (coerce rootEl)
 
@@ -83,7 +83,7 @@ dynProp
   -> Dynamic v
   -> Html ()
 dynProp textKey dyn = do
-  rootEl <- asks he_current_root
+  rootEl <- asks html_current_root
   void $ forDyn dyn (liftIO . setup rootEl)
   where
     setup el t = toJSVal t
@@ -94,13 +94,13 @@ dynProp textKey dyn = do
 -- and properties see
 -- https://stackoverflow.com/questions/6003819/what-is-the-difference-between-properties-and-attributes-in-html
 attr :: Text -> Text -> Html ()
-attr k v = asks he_current_root
+attr k v = asks html_current_root
   >>= \e -> liftIO (setAttribute e k v)
 
 -- | Assign an attribute with dynamic content to the root element
 dynAttr :: Text -> Dynamic Text -> Html ()
 dynAttr k d = do
-  rootEl <- asks he_current_root
+  rootEl <- asks html_current_root
   void $ forDyn d $ liftIO . setAttribute rootEl k
 
 -- | Attach a listener to the root element. First agument is the name
@@ -114,7 +114,7 @@ dynAttr k d = do
 on :: Text -> (DOMEvent -> Html ()) -> Html ()
 on name f = ask >>= listen where
   listen HtmlEnv{..} =
-    onGlobalEvent defaultListenerOpts he_current_root name f
+    onGlobalEvent defaultListenerOpts html_current_root name f
 
 -- | Same as 'on' but ignores 'DOMEvent' inside the callback
 on_ :: Text -> Html () -> Html ()
@@ -123,7 +123,7 @@ on_ name = on name . const
 onOpts :: Text -> ListenerOpts -> (DOMEvent -> Html ()) -> Html ()
 onOpts name opts f = ask >>= listen where
   listen HtmlEnv{..} =
-    onGlobalEvent opts he_current_root name f
+    onGlobalEvent opts html_current_root name f
 
 onOpts_ :: Text -> ListenerOpts -> Html () -> Html ()
 onOpts_ name opts = onOpts name opts . const
@@ -146,11 +146,11 @@ onGlobalEvent opts target name f = do
   htmlEnv <- ask
   void $ subscribe (mkEvent htmlEnv) (liftIO . runHtmlT htmlEnv)
   where
-  mkEvent e = Event \k -> liftIO do
-    unlisten <- addEventListener opts target name \event -> do
-      void . liftIO . hdl e . sync . k . f $ coerce event
-    pure $ liftIO unlisten
-  hdl e = flip Ex.catch (he_catch_interactive e)
+    mkEvent e = Event \k -> liftIO do
+      unlisten <- addEventListener opts target name \event -> do
+        void . liftIO . hdl e . sync . k . f $ coerce event
+      pure $ liftIO unlisten
+    hdl e = flip Ex.catch (html_catch_interactive e)
 
 -- | Assign CSS classes to the current root element. Compare to @prop
 -- "className"@ can be used multiple times for the same root
@@ -160,7 +160,7 @@ onGlobalEvent opts target name f = do
 -- >   classes "mt-1 mb-2"
 classes :: Text -> Html ()
 classes cs = do
-  rootEl <- asks he_current_root
+  rootEl <- asks html_current_root
   for_ (T.splitOn " " cs) $
     liftIO . classListAdd rootEl
 
@@ -175,7 +175,7 @@ classes cs = do
 -- >   text "Toggle visibility"
 toggleClass :: Text -> Dynamic Bool -> Html ()
 toggleClass cs dyn = do
-  rootEl <- asks he_current_root
+  rootEl <- asks html_current_root
   void $ forDyn dyn (liftIO . setup rootEl cs)
   where
     setup rootEl cs enable = case enable of
@@ -193,7 +193,7 @@ toggleClass cs dyn = do
 -- >   text "Toggle visibility"
 toggleAttr :: Text -> Dynamic Bool -> Html ()
 toggleAttr att dyn = do
-  rootEl <- asks he_current_root
+  rootEl <- asks html_current_root
   void $ forDyn dyn (liftIO . setup rootEl att)
   where
     setup rootEl name enable = case enable of
@@ -210,7 +210,7 @@ toggleAttr att dyn = do
 -- >   text "Toggle background color"
 dynStyle :: Text -> Dynamic Text -> Html ()
 dynStyle cssProp dyn = do
-  rootEl <- asks he_current_root
+  rootEl <- asks html_current_root
   void $ forDyn dyn (liftIO . setup rootEl)
   where
     setup el t = do
@@ -248,7 +248,7 @@ simpleList
   -> Html ()
 simpleList dynRef l h = do
   hte <- ask
-  rootEl <- asks he_current_root
+  rootEl <- asks html_current_root
   s <- readRef dynRef
   itemRefs <- liftIO (newIORef [])
   let
@@ -259,13 +259,13 @@ simpleList dynRef l h = do
       ([], [], x:xs) -> do
         -- New list is longer, append new elements
         fins <- Finalizers <$> newIORef []
-        elemRef <- runSubscribeT (he_subscriptions hte) $ newRef x
+        elemRef <- runSubscribeT (html_subscriptions hte) $ newRef x
         postRef <- liftIO (newIORef [])
         let
           elemRef' = elemRef {dr_modifier=mkModifier idx (fromRef elemRef)}
           newEnv = hte
-            { he_finalizers = fins
-            , he_post_hooks = postRef }
+            { html_finalizers = fins
+            , html_post_hooks = postRef }
           itemRef = ElemEnv newEnv elemRef' (dr_modifier elemRef)
         runHtmlT newEnv $ h idx elemRef'
         liftIO (modifyIORef' itemRefs (<> [itemRef]))
@@ -287,7 +287,7 @@ simpleList dynRef l h = do
         error "simpleList: Incoherent internal state"
 
     unsub = traverse_ \ElemEnv{..} -> do
-      let fins = he_finalizers ee_html_env
+      let fins = html_finalizers ee_html_env
       liftIO $ readIORef (unFinalizers fins) >>= sequence_
 
     mkModifier :: Int -> Dynamic a -> (a -> a) -> Reactive ()
@@ -323,13 +323,13 @@ dyn_ dyn = do
   env <- ask
   childRef <- liftIO (newIORef Nothing)
   let
-    rootEl = he_current_root env
+    rootEl = html_current_root env
     unsub newEnv = do
       readIORef childRef >>= \case
         Just HtmlEnv{..} -> do
-          subs <- readIORef $ unFinalizers he_finalizers
+          subs <- readIORef $ unFinalizers html_finalizers
           sequence_ subs
-          writeIORef (unFinalizers he_finalizers) []
+          writeIORef (unFinalizers html_finalizers) []
         Nothing -> return ()
       writeIORef childRef newEnv
     setup rootEl html = liftIO do
@@ -337,8 +337,8 @@ dyn_ dyn = do
       fins <- Finalizers <$> newIORef []
       let
         newEnv = env
-          { he_finalizers = fins
-          , he_post_hooks = postHooks }
+          { html_finalizers = fins
+          , html_post_hooks = postHooks }
         commit =
           unsub (Just newEnv)
           <* removeAllChilds rootEl
@@ -353,7 +353,7 @@ catchInteractive
   -> Html ()
 catchInteractive html handle = ask >>= run where
   run e = local (f e) html
-  f e he = he {he_catch_interactive = runHtmlT e . handle}
+  f e he = he {html_catch_interactive = runHtmlT e . handle}
 
 addFinalizer :: IO () -> Html ()
 addFinalizer fin = do
@@ -362,4 +362,4 @@ addFinalizer fin = do
   liftIO $ modifyIORef (unFinalizers fins) (fin:)
 
 portal :: Node -> Html a -> Html a
-portal rootEl = local (\e -> e {he_current_root = rootEl})
+portal rootEl = local (\e -> e {html_current_root = rootEl})

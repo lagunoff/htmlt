@@ -14,11 +14,11 @@ newtype HtmlT m a = HtmlT {unHtmlT :: ReaderT HtmlEnv m a}
     , MonadFix, MonadCatch, MonadThrow, MonadMask, MonadTrans)
 
 data HtmlEnv = HtmlEnv
-  { he_current_root :: Node
-  , he_finalizers :: Finalizers
-  , he_subscriptions :: Subscriptions
-  , he_post_hooks :: IORef [IO ()]
-  , he_catch_interactive :: SomeException -> IO ()
+  { html_current_root :: Node
+  , html_finalizers :: Finalizers
+  , html_subscriptions :: Subscriptions
+  , html_post_hooks :: IORef [IO ()]
+  , html_catch_interactive :: SomeException -> IO ()
   } deriving Generic
 
 type Html = HtmlT IO
@@ -40,7 +40,7 @@ instance (Monoid a, Applicative m) => Monoid (HtmlT m a) where
   mempty = HtmlT $ ReaderT \_ -> pure mempty
 
 instance Monad m => MonadSubscribe (HtmlT m) where
-  askSubscribe = asks he_subscriptions
+  askSubscribe = asks html_subscriptions
 
 instance Monad m => MonadFinalize (HtmlT m) where
-  askFinalizers = asks he_finalizers
+  askFinalizers = asks html_finalizers

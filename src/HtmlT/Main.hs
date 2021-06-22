@@ -20,11 +20,11 @@ attachOpts StartOpts{..} render = do
   postHooks <- liftIO (newIORef [])
   let
     htmlEnv = HtmlEnv
-      { he_current_root = startopts_root_element
-      , he_finalizers = startopts_finalizers
-      , he_subscriptions = startopts_subscriptions
-      , he_post_hooks = postHooks
-      , he_catch_interactive = throwM
+      { html_current_root = startopts_root_element
+      , html_finalizers = startopts_finalizers
+      , html_subscriptions = startopts_subscriptions
+      , html_post_hooks = postHooks
+      , html_catch_interactive = throwM
       }
   result <- runHtmlT htmlEnv render
   liftIO (readIORef postHooks >>= sequence_)
@@ -44,6 +44,6 @@ attachToBody h = getBody >>= (`attach` h)
 
 detach :: HtmlEnv -> IO ()
 detach HtmlEnv{..} = do
-  fins <- readIORef (unFinalizers he_finalizers)
+  fins <- readIORef (unFinalizers html_finalizers)
   sequence_ fins
-  removeAllChilds he_current_root
+  removeAllChilds html_current_root

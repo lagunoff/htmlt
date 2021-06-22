@@ -280,6 +280,6 @@ getBody = liftIO $ coerce <$> js_getBody
 instance (x ~ (), MonadIO m) => IsString (HtmlT m x) where
   fromString = f . T.pack where
     f t = do
-      rootEl <- asks he_current_root
+      rootEl <- asks html_current_root
       textNode <- liftIO (createTextNode t)
       liftIO (appendChild rootEl textNode)

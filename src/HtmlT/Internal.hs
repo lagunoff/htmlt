@@ -15,6 +15,6 @@ data ElemEnv a = ElemEnv
 
 appendHtmlT :: MonadIO m => Node -> HtmlT m a -> HtmlT m a
 appendHtmlT newRootEl html = do
-  rootEl <- asks he_current_root
-  result <- local (\env -> env { he_current_root = newRootEl }) html
+  rootEl <- asks html_current_root
+  result <- local (\env -> env { html_current_root = newRootEl }) html
   result <$ liftIO (appendChild rootEl newRootEl)
