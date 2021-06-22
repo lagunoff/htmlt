@@ -23,11 +23,10 @@ data ListenerOpts = ListenerOpts
   { lo_stop_propagation :: Bool
   , lo_prevent_default :: Bool
   , lo_sync_callback :: Bool
-  }
-  deriving stock (Eq, Show, Generic)
-  deriving anyclass (ToJSVal)
+  } deriving stock (Eq, Show, Generic)
+    deriving anyclass (ToJSVal)
 
-type Decoding a = (a -> HtmlT IO ()) -> DOMEvent -> HtmlT IO ()
+type Decoding a = (a -> Html ()) -> DOMEvent -> Html ()
 
 defaultListenerOpts :: ListenerOpts
 defaultListenerOpts = ListenerOpts True False False
@@ -168,8 +167,7 @@ data MouseDelta = MouseDelta
   { md_delta_x :: Int
   , md_delta_y :: Int
   , md_delta_z :: Int
-  }
-  deriving stock (Eq, Show, Generic)
+  } deriving stock (Eq, Show, Generic)
 
 mouseDeltaDecoder :: Decoder MouseDelta
 mouseDeltaDecoder = MouseDelta
@@ -180,8 +178,7 @@ mouseDeltaDecoder = MouseDelta
 data Position = Position
   { pos_x :: Int
   , pos_y :: Int
-  }
-  deriving stock (Eq, Show, Ord, Generic)
+  } deriving stock (Eq, Show, Ord, Generic)
 
 clientXYDecoder :: Decoder Position
 clientXYDecoder = Position
@@ -203,8 +200,7 @@ data KeyModifiers = KeyModifiers
   , kmod_ctrl_key :: Bool
   , kmod_meta_key :: Bool
   , kmod_shift_key :: Bool
-  }
-  deriving stock (Eq, Show, Generic)
+  } deriving stock (Eq, Show, Generic)
 
 keyModifiersDecoder :: Decoder KeyModifiers
 keyModifiersDecoder = KeyModifiers
@@ -221,8 +217,7 @@ data KeyboardEvent = KeyboardEvent
   , ke_key :: Maybe Text
   , ke_key_code :: Int
   , ke_repeat :: Bool
-  }
-  deriving stock (Eq, Show, Generic)
+  } deriving stock (Eq, Show, Generic)
 
 keyboardEventDecoder :: Decoder KeyboardEvent
 keyboardEventDecoder = KeyboardEvent
@@ -232,20 +227,20 @@ keyboardEventDecoder = KeyboardEvent
   <*> decodeAt ["repeat"] decoder
 
 decodeTarget :: Decoding JSVal
-decodeTarget = withDecoder d where
-  d = decodeAt ["target"] decodeJSVal
+decodeTarget = withDecoder $
+  decodeAt ["target"] decodeJSVal
 
 decodeValue :: Decoding Text
-decodeValue = withDecoder d where
-  d = decodeAt ["target", "value"] decoder
+decodeValue = withDecoder $
+  decodeAt ["target", "value"] decoder
 
 decodeCurrentTarget :: Decoding JSVal
-decodeCurrentTarget = withDecoder d where
-  d = decodeAt ["currentTarget"] decodeJSVal
+decodeCurrentTarget = withDecoder $
+  decodeAt ["currentTarget"] decodeJSVal
 
 decodeChecked :: Decoding Bool
-decodeChecked = withDecoder d where
-  d = decodeAt ["target", "checked"] decoder
+decodeChecked = withDecoder $
+  decodeAt ["target", "checked"] decoder
 
 decodeMouseDelta :: Decoding MouseDelta
 decodeMouseDelta = withDecoder mouseDeltaDecoder

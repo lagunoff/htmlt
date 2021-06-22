@@ -28,8 +28,7 @@ import qualified HtmlT.HashMap as H
 -- to unsubscribe.
 newtype Event a = Event
   { unEvent :: Callback a -> IO Canceller
-  }
-  deriving stock Generic
+  } deriving stock Generic
 
 -- | Holds a value that changes over the lifetime of the
 -- program. It is possible to read the current value of a 'Dynamic'
@@ -40,31 +39,36 @@ data Dynamic a = Dynamic
   , dynamic_updates :: Event a
   -- ^ Event that fires when the value changes. Use public alias
   -- 'updates' instead
-  }
-  deriving stock Generic
+  } deriving stock Generic
 
 -- | Mutable variable that supports subscription to its changes. Has
 -- similar API to 'IORef' (see 'readRef', 'writeRef', 'modifyRef')
 data DynRef a = DynRef
-  { dr_dynamic :: Dynamic a
+  { dynref_dynamic :: Dynamic a
   -- ^ Holds the current value and an event that notifies about value
   -- modifications
-  , dr_modifier :: Modifier a
+  , dynref_modifier :: Modifier a
   -- ^ Funtion to update the value
-  }
-  deriving stock Generic
+  } deriving stock Generic
 
 -- | State inside 'Reactive'
 newtype ReactiveState = ReactiveState
   { unReactiveState :: M.Map (Id Event) (Reactive ())
-  }
-  deriving stock Generic
+  } deriving stock Generic
 
 -- | Evaluation of effects triggered by event firing
 newtype Reactive a = Reactive (StateT ReactiveState IO a)
   deriving newtype (Functor, Applicative, Monad, MonadIO
     , MonadState ReactiveState, MonadFix, MonadCatch, MonadThrow
     , MonadMask)
+
+type Callback a = a -> Reactive ()
+
+type Trigger a = a -> Reactive ()
+
+type Modifier a = (a -> a) -> Reactive ()
+
+type Canceller = IO ()
 
 class MonadSubscribe m where
   askSubscribe :: m Subscriptions
@@ -76,34 +80,21 @@ newtype Subscriptions = Subscriptions
   { unSubscriptions :: H.HashMap (Id Event) [IORef (Callback Any)]
   }
 
-newtype Finalizers = Finalizers
-  { unFinalizers :: IORef [Canceller]
-  }
+newtype Finalizers = Finalizers {unFinalizers :: IORef [Canceller]}
 
 type MonadReactive m = (MonadIO m, MonadSubscribe m, MonadFinalize m)
 
 newtype SubscribeT m a = SubscribeT {unSubscribeT :: ReaderT Subscriptions m a}
   deriving newtype (MonadIO, Monad, Functor, Applicative)
 
-instance Applicative m => MonadSubscribe (SubscribeT m) where
-  askSubscribe = SubscribeT $ ReaderT \s -> pure s
-
 runSubscribeT :: Subscriptions -> SubscribeT m a -> m a
 runSubscribeT s = (`runReaderT` s) . unSubscribeT
-
-type Callback a = a -> Reactive ()
-
-type Trigger a = a -> Reactive ()
-
-type Modifier a = (a -> a) -> Reactive ()
-
-type Canceller = IO ()
 
 -- | Create new event and a function to supply values to that event
 --
 -- > (event, push) <- newEvent @String
 -- > push "New Value" -- event fires with given value
-newEvent :: forall a m. (MonadIO m, MonadSubscribe m) => m (Event a, Trigger a)
+newEvent :: (MonadIO m, MonadSubscribe m) => m (Event a, Trigger a)
 newEvent = do
   subs <- askSubscribe
   eventId <- liftIO $ nextId @Event
@@ -114,7 +105,7 @@ newEvent = do
 --
 -- > showRef <- newRef False
 -- > writeRef showRef True -- update event fires for showRef
-newRef :: forall a m. (MonadIO m, MonadSubscribe m) => a -> m (DynRef a)
+newRef :: (MonadIO m, MonadSubscribe m) => a -> m (DynRef a)
 newRef initial = do
   ref <- liftIO $ newIORef initial
   (ev, push) <- newEvent
@@ -151,13 +142,13 @@ writeRef ref a = modifyRef ref (const a)
 -- > readRef ref
 -- "Hello there!"
 readRef :: MonadIO m => DynRef a -> m a
-readRef = readDyn . dr_dynamic
+readRef = readDyn . dynref_dynamic
 {-# INLINE readRef #-}
 
 -- | Same as 'readRef' but also applies given function to the value
 -- held by 'DynRef'
 readsRef :: MonadIO m => (a -> b) -> DynRef a -> m b
-readsRef f = readsDyn f . dr_dynamic
+readsRef f = readsDyn f . dynref_dynamic
 {-# INLINE readsRef #-}
 
 -- | Update a 'DynRef' by applying a given function to the current
@@ -172,7 +163,7 @@ modifyRef (DynRef _ modifier) = liftIO . sync . modifier
 
 -- | Version of 'modifyRef' that runs inside @Reactive@
 modifySync :: DynRef a -> (a -> a) -> Reactive ()
-modifySync = dr_modifier
+modifySync = dynref_modifier
 {-# INLINE modifySync #-}
 
 -- | Version of 'writeRef' that runs inside @Reactive@
@@ -182,7 +173,7 @@ writeSync ref a = modifySync ref (const a)
 
 -- | Extract a 'Dynamic' out of 'DynRef'
 fromRef :: DynRef a -> Dynamic a
-fromRef = dr_dynamic
+fromRef = dynref_dynamic
 {-# INLINE fromRef #-}
 
 -- | Read the value held by a 'Dynamic'
@@ -295,7 +286,8 @@ traceDyn = traceDynWith show
 
 -- | Print a debug message when value inside Dynamic changes
 traceRef :: Show a => String -> DynRef a -> DynRef a
-traceRef s DynRef{..} = DynRef{dr_dynamic = traceDynWith show s dr_dynamic, ..}
+traceRef s DynRef{..} = DynRef
+  {dynref_dynamic = traceDynWith show s dynref_dynamic, ..}
 
 -- | Print a debug message when value inside Dynamic changes using
 -- given printing function
@@ -358,7 +350,7 @@ mapDyn2 aDyn bDyn f = do
     defer eventId fire
   return $ Dynamic (readIORef latestC) updates
 
-subscribeImpl :: forall a. Subscriptions -> Id Event -> Callback a -> IO Canceller
+subscribeImpl :: Subscriptions -> Id Event -> Callback a -> IO Canceller
 subscribeImpl (Subscriptions ht) eventId k = do
   kref <- newIORef (\(a::Any) -> k (unsafeCoerce a)) -- Need 'IORef' for an 'Eq' instance
   H.mutate ht eventId \mss ->
@@ -370,6 +362,9 @@ triggerImpl :: Subscriptions -> Id Event -> a -> Reactive ()
 triggerImpl (Subscriptions ht) eventId a = defer eventId do
   callbacks <- liftIO $ fromMaybe [] <$> H.lookup ht eventId
   for_ callbacks $ liftIO . readIORef >=> ($ unsafeCoerce @_ @Any a)
+
+instance Applicative m => MonadSubscribe (SubscribeT m) where
+  askSubscribe = SubscribeT $ ReaderT pure
 
 instance Functor Event where
   fmap f (Event s) = Event \k -> s . (. f) $ k

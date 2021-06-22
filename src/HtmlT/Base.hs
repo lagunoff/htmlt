@@ -1,7 +1,7 @@
 -- | Most basic functions and definitions exported by the library
 module HtmlT.Base where
 
-import Control.Exception as Ex
+import Control.Exception as Exception
 import Control.Lens hiding ((#))
 import Control.Monad.Reader
 import Data.Coerce
@@ -112,21 +112,21 @@ dynAttr k d = do
 -- >     liftIO $ putStrLn "Clicked!"
 -- >   text "Click here"
 on :: Text -> (DOMEvent -> Html ()) -> Html ()
-on name f = ask >>= listen where
-  listen HtmlEnv{..} =
-    onGlobalEvent defaultListenerOpts html_current_root name f
+on name f = ask >>= \HtmlEnv{..} ->
+  onGlobalEvent defaultListenerOpts html_current_root name f
 
 -- | Same as 'on' but ignores 'DOMEvent' inside the callback
 on_ :: Text -> Html () -> Html ()
 on_ name = on name . const
 
-onOpts :: Text -> ListenerOpts -> (DOMEvent -> Html ()) -> Html ()
-onOpts name opts f = ask >>= listen where
-  listen HtmlEnv{..} =
-    onGlobalEvent opts html_current_root name f
+-- | Same as 'on' but allows to specify 'ListenerOpts'
+onOptions :: Text -> ListenerOpts -> (DOMEvent -> Html ()) -> Html ()
+onOptions name opts f = ask >>= \HtmlEnv{..} ->
+  onGlobalEvent opts html_current_root name f
 
-onOpts_ :: Text -> ListenerOpts -> Html () -> Html ()
-onOpts_ name opts = onOpts name opts . const
+-- | Same as 'onOptions' but ignores 'DOMEvent' inside the callback
+onOptions_ :: Text -> ListenerOpts -> Html () -> Html ()
+onOptions_ name opts = onOptions name opts . const
 
 -- | Attach a listener to arbitrary target, not just the current root
 -- element (usually that would be @window@, @document@ or @body@
@@ -146,11 +146,11 @@ onGlobalEvent opts target name f = do
   htmlEnv <- ask
   void $ subscribe (mkEvent htmlEnv) (liftIO . runHtmlT htmlEnv)
   where
-    mkEvent e = Event \k -> liftIO do
-      unlisten <- addEventListener opts target name \event -> do
-        void . liftIO . hdl e . sync . k . f $ coerce event
-      pure $ liftIO unlisten
-    hdl e = flip Ex.catch (html_catch_interactive e)
+    mkEvent htmlEnv = Event \callback -> liftIO do
+      unlisten <- addEventListener opts target name $
+        void . liftIO . catchExs htmlEnv . sync . callback . f . coerce
+      return $ liftIO unlisten
+    catchExs HtmlEnv{..} = (`Exception.catch` html_catch_interactive)
 
 -- | Assign CSS classes to the current root element. Compare to @prop
 -- "className"@ can be used multiple times for the same root
@@ -178,8 +178,8 @@ toggleClass cs dyn = do
   rootEl <- asks html_current_root
   void $ forDyn dyn (liftIO . setup rootEl cs)
   where
-    setup rootEl cs enable = case enable of
-      True  -> classListAdd rootEl cs
+    setup rootEl cs = \case
+      True -> classListAdd rootEl cs
       False -> classListRemove rootEl cs
 
 -- | Assign a boolean attribute dynamically based on the value held by
@@ -196,7 +196,7 @@ toggleAttr att dyn = do
   rootEl <- asks html_current_root
   void $ forDyn dyn (liftIO . setup rootEl att)
   where
-    setup rootEl name enable = case enable of
+    setup rootEl name = \case
       True -> setAttribute rootEl name "on"
       False -> removeAttribute rootEl name
 
@@ -262,11 +262,11 @@ simpleList dynRef l h = do
         elemRef <- runSubscribeT (html_subscriptions hte) $ newRef x
         postRef <- liftIO (newIORef [])
         let
-          elemRef' = elemRef {dr_modifier=mkModifier idx (fromRef elemRef)}
+          elemRef' = elemRef {dynref_modifier=mkModifier idx (fromRef elemRef)}
           newEnv = hte
             { html_finalizers = fins
             , html_post_hooks = postRef }
-          itemRef = ElemEnv newEnv elemRef' (dr_modifier elemRef)
+          itemRef = ElemEnv newEnv elemRef' (dynref_modifier elemRef)
         runHtmlT newEnv $ h idx elemRef'
         liftIO (modifyIORef' itemRefs (<> [itemRef]))
         setup s (idx + 1) [] [] xs
@@ -293,7 +293,7 @@ simpleList dynRef l h = do
     mkModifier :: Int -> Dynamic a -> (a -> a) -> Reactive ()
     mkModifier idx dyn f = do
       oldA <- readDyn dyn
-      dr_modifier dynRef \oldS ->
+      dynref_modifier dynRef \oldS ->
         oldS & iover l \i x -> if i == idx then f oldA else x
   liftIO $ setup s 0 [] [] (toListOf l s)
   addFinalizer $ readIORef itemRefs >>= unsub
@@ -347,19 +347,23 @@ dyn_ dyn = do
   addFinalizer (unsub Nothing)
   void $ forDyn dyn (liftIO . setup rootEl)
 
+-- | Catch exceptions thrown from event handlers
 catchInteractive
   :: Html ()
   -> (SomeException -> Html ())
   -> Html ()
-catchInteractive html handle = ask >>= run where
-  run e = local (f e) html
-  f e he = he {html_catch_interactive = runHtmlT e . handle}
+catchInteractive html f =
+  local (\e -> e {html_catch_interactive = runHtmlT e . f}) html
 
+-- | Run an action before the current node is detached from the DOM
 addFinalizer :: IO () -> Html ()
 addFinalizer fin = do
   fins <- askFinalizers
   finRef <- liftIO $ newIORef fin
   liftIO $ modifyIORef (unFinalizers fins) (fin:)
 
+-- | Attach resulting DOM to the given node instead of
+-- 'html_current_root'. Might be useful for modals, tooltips
+-- etc. Similar to what called portals in React ecosystem
 portal :: Node -> Html a -> Html a
 portal rootEl = local (\e -> e {html_current_root = rootEl})
