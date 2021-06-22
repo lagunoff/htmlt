@@ -26,13 +26,13 @@ import HtmlT.Types
 -- > el "div" do
 -- >   prop "className" "container"
 -- >   el "span" $ text "Lorem Ipsum"
-el :: MonadIO m => Text -> HtmlT m x -> HtmlT m x
+el :: Text -> Html a -> Html a
 el tag child = do
   newRootEl <- liftIO (createElement tag)
   appendHtmlT newRootEl child
 
 -- | Same as 'el' but also returns the reference to the new element
-el' :: MonadIO m => Text -> HtmlT m x -> HtmlT m (x, Node)
+el' :: Text -> Html a -> Html (a, Node)
 el' tag child = do
   newRootEl <- liftIO (createElement tag)
   (,newRootEl) <$> appendHtmlT newRootEl child
@@ -45,20 +45,20 @@ el' tag child = do
 -- >   prop "width" "400"
 -- >   elns "http://www.w3.org/2000/svg" "path" do
 -- >     prop "d" "M150 0 L75 200 L225 200 Z"
-elns :: MonadIO m => Text -> Text -> HtmlT m x -> HtmlT m x
+elns :: Text -> Text -> Html a -> Html a
 elns ns tag child = do
   newRootEl <- liftIO (createElementNS ns tag)
   appendHtmlT newRootEl child
 
 -- | Create a TextNode and attach it to the root
-text :: MonadIO m => Text -> HtmlT m ()
+text :: Text -> Html ()
 text txt = do
   rootEl <- asks he_current_root
   textNode <- liftIO (createTextNode txt)
   liftIO $ appendChild rootEl textNode
 
 -- | Create a TextNode with dynamic content
-dynText :: MonadIO m => Dynamic Text -> HtmlT m ()
+dynText :: Dynamic Text -> Html ()
 dynText d = do
   txt <- readDyn d
   rootEl <- asks he_current_root
@@ -70,7 +70,7 @@ dynText d = do
 -- | Assign a property to the root element. Don't confuse attributes
 -- and properties see
 -- https://stackoverflow.com/questions/6003819/what-is-the-difference-between-properties-and-attributes-in-html
-prop :: (ToJSVal v, MonadIO m) => Text -> v -> HtmlT m ()
+prop :: ToJSVal v => Text -> v -> Html ()
 prop (JSS.textToJSString -> key) val = do
   rootEl <- asks he_current_root
   v <- liftIO $ toJSVal val
@@ -78,10 +78,10 @@ prop (JSS.textToJSString -> key) val = do
 
 -- | Assign a property with dynamic content to the root element
 dynProp
-  :: (ToJSVal v, FromJSVal v, Eq v, MonadIO m)
+  :: (ToJSVal v, FromJSVal v, Eq v)
   => Text
   -> Dynamic v
-  -> HtmlT m ()
+  -> Html ()
 dynProp textKey dyn = do
   rootEl <- asks he_current_root
   void $ forDyn dyn (liftIO . setup rootEl)
@@ -93,12 +93,12 @@ dynProp textKey dyn = do
 -- | Assign an attribute to the root element. Don't confuse attributes
 -- and properties see
 -- https://stackoverflow.com/questions/6003819/what-is-the-difference-between-properties-and-attributes-in-html
-attr :: MonadIO m => Text -> Text -> HtmlT m ()
+attr :: Text -> Text -> Html ()
 attr k v = asks he_current_root
   >>= \e -> liftIO (setAttribute e k v)
 
 -- | Assign an attribute with dynamic content to the root element
-dynAttr :: MonadIO m => Text -> Dynamic Text -> HtmlT m ()
+dynAttr :: Text -> Dynamic Text -> Html ()
 dynAttr k d = do
   rootEl <- asks he_current_root
   void $ forDyn d $ liftIO . setAttribute rootEl k
@@ -111,21 +111,21 @@ dynAttr k d = do
 -- >   on "click" \_event -> do
 -- >     liftIO $ putStrLn "Clicked!"
 -- >   text "Click here"
-on :: Text -> (DOMEvent -> HtmlT IO ()) -> HtmlT IO ()
+on :: Text -> (DOMEvent -> Html ()) -> Html ()
 on name f = ask >>= listen where
   listen HtmlEnv{..} =
     onGlobalEvent defaultListenerOpts he_current_root name f
 
 -- | Same as 'on' but ignores 'DOMEvent' inside the callback
-on_ :: Text -> HtmlT IO () -> HtmlT IO ()
+on_ :: Text -> Html () -> Html ()
 on_ name = on name . const
 
-onOpts :: Text -> ListenerOpts -> (DOMEvent -> HtmlT IO ()) -> HtmlT IO ()
+onOpts :: Text -> ListenerOpts -> (DOMEvent -> Html ()) -> Html ()
 onOpts name opts f = ask >>= listen where
   listen HtmlEnv{..} =
     onGlobalEvent opts he_current_root name f
 
-onOpts_ :: Text -> ListenerOpts -> HtmlT IO () -> HtmlT IO ()
+onOpts_ :: Text -> ListenerOpts -> Html () -> Html ()
 onOpts_ name opts = onOpts name opts . const
 
 -- | Attach a listener to arbitrary target, not just the current root
@@ -133,23 +133,24 @@ onOpts_ name opts = onOpts name opts . const
 -- objects)
 onGlobalEvent
   :: ListenerOpts
-  -- ^ Specified whether to call @event.stopPropagation()@ and
+  -- ^ Specify whether to call @event.stopPropagation()@ and
   -- @event.preventDefault()@ on the fired event
   -> Node
   -- ^ Event target
   -> Text
   -- ^ Event name
-  -> (DOMEvent -> HtmlT IO ())
+  -> (DOMEvent -> Html ())
   -- ^ Callback that accepts reference to the DOM event
-  -> HtmlT IO ()
-onGlobalEvent opts target name f = ask >>= run where
+  -> Html ()
+onGlobalEvent opts target name f = do
+  htmlEnv <- ask
+  void $ subscribe (mkEvent htmlEnv) (liftIO . runHtmlT htmlEnv)
+  where
   mkEvent e = Event \k -> liftIO do
     unlisten <- addEventListener opts target name \event -> do
-      void . liftIO . catc e . sync . k . f $ coerce event
+      void . liftIO . hdl e . sync . k . f $ coerce event
     pure $ liftIO unlisten
-  run e@HtmlEnv{..} = void $
-    subscribe (mkEvent e) (liftIO . runHtmlT e)
-  catc e = flip Ex.catch (he_catch_interactive e)
+  hdl e = flip Ex.catch (he_catch_interactive e)
 
 -- | Assign CSS classes to the current root element. Compare to @prop
 -- "className"@ can be used multiple times for the same root
@@ -157,7 +158,7 @@ onGlobalEvent opts target name f = ask >>= run where
 -- > el "div" do
 -- >   classes "container row"
 -- >   classes "mt-1 mb-2"
-classes :: MonadIO m => Text -> HtmlT m ()
+classes :: Text -> Html ()
 classes cs = do
   rootEl <- asks he_current_root
   for_ (T.splitOn " " cs) $
@@ -172,7 +173,7 @@ classes cs = do
 -- > el "button" do
 -- >   on_ "click" $ modifyRef showRef not
 -- >   text "Toggle visibility"
-toggleClass :: MonadIO m => Text -> Dynamic Bool -> HtmlT m ()
+toggleClass :: Text -> Dynamic Bool -> Html ()
 toggleClass cs dyn = do
   rootEl <- asks he_current_root
   void $ forDyn dyn (liftIO . setup rootEl cs)
@@ -190,7 +191,7 @@ toggleClass cs dyn = do
 -- > el "button" do
 -- >   on_ "click" $ modifyRef hiddenRef not
 -- >   text "Toggle visibility"
-toggleAttr :: MonadIO m => Text -> Dynamic Bool -> HtmlT m ()
+toggleAttr :: Text -> Dynamic Bool -> Html ()
 toggleAttr att dyn = do
   rootEl <- asks he_current_root
   void $ forDyn dyn (liftIO . setup rootEl att)
@@ -207,7 +208,7 @@ toggleAttr att dyn = do
 -- >   dynStyle "background" $ bool "initial" "red" <$> fromRef colorRef
 -- >   on_ "click" $ modifyRef colorRef not
 -- >   text "Toggle background color"
-dynStyle :: MonadIO m => Text -> Dynamic Text -> HtmlT m ()
+dynStyle :: Text -> Dynamic Text -> Html ()
 dynStyle cssProp dyn = do
   rootEl <- asks he_current_root
   void $ forDyn dyn (liftIO . setup rootEl)
@@ -241,10 +242,10 @@ simpleList
   -- ^ Some dynamic data from the above scope
   -> IndexedTraversal' Int s a
   -- ^ Point to some traversable collection inside @s@
-  -> (Int -> DynRef a -> HtmlT IO ())
+  -> (Int -> DynRef a -> Html ())
   -- ^ Function to build children widget. Accepts the index inside the
   -- collection and dynamic data for that particular element
-  -> HtmlT IO ()
+  -> Html ()
 simpleList dynRef l h = do
   hte <- ask
   rootEl <- asks he_current_root
@@ -317,7 +318,7 @@ simpleList dynRef l h = do
 -- > el "button" do
 -- >   on_ "click" $ writeRef routeRef Blog
 -- >   text "Show my blog page"
-dyn_ :: Dynamic (HtmlT IO ()) -> HtmlT IO ()
+dyn_ :: Dynamic (Html ()) -> Html ()
 dyn_ dyn = do
   env <- ask
   childRef <- liftIO (newIORef Nothing)
@@ -347,18 +348,18 @@ dyn_ dyn = do
   void $ forDyn dyn (liftIO . setup rootEl)
 
 catchInteractive
-  :: HtmlT IO ()
-  -> (SomeException -> HtmlT IO ())
-  -> HtmlT IO ()
+  :: Html ()
+  -> (SomeException -> Html ())
+  -> Html ()
 catchInteractive html handle = ask >>= run where
   run e = local (f e) html
   f e he = he {he_catch_interactive = runHtmlT e . handle}
 
-addFinalizer :: MonadIO m => IO () -> HtmlT m ()
+addFinalizer :: IO () -> Html ()
 addFinalizer fin = do
   fins <- askFinalizers
   finRef <- liftIO $ newIORef fin
   liftIO $ modifyIORef (unFinalizers fins) (fin:)
 
-portal :: MonadIO m => Node -> HtmlT m x -> HtmlT m x
+portal :: Node -> Html a -> Html a
 portal rootEl = local (\e -> e {he_current_root = rootEl})

@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 module HtmlT.Types where
 
 import Control.Applicative
@@ -21,6 +20,8 @@ data HtmlEnv = HtmlEnv
   , he_post_hooks :: IORef [IO ()]
   , he_catch_interactive :: SomeException -> IO ()
   } deriving Generic
+
+type Html = HtmlT IO
 
 newtype Node = Node {unNode :: JSVal}
   deriving anyclass (IsJSVal)

@@ -15,7 +15,7 @@ data StartOpts = StartOpts
   , startopts_root_element :: Node
   } deriving Generic
 
-attachOpts :: StartOpts -> HtmlT IO a -> IO (a, HtmlEnv)
+attachOpts :: StartOpts -> Html a -> IO (a, HtmlEnv)
 attachOpts StartOpts{..} render = do
   postHooks <- liftIO (newIORef [])
   let
@@ -33,13 +33,13 @@ attachOpts StartOpts{..} render = do
     sequence_ fins
   pure (result, htmlEnv)
 
-attach :: Node -> HtmlT IO a -> IO (a, HtmlEnv)
+attach :: Node -> Html a -> IO (a, HtmlEnv)
 attach rootEl render = do
   fins <- liftIO $ Finalizers <$> newIORef []
   subs <- liftIO $ Subscriptions <$> H.new
   attachOpts (StartOpts fins subs rootEl) render
 
-attachToBody :: HtmlT IO a -> IO (a, HtmlEnv)
+attachToBody :: Html a -> IO (a, HtmlEnv)
 attachToBody h = getBody >>= (`attach` h)
 
 detach :: HtmlEnv -> IO ()

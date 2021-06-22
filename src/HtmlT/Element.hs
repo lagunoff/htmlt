@@ -1,7 +1,6 @@
 -- | Shortcuts for constructing most widely used html5 elements
 module HtmlT.Element where
 
-import Control.Monad.IO.Class
 import Data.Text as T
 import HtmlT.Base
 import HtmlT.Types
@@ -22,13 +21,13 @@ class Term arg result | result -> arg where
     -> result -- ^ Result: either an element or an attribute.
 
 -- | Given attributes, expect more child input.
-instance (f ~ HtmlT m a, MonadIO m) => Term [HtmlT m ()] (f -> HtmlT m a) where
+instance f ~ Html a => Term [Html ()] (f -> Html a) where
   term name attrs = el name . (sequence_ attrs *>)
   {-# INLINE term #-}
 
 -- | Given children immediately, just use that and expect no
 -- attributes.
-instance MonadIO m => Term (HtmlT m a) (HtmlT m a) where
+instance Term (Html a) (Html a) where
   term = el
   {-# INLINE term #-}
 

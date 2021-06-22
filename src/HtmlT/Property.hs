@@ -2,7 +2,6 @@
 -- https://github.com/dmjio/miso/blob/69f50b49adbff8217f8b51ae5f47727ee950f204/src/Miso/HtmlT/Property.hs
 module HtmlT.Property where
 
-import Control.Monad.IO.Class
 import Data.Text
 
 import HtmlT.Types
@@ -10,266 +9,266 @@ import HtmlT.Base
 import HtmlT.Event
 
 
-dynStyles :: MonadIO m => Dynamic Text -> HtmlT m ()
+dynStyles :: Dynamic Text -> Html ()
 dynStyles = dynProp "style"
 
-dynValue :: MonadIO m => Dynamic Text -> HtmlT m ()
+dynValue :: Dynamic Text -> Html ()
 dynValue = dynProp "value"
 
-dynClass :: MonadIO m => Dynamic Text -> HtmlT m ()
+dynClass :: Dynamic Text -> Html ()
 dynClass = dynProp "className"
 
-dynChecked :: MonadIO m => Dynamic Bool -> HtmlT m ()
+dynChecked :: Dynamic Bool -> Html ()
 dynChecked = dynProp "checked"
 
-dynDisabled :: MonadIO m => Dynamic Bool -> HtmlT m ()
+dynDisabled :: Dynamic Bool -> Html ()
 dynDisabled = dynProp "disabled"
 
-title_ :: MonadIO m => Text -> HtmlT m ()
+title_ :: Text -> Html ()
 title_ = prop "title"
 
-selected_ :: MonadIO m => Bool -> HtmlT m ()
+selected_ :: Bool -> Html ()
 selected_ = prop "selected"
 
-hidden_ :: MonadIO m => Bool -> HtmlT m ()
+hidden_ :: Bool -> Html ()
 hidden_ = prop "hidden"
 
-value_ :: MonadIO m => Text -> HtmlT m ()
+value_ :: Text -> Html ()
 value_ = prop "value"
 
-defaultValue_ :: MonadIO m => Text -> HtmlT m ()
+defaultValue_ :: Text -> Html ()
 defaultValue_ = prop "defaultValue"
 
-accept_ :: MonadIO m => Text -> HtmlT m ()
+accept_ :: Text -> Html ()
 accept_ = prop "accept"
 
-acceptCharset_ :: MonadIO m => Text -> HtmlT m ()
+acceptCharset_ :: Text -> Html ()
 acceptCharset_ = prop "acceptCharset"
 
-action_ :: MonadIO m => Text -> HtmlT m ()
+action_ :: Text -> Html ()
 action_ = prop "action"
 
-autocomplete_ :: MonadIO m => Bool -> HtmlT m ()
+autocomplete_ :: Bool -> Html ()
 autocomplete_ b = prop @Text "autocomplete" (if b then "on" else "off")
 
-autosave_ :: MonadIO m => Text -> HtmlT m ()
+autosave_ :: Text -> Html ()
 autosave_ = prop "autosave"
 
-disabled_ :: MonadIO m => Bool -> HtmlT m ()
+disabled_ :: Bool -> Html ()
 disabled_ = prop "disabled"
 
-enctype_ :: MonadIO m => Text -> HtmlT m ()
+enctype_ :: Text -> Html ()
 enctype_ = prop "enctype"
 
-formation_ :: MonadIO m => Text -> HtmlT m ()
+formation_ :: Text -> Html ()
 formation_ = prop "formation"
 
-list_ :: MonadIO m => Text -> HtmlT m ()
+list_ :: Text -> Html ()
 list_ = prop "list"
 
-maxlength_ :: MonadIO m => Text -> HtmlT m ()
+maxlength_ :: Text -> Html ()
 maxlength_ = prop "maxlength"
 
-minlength_ :: MonadIO m => Text -> HtmlT m ()
+minlength_ :: Text -> Html ()
 minlength_ = prop "minlength"
 
-method_ :: MonadIO m => Text -> HtmlT m ()
+method_ :: Text -> Html ()
 method_ = prop "method"
 
-multiple_ :: MonadIO m => Bool -> HtmlT m ()
+multiple_ :: Bool -> Html ()
 multiple_ = prop "multiple"
 
-novalidate_ :: MonadIO m => Bool -> HtmlT m ()
+novalidate_ :: Bool -> Html ()
 novalidate_ = prop "noValidate"
 
-pattern_ :: MonadIO m => Text -> HtmlT m ()
+pattern_ :: Text -> Html ()
 pattern_ = prop "pattern"
 
-readonly_ :: MonadIO m => Bool -> HtmlT m ()
+readonly_ :: Bool -> Html ()
 readonly_ = prop "readOnly"
 
-required_ :: MonadIO m => Bool -> HtmlT m ()
+required_ :: Bool -> Html ()
 required_ = prop "required"
 
-size_ :: MonadIO m => Text -> HtmlT m ()
+size_ :: Text -> Html ()
 size_ = prop "size"
 
-forProp_ :: MonadIO m => Text -> HtmlT m ()
+forProp_ :: Text -> Html ()
 forProp_ = prop "for"
 
-ref_ :: MonadIO m => Text -> HtmlT m ()
+ref_ :: Text -> Html ()
 ref_ = prop "ref"
 
-formProp_ :: MonadIO m => Text -> HtmlT m ()
+formProp_ :: Text -> Html ()
 formProp_ = prop "form"
 
-max_ :: MonadIO m => Text -> HtmlT m ()
+max_ :: Text -> Html ()
 max_ = prop "max"
 
-min_ :: MonadIO m => Text -> HtmlT m ()
+min_ :: Text -> Html ()
 min_ = prop "min"
 
-step_ :: MonadIO m => Text -> HtmlT m ()
+step_ :: Text -> Html ()
 step_ = prop "step"
 
-cols_ :: MonadIO m => Text -> HtmlT m ()
+cols_ :: Text -> Html ()
 cols_ = prop "cols"
 
-rows_ :: MonadIO m => Text -> HtmlT m ()
+rows_ :: Text -> Html ()
 rows_ = prop "rows"
 
-wrap_ :: MonadIO m => Text -> HtmlT m ()
+wrap_ :: Text -> Html ()
 wrap_ = prop "wrap"
 
-target_ :: MonadIO m => Text -> HtmlT m ()
+target_ :: Text -> Html ()
 target_ = prop "target"
 
-download_ :: MonadIO m => Text -> HtmlT m ()
+download_ :: Text -> Html ()
 download_ = prop "download"
 
-downloadAs_ :: MonadIO m => Text -> HtmlT m ()
+downloadAs_ :: Text -> Html ()
 downloadAs_ = prop "downloadAs"
 
-hreflang_ :: MonadIO m => Text -> HtmlT m ()
+hreflang_ :: Text -> Html ()
 hreflang_ = prop "hreflang"
 
-media_ :: MonadIO m => Text -> HtmlT m ()
+media_ :: Text -> Html ()
 media_ = prop "media"
 
-ping_ :: MonadIO m => Text -> HtmlT m ()
+ping_ :: Text -> Html ()
 ping_ = prop "ping"
 
-rel_ :: MonadIO m => Text -> HtmlT m ()
+rel_ :: Text -> Html ()
 rel_ = prop "rel"
 
-ismap_ :: MonadIO m => Text -> HtmlT m ()
+ismap_ :: Text -> Html ()
 ismap_ = prop "ismap"
 
-usemap_ :: MonadIO m => Text -> HtmlT m ()
+usemap_ :: Text -> Html ()
 usemap_ = prop "usemap"
 
-shape_ :: MonadIO m => Text -> HtmlT m ()
+shape_ :: Text -> Html ()
 shape_ = prop "shape"
 
-coords_ :: MonadIO m => Text -> HtmlT m ()
+coords_ :: Text -> Html ()
 coords_ = prop "coords"
 
-src_ :: MonadIO m => Text -> HtmlT m ()
+src_ :: Text -> Html ()
 src_ = prop "src"
 
-height_ :: MonadIO m => Text -> HtmlT m ()
+height_ :: Text -> Html ()
 height_ = prop "height"
 
-width_ :: MonadIO m => Text -> HtmlT m ()
+width_ :: Text -> Html ()
 width_ = prop "width"
 
-alt_ :: MonadIO m => Text -> HtmlT m ()
+alt_ :: Text -> Html ()
 alt_ = prop "alt"
 
-autoplay_ :: MonadIO m => Bool -> HtmlT m ()
+autoplay_ :: Bool -> Html ()
 autoplay_ = prop "autoplay"
 
-controls_ :: MonadIO m => Bool -> HtmlT m ()
+controls_ :: Bool -> Html ()
 controls_ = prop "controls"
 
-loop_ :: MonadIO m => Bool -> HtmlT m ()
+loop_ :: Bool -> Html ()
 loop_ = prop "loop"
 
-preload_ :: MonadIO m => Text -> HtmlT m ()
+preload_ :: Text -> Html ()
 preload_ = prop "preload"
 
-poster_ :: MonadIO m => Text -> HtmlT m ()
+poster_ :: Text -> Html ()
 poster_ = prop "poster"
 
-default_ :: MonadIO m => Bool -> HtmlT m ()
+default_ :: Bool -> Html ()
 default_ = prop "default"
 
-kind_ :: MonadIO m => Text -> HtmlT m ()
+kind_ :: Text -> Html ()
 kind_ = prop "kind"
 
-srclang_ :: MonadIO m => Text -> HtmlT m ()
+srclang_ :: Text -> Html ()
 srclang_ = prop "srclang"
 
-sandbox_ :: MonadIO m => Text -> HtmlT m ()
+sandbox_ :: Text -> Html ()
 sandbox_ = prop "sandbox"
 
-seamless_ :: MonadIO m => Text -> HtmlT m ()
+seamless_ :: Text -> Html ()
 seamless_ = prop "seamless"
 
-srcdoc_ :: MonadIO m => Text -> HtmlT m ()
+srcdoc_ :: Text -> Html ()
 srcdoc_ = prop "srcdoc"
 
-reversed_ :: MonadIO m => Text -> HtmlT m ()
+reversed_ :: Text -> Html ()
 reversed_ = prop "reversed"
 
-start_ :: MonadIO m => Text -> HtmlT m ()
+start_ :: Text -> Html ()
 start_ = prop "start"
 
-align_ :: MonadIO m => Text -> HtmlT m ()
+align_ :: Text -> Html ()
 align_ = prop "align"
 
-colspan_ :: MonadIO m => Text -> HtmlT m ()
+colspan_ :: Text -> Html ()
 colspan_ = prop "colspan"
 
-rowspan_ :: MonadIO m => Text -> HtmlT m ()
+rowspan_ :: Text -> Html ()
 rowspan_ = prop "rowspan"
 
-headers_ :: MonadIO m => Text -> HtmlT m ()
+headers_ :: Text -> Html ()
 headers_ = prop "headers"
 
-scope_ :: MonadIO m => Text -> HtmlT m ()
+scope_ :: Text -> Html ()
 scope_ = prop "scope"
 
-async_ :: MonadIO m => Text -> HtmlT m ()
+async_ :: Text -> Html ()
 async_ = prop "async"
 
-charset_ :: MonadIO m => Text -> HtmlT m ()
+charset_ :: Text -> Html ()
 charset_ = prop "charset"
 
-content_ :: MonadIO m => Text -> HtmlT m ()
+content_ :: Text -> Html ()
 content_ = prop "content"
 
-defer_ :: MonadIO m => Text -> HtmlT m ()
+defer_ :: Text -> Html ()
 defer_ = prop "defer"
 
-httpEquiv_ :: MonadIO m => Text -> HtmlT m ()
+httpEquiv_ :: Text -> Html ()
 httpEquiv_ = prop "httpEquiv"
 
-language_ :: MonadIO m => Text -> HtmlT m ()
+language_ :: Text -> Html ()
 language_ = prop "language"
 
-scoped_ :: MonadIO m => Text -> HtmlT m ()
+scoped_ :: Text -> Html ()
 scoped_ = prop "scoped"
 
-type_ :: MonadIO m => Text -> HtmlT m ()
+type_ :: Text -> Html ()
 type_ = prop "type"
 
-name_ :: MonadIO m => Text -> HtmlT m ()
+name_ :: Text -> Html ()
 name_ = prop "name"
 
-href_ :: MonadIO m => Text -> HtmlT m ()
+href_ :: Text -> Html ()
 href_ = prop "href"
 
-id_ :: MonadIO m => Text -> HtmlT m ()
+id_ :: Text -> Html ()
 id_ = prop "id"
 
-placeholder_ :: MonadIO m => Text -> HtmlT m ()
+placeholder_ :: Text -> Html ()
 placeholder_ = prop "placeholder"
 
-checked_ :: MonadIO m => Bool -> HtmlT m ()
+checked_ :: Bool -> Html ()
 checked_ = prop "checked"
 
-autofocus_ :: MonadIO m => Bool -> HtmlT m ()
+autofocus_ :: Bool -> Html ()
 autofocus_ = prop "autofocus"
 
-class_ :: MonadIO m => Text -> HtmlT m ()
+class_ :: Text -> Html ()
 class_ = prop "className"
 
-data_ :: MonadIO m => Text -> Text -> HtmlT m ()
+data_ :: Text -> Text -> Html ()
 data_ k v = prop @Text ("data-" <> k) v
 
-role_ :: MonadIO m => Text -> HtmlT m ()
+role_ :: Text -> Html ()
 role_ = attr "role"
 
-style_ :: MonadIO m => Text -> HtmlT m ()
+style_ :: Text -> Html ()
 style_ = prop "style"
