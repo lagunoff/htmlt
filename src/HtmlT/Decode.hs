@@ -10,9 +10,10 @@ import GHCJS.Prim
 import JavaScript.Object.Internal (Object(..))
 import qualified JavaScript.Object as Object
 
--- | Extract some value from 'JSVal'. Name comes from the Elm
--- ecosystem and it's main purpose is to parse information from DOM
--- events (like mouse coordinates, keyboard keys, input values etc)
+-- | Extract some value from 'JSVal'. Similar to decoders from Elm
+-- core library. Typicaly they will be used to parse information from
+-- DOM events (like mouse coordinates, keyboard keys, input values
+-- etc)
 newtype Decoder a = Decoder {unDecoder :: JSVal -> IO (Maybe a)}
 
 decodeJSVal :: Decoder JSVal

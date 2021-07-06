@@ -212,8 +212,8 @@ sync act = liftIO $ loop (ReactiveState M.empty) act where
     Just ((_, act), rest) -> (Just act, ReactiveState rest)
     Nothing               -> (Nothing, intact)
 
--- | Attach a listener to an event and return a function that removes
--- this listener
+-- | Attach a listener to an event and return an action to detach the
+-- listener
 subscribe :: MonadReactive m => Event a -> Callback a -> m Canceller
 subscribe (Event s) k = do
   subs <- askSubscribe
@@ -222,17 +222,15 @@ subscribe (Event s) k = do
   liftIO $ modifyIORef (unFinalizers fins) (cancel:)
   return cancel
 
-forEvent :: MonadReactive m => Event a -> Callback a -> m Canceller
-forEvent = subscribe
-
-forEvent_ :: MonadReactive m => Event a -> Callback a -> m ()
-forEvent_ = (void .) . forEvent
-
+-- | Perform an action with current value of the given 'Dynamic' and
+-- each time the value changes. Return action to detach listener from
+-- receiving new values
 forDyn :: MonadReactive m => Dynamic a -> Callback a -> m Canceller
 forDyn d k = do
   liftIO $ dynamic_read d >>= sync . k
   subscribe (dynamic_updates d) k
 
+-- | Same as 'forDyn', ignore the result
 forDyn_ :: MonadReactive m => Dynamic a -> Callback a -> m ()
 forDyn_ = (void .) . forDyn
 
@@ -296,11 +294,10 @@ traceDynWith show' tag d = d {dynamic_updates = e} where
   e = traceEventWith show' tag (dynamic_updates d)
 {-# INLINE traceDynWith #-}
 
--- | Make an event that contains a tuple with previous value as well
--- as the current value from the given event
-{-# DEPRECATED #-}
-withOld :: a -> Event a -> Event (a, a)
-withOld initial (Event s) = Event \k -> do
+-- | Make an 'Event' with a tuple containing previous value as well as
+-- the current value from the original event
+diffEvent :: a -> Event a -> Event (a, a)
+diffEvent initial (Event s) = Event \k -> do
   oldRef <- liftIO (newIORef initial)
   let
     f a = do
@@ -309,6 +306,9 @@ withOld initial (Event s) = Event \k -> do
       k (old, a)
   s f
 
+-- | Alternative version if 'fmap' where given function will only be
+-- called once every time 'Dynamic a' value changes, whereas in 'fmap'
+-- it would be called once for each subscription per change event
 mapDyn :: MonadReactive m => Dynamic a -> (a -> b) -> m (Dynamic b)
 mapDyn dynA f = do
   initialA <- liftIO $ dynamic_read dynA
@@ -327,7 +327,10 @@ mapDyn dynA f = do
     defer eventId fire
   return $ Dynamic (readIORef latestB) updates
 
-mapDyn2 :: MonadReactive m => Dynamic a -> Dynamic b -> (a -> b -> c) -> m (Dynamic c)
+-- | Same as 'mapDyn' but with two Dynamics, @f@ is called each time
+-- any of the two Dynamics changes its value
+mapDyn2
+  :: MonadReactive m => Dynamic a -> Dynamic b -> (a -> b -> c) -> m (Dynamic c)
 mapDyn2 aDyn bDyn f = do
   initialA <- liftIO $ dynamic_read aDyn
   initialB <- liftIO $ dynamic_read bDyn

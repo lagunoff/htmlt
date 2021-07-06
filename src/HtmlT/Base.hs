@@ -1,5 +1,4 @@
--- | This module exports the most essential definions that users of
--- this library would need
+-- | Most essential definions for public API
 module HtmlT.Base where
 
 import Control.Exception as Exception
@@ -219,7 +218,7 @@ dynStyle cssProp dyn = do
       unsafeSetProp jsCssProp cssVal (coerce styleVal)
     jsCssProp = JSS.textToJSString cssProp
 
--- | Alias for @pure ()@, useful when some HtmlIO action is expected.
+-- | Alias for @pure ()@, useful when some Html action is expected.
 blank :: Applicative m => m ()
 blank = pure ()
 
@@ -297,7 +296,7 @@ simpleList dynRef l h = do
         oldS & iover l \i x -> if i == idx then f oldA else x
   liftIO $ setup s 0 [] [] (toListOf l s)
   addFinalizer $ readIORef itemRefs >>= unsub
-  let eUpdates = withOld s (dynamic_updates $ fromRef dynRef)
+  let eUpdates = diffEvent s (dynamic_updates $ fromRef dynRef)
   forEvent_ eUpdates \(old, new) -> do
     refs <- liftIO (readIORef itemRefs)
     liftIO $ setup new 0 refs (toListOf l old) (toListOf l new)
@@ -363,7 +362,7 @@ addFinalizer fin = do
   liftIO $ modifyIORef (unFinalizers fins) (fin:)
 
 -- | Attach resulting DOM to the given node instead of
--- 'html_current_root'. Might be useful for modals, tooltips
--- etc. Similar to what called portals in React ecosystem
+-- 'html_current_root'. Might be useful for implementing modals,
+-- tooltips etc. Similar to what called portals in React ecosystem
 portal :: Node -> Html a -> Html a
 portal rootEl = local (\e -> e {html_current_root = rootEl})
