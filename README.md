@@ -6,27 +6,27 @@ Small experimental GUI library in haskell
 
 ### Constructing DOM
 ```hs
-el :: Text -> HtmlT x -> HtmlT x
-el' :: Text -> HtmlT x -> HtmlT (x, Node)
-elns :: Text -> Text -> HtmlT x -> HtmlT x
-text :: Text -> HtmlT ()
-dynText :: Dynamic Text -> HtmlT ()
+el :: Text -> Html x -> Html x
+el' :: Text -> Html x -> Html (x, Node)
+elns :: Text -> Text -> Html x -> Html x
+text :: Text -> Html ()
+dynText :: Dynamic Text -> Html ()
 ```
 
 `el`, `el'` and `elns` create a new HTML element and attach it to the
-root, which is given by Reader-like enviroment inside `HtmlT`. There
+root, which is given by Reader-like enviroment inside `HtmlEnv`. There
 are shortcut versions (`div_`, `h1_`, `span_` etc) for the most common
 HTML5 tags declared in
-[HtmlT.Element](./src/HtmlT/Element.hs)
+[Html.Element](./src/HtmlT/Element.hs)
 
 ### Applying attributes and properties
 
 ```hs
-prop :: Text -> v -> HtmlT ()
-dynProp :: Text -> Dynamic v -> HtmlT ()
+prop :: Text -> v -> Html ()
+dynProp :: Text -> Dynamic v -> Html ()
 
-attr :: Text -> Text -> HtmlT ()
-dynAttr :: Text -> Text -> HtmlT ()
+attr :: Text -> Text -> Html ()
+dynAttr :: Text -> Text -> Html ()
 ```
 
 `prop` assignes a property (like `value` to HTMLInputElement) to a
@@ -36,30 +36,29 @@ properties (there is a suble
 [difference](https://stackoverflow.com/questions/6003819/what-is-the-difference-between-properties-and-attributes-in-html)).
 
 ```hs
--- Example applying properties to elements
-menuWidget :: HtmlT () 
+-- Applying properties to elements
+menuWidget :: Html () 
 menuWidget = 
   ul_ [class_ "menu"] do
     li_ $
-      a_ [href_ "#one"] $ "One" -- HtmlT has IsString instance 
+      a_ [href_ "#one"] $ "One" -- Html has IsString instance 
     li_ $
       a_ [href_ "#two"] $ "Two"
     li_ $
       a_ [href_ "#three"] $ "Three"
 ```
 
-### Reacting to events
+### Reacting to DOM events
 
 ```hs
-on :: Text -> (DOMEvent -> HtmlT ()) -> HtmlT ()
-on_ :: Text -> HtmlT () -> HtmlT ()
+on :: Text -> (DOMEvent -> Html ()) -> Html ()
+on_ :: Text -> Html () -> Html ()
 ```
-
-`on` and `on_` essentially call `addEventListener` on the root element
-element and run the given action when DOM event fires 
+Essentially `on` and `on_` call [`addEventListener`](https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener) on the current root
+and run the given action when DOM event fires
 
 ```hs
-counterWidget :: HtmlT ()
+counterWidget :: Html ()
 counterWidget = do
   counterRef <- newRef @Int 0
   div_ do
@@ -80,7 +79,7 @@ import Data.Text
 import HtmlT
 
 main :: IO ()
-main = withJSM $ attachToBody do
+main = attachToBody do
   colorRef <- newRef 0
   div_ [class_ "root"] do
     h1_ do

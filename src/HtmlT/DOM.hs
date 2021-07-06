@@ -34,116 +34,6 @@ type Decoding a = (a -> Html ()) -> DOMEvent -> Html ()
 defaultListenerOpts :: ListenerOpts
 defaultListenerOpts = ListenerOpts True False False
 
-#ifndef ghcjs_HOST_OS
-appendChild :: Node -> Node -> IO ()
-appendChild root child = error "Only GHCJS is supported"
-setAttribute :: Node -> Text -> Text -> IO ()
-setAttribute e k v =  error "Only GHCJS is supported"
-removeAttribute :: Node -> Text -> IO ()
-removeAttribute e k =  error "Only GHCJS is supported"
-removeChild :: Node -> Node -> IO ()
-removeChild p ch = error "Only GHCJS is supported"
-removeAllChilds :: Node -> IO ()
-removeAllChilds e = error "Only GHCJS is supported"
-replaceChild :: Node -> Node -> Node -> IO ()
-replaceChild root new old = error "Only GHCJS is supported"
-getChildNode :: Node -> Int -> IO Node
-getChildNode e ix = error "Only GHCJS is supported"
-createElement :: Text -> IO Node
-createElement tag = error "Only GHCJS is supported"
-createElementNS :: Text -> Text -> IO Node
-createElementNS ns tag = error "Only GHCJS is supported"
-createTextNode :: Text -> IO Node
-createTextNode tag = error "Only GHCJS is supported"
-classListAdd :: Node -> Text -> IO ()
-classListAdd e c = error "Only GHCJS is supported"
-classListRemove :: Node -> Text -> IO ()
-classListRemove e c = error "Only GHCJS is supported"
-setTextValue :: Node -> Text -> IO ()
-setTextValue e c = error "Only GHCJS is supported"
-onBeforeUnload :: IO () -> IO ()
-onBeforeUnload _ = error "Only GHCJS is supported"
-js0 :: JSVal -> IO JSVal
-js0 _ = error "Only GHCJS is supported"
-js1 :: JSVal -> JSVal -> IO JSVal
-js1 _ _ = error "Only GHCJS is supported"
-js2 :: JSVal -> JSVal -> JSVal -> IO JSVal
-js2 _ _ _ = error "Only GHCJS is supported"
-jscall0 :: JSVal -> JSString -> IO JSVal
-jscall0 _ _ = error "Only GHCJS is supported"
-jscall1 :: JSVal -> JSString -> JSVal -> IO JSVal
-jscall1 _ _ _ = error "Only GHCJS is supported"
-jscall2 :: JSVal -> JSString -> JSVal -> JSVal -> IO JSVal
-jscall2 _ _ _ _ = error "Only GHCJS is supported"
-js_getWindow :: IO JSVal
-js_getWindow = error "Only GHCJS is supported"
-js_getDocument :: IO JSVal
-js_getDocument = error "Only GHCJS is supported"
-js_getBody :: IO Node
-js_getBody = error "Only GHCJS is supported"
-#else
-foreign import javascript unsafe
-  "$1.appendChild($2)"
-  appendChild :: Node -> Node -> IO ()
-foreign import javascript unsafe
-  "$1.setAttribute($2, $3)"
-  setAttribute :: Node -> Text -> Text -> IO ()
-foreign import javascript unsafe
-  "$1.removeAttribute($2)"
-  removeAttribute :: Node -> Text -> IO ()
-foreign import javascript unsafe
-  "$1.removeChild($2)"
-  removeChild :: Node -> Node -> IO ()
-foreign import javascript unsafe
-  "$1.innerHTML = ''"
-  removeAllChilds :: Node -> IO ()
-foreign import javascript unsafe
-  "$1.replaceChild($2, $3)"
-  replaceChild :: Node -> Node -> Node -> IO ()
-foreign import javascript unsafe
-  "$1.childNodes[$2]"
-  getChildNode :: Node -> Int -> IO Node
-foreign import javascript unsafe
-  "document.createElement($1)"
-  createElement :: Text -> IO Node
-foreign import javascript unsafe
-  "document.createElementNS($1, $2)"
-  createElementNS :: Text -> Text -> IO Node
-foreign import javascript unsafe
-  "document.createTextNode($1)"
-  createTextNode :: Text -> IO Node
-foreign import javascript unsafe
-  "$1.classList.add($2)"
-  classListAdd :: Node -> Text -> IO ()
-foreign import javascript unsafe
-  "$1.classList.remove($2)"
-  classListRemove :: Node -> Text -> IO ()
-foreign import javascript unsafe
-  "$1.nodeValue = $2;"
-  setTextValue :: Node -> Text -> IO ()
-foreign import javascript unsafe
-  "(function(cb){\
-    window.addEventListener('beforeunload', function(e) {\
-      delete e['returnEvent'];\
-      cb();\
-    })\
-   })($1)"
-  js_onBeforeUnload :: Callback a -> IO ()
-onBeforeUnload :: IO () -> IO ()
-onBeforeUnload cb = do
-  syncCb <- syncCallback ThrowWouldBlock cb
-  js_onBeforeUnload syncCb
-foreign import javascript unsafe "$1()" js0 :: JSVal -> IO ()
-foreign import javascript unsafe "$1($2)" js1 :: JSVal -> JSVal -> IO ()
-foreign import javascript unsafe "$1($2, $3)" js2 :: JSVal -> JSVal -> JSVal -> IO ()
-foreign import javascript unsafe "(function(){ return window; })()" js_getWindow :: IO JSVal
-foreign import javascript unsafe "(function(){ return window.document; })()" js_getDocument :: IO JSVal
-foreign import javascript unsafe "(function(){ return window.document.body; })()" js_getBody :: IO JSVal
-foreign import javascript unsafe "$1[$2]()" jscall0 :: JSVal -> JSString -> IO ()
-foreign import javascript unsafe "$1[$2]($3)" jscall1 :: JSVal -> JSString -> JSVal -> IO ()
-foreign import javascript unsafe "$1[$2]($3, $4)" jscall2 :: JSVal -> JSString -> JSVal -> JSVal -> IO ()
-#endif
-
 addEventListener
   :: ListenerOpts
   -> Node
@@ -266,14 +156,14 @@ decodePageXY = withDecoder pageXYDecoder
 decodeKeyboardEvent :: Decoding KeyboardEvent
 decodeKeyboardEvent = withDecoder keyboardEventDecoder
 
-getWindow :: MonadIO m => m JSVal
-getWindow = liftIO js_getWindow
+getCurrentWindow :: MonadIO m => m JSVal
+getCurrentWindow = liftIO js_getWindow
 
-getDocument :: MonadIO m => m JSVal
-getDocument = liftIO js_getDocument
+getCurrentDocument :: MonadIO m => m JSVal
+getCurrentDocument = liftIO js_getDocument
 
-getBody :: MonadIO m => m Node
-getBody = liftIO $ coerce <$> js_getBody
+getCurrentBody :: MonadIO m => m Node
+getCurrentBody = liftIO $ coerce <$> js_getBody
 
 instance (x ~ (), MonadIO m) => IsString (HtmlT m x) where
   fromString = f . T.pack where
@@ -281,3 +171,113 @@ instance (x ~ (), MonadIO m) => IsString (HtmlT m x) where
       rootEl <- asks html_current_root
       textNode <- liftIO (createTextNode t)
       liftIO (appendChild rootEl textNode)
+
+#ifndef ghcjs_HOST_OS
+appendChild :: Node -> Node -> IO ()
+appendChild root child = error "Only GHCJS is supported"
+setAttribute :: Node -> Text -> Text -> IO ()
+setAttribute e k v =  error "Only GHCJS is supported"
+removeAttribute :: Node -> Text -> IO ()
+removeAttribute e k =  error "Only GHCJS is supported"
+removeChild :: Node -> Node -> IO ()
+removeChild p ch = error "Only GHCJS is supported"
+removeAllChilds :: Node -> IO ()
+removeAllChilds e = error "Only GHCJS is supported"
+replaceChild :: Node -> Node -> Node -> IO ()
+replaceChild root new old = error "Only GHCJS is supported"
+getChildNode :: Node -> Int -> IO Node
+getChildNode e ix = error "Only GHCJS is supported"
+createElement :: Text -> IO Node
+createElement tag = error "Only GHCJS is supported"
+createElementNS :: Text -> Text -> IO Node
+createElementNS ns tag = error "Only GHCJS is supported"
+createTextNode :: Text -> IO Node
+createTextNode tag = error "Only GHCJS is supported"
+classListAdd :: Node -> Text -> IO ()
+classListAdd e c = error "Only GHCJS is supported"
+classListRemove :: Node -> Text -> IO ()
+classListRemove e c = error "Only GHCJS is supported"
+setTextValue :: Node -> Text -> IO ()
+setTextValue e c = error "Only GHCJS is supported"
+onBeforeUnload :: IO () -> IO ()
+onBeforeUnload _ = error "Only GHCJS is supported"
+js0 :: JSVal -> IO JSVal
+js0 _ = error "Only GHCJS is supported"
+js1 :: JSVal -> JSVal -> IO JSVal
+js1 _ _ = error "Only GHCJS is supported"
+js2 :: JSVal -> JSVal -> JSVal -> IO JSVal
+js2 _ _ _ = error "Only GHCJS is supported"
+jscall0 :: JSVal -> JSString -> IO JSVal
+jscall0 _ _ = error "Only GHCJS is supported"
+jscall1 :: JSVal -> JSString -> JSVal -> IO JSVal
+jscall1 _ _ _ = error "Only GHCJS is supported"
+jscall2 :: JSVal -> JSString -> JSVal -> JSVal -> IO JSVal
+jscall2 _ _ _ _ = error "Only GHCJS is supported"
+js_getWindow :: IO JSVal
+js_getWindow = error "Only GHCJS is supported"
+js_getDocument :: IO JSVal
+js_getDocument = error "Only GHCJS is supported"
+js_getBody :: IO Node
+js_getBody = error "Only GHCJS is supported"
+#else
+foreign import javascript unsafe
+  "$1.appendChild($2)"
+  appendChild :: Node -> Node -> IO ()
+foreign import javascript unsafe
+  "$1.setAttribute($2, $3)"
+  setAttribute :: Node -> Text -> Text -> IO ()
+foreign import javascript unsafe
+  "$1.removeAttribute($2)"
+  removeAttribute :: Node -> Text -> IO ()
+foreign import javascript unsafe
+  "$1.removeChild($2)"
+  removeChild :: Node -> Node -> IO ()
+foreign import javascript unsafe
+  "$1.innerHTML = ''"
+  removeAllChilds :: Node -> IO ()
+foreign import javascript unsafe
+  "$1.replaceChild($2, $3)"
+  replaceChild :: Node -> Node -> Node -> IO ()
+foreign import javascript unsafe
+  "$1.childNodes[$2]"
+  getChildNode :: Node -> Int -> IO Node
+foreign import javascript unsafe
+  "document.createElement($1)"
+  createElement :: Text -> IO Node
+foreign import javascript unsafe
+  "document.createElementNS($1, $2)"
+  createElementNS :: Text -> Text -> IO Node
+foreign import javascript unsafe
+  "document.createTextNode($1)"
+  createTextNode :: Text -> IO Node
+foreign import javascript unsafe
+  "$1.classList.add($2)"
+  classListAdd :: Node -> Text -> IO ()
+foreign import javascript unsafe
+  "$1.classList.remove($2)"
+  classListRemove :: Node -> Text -> IO ()
+foreign import javascript unsafe
+  "$1.nodeValue = $2;"
+  setTextValue :: Node -> Text -> IO ()
+foreign import javascript unsafe
+  "(function(cb){\
+    window.addEventListener('beforeunload', function(e) {\
+      delete e['returnEvent'];\
+      cb();\
+    })\
+   })($1)"
+  js_onBeforeUnload :: Callback a -> IO ()
+onBeforeUnload :: IO () -> IO ()
+onBeforeUnload cb = do
+  syncCb <- syncCallback ThrowWouldBlock cb
+  js_onBeforeUnload syncCb
+foreign import javascript unsafe "$1()" js0 :: JSVal -> IO ()
+foreign import javascript unsafe "$1($2)" js1 :: JSVal -> JSVal -> IO ()
+foreign import javascript unsafe "$1($2, $3)" js2 :: JSVal -> JSVal -> JSVal -> IO ()
+foreign import javascript unsafe "(function(){ return window; })()" js_getWindow :: IO JSVal
+foreign import javascript unsafe "(function(){ return window.document; })()" js_getDocument :: IO JSVal
+foreign import javascript unsafe "(function(){ return window.document.body; })()" js_getBody :: IO JSVal
+foreign import javascript unsafe "$1[$2]()" jscall0 :: JSVal -> JSString -> IO ()
+foreign import javascript unsafe "$1[$2]($3)" jscall1 :: JSVal -> JSString -> JSVal -> IO ()
+foreign import javascript unsafe "$1[$2]($3, $4)" jscall2 :: JSVal -> JSString -> JSVal -> JSVal -> IO ()
+#endif

@@ -37,7 +37,7 @@ el' tag child = do
   newRootEl <- liftIO (createElement tag)
   (,newRootEl) <$> appendHtmlT newRootEl child
 
--- | Same as 'el' but allows to specify element's namespace, see more
+-- | Same as 'el' but allows to specify element's namespace
 -- https://developer.mozilla.org/en-US/docs/Web/API/Document/createElementNS
 --
 -- > elns "http://www.w3.org/2000/svg" "svg" do
@@ -63,12 +63,12 @@ dynText d = do
   txt <- readDyn d
   rootEl <- asks html_current_root
   textNode <- liftIO (createTextNode txt)
-  forEvent_ (updates d) \new -> void $ liftIO do
+  void $ subscribe (updates d) \new -> void $ liftIO do
     setTextValue textNode new
   liftIO $ appendChild rootEl textNode
 
 -- | Assign a property to the root element. Don't confuse attributes
--- and properties see
+-- and properties
 -- https://stackoverflow.com/questions/6003819/what-is-the-difference-between-properties-and-attributes-in-html
 prop :: ToJSVal v => Text -> v -> Html ()
 prop (JSS.textToJSString -> key) val = do
@@ -91,7 +91,7 @@ dynProp textKey dyn = do
     jsKey = JSS.textToJSString textKey
 
 -- | Assign an attribute to the root element. Don't confuse attributes
--- and properties see
+-- and properties
 -- https://stackoverflow.com/questions/6003819/what-is-the-difference-between-properties-and-attributes-in-html
 attr :: Text -> Text -> Html ()
 attr k v = asks html_current_root
@@ -152,7 +152,7 @@ onGlobalEvent opts target name f = do
       return $ liftIO unlisten
     catchExs HtmlEnv{..} = (`Exception.catch` html_catch_interactive)
 
--- | Assign CSS classes to the current root element. Compare to @prop
+-- | Assign CSS classes to the current root element. Compared to @prop
 -- "className"@ can be used multiple times for the same root
 --
 -- > el "div" do
@@ -163,7 +163,7 @@ classes cs = do
   rootEl <- asks html_current_root
   for_ (T.splitOn " " cs) $ liftIO . classListAdd rootEl
 
--- | Assign a single CSS classe dynamically based on the value held by
+-- | Assign a single CSS class dynamically based on the value held by
 -- the given Dynamic
 --
 -- > showRef <- newRef False
@@ -297,7 +297,7 @@ simpleList dynRef l h = do
   liftIO $ setup s 0 [] [] (toListOf l s)
   addFinalizer $ readIORef itemRefs >>= unsub
   let eUpdates = diffEvent s (dynamic_updates $ fromRef dynRef)
-  forEvent_ eUpdates \(old, new) -> do
+  void $ subscribe eUpdates \(old, new) -> do
     refs <- liftIO (readIORef itemRefs)
     liftIO $ setup new 0 refs (toListOf l old) (toListOf l new)
   pure ()

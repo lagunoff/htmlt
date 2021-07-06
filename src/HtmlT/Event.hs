@@ -1,8 +1,8 @@
 -- | Very simple FRP-like functionality implemented for internal
 -- use. 'Event' and 'Dynamic' are similar to the same concepts from
--- Reflex unlike 'DynRef' which is another important definition, not
--- used in other FRP libraries. Some functions also bear the same name
--- as their Reflex counterparts to make API easier to learn
+-- Reflex unlike new to this libary 'DynRef' which is another
+-- important definition. Some functions bear the same name as their
+-- Reflex counterparts to make API easier to learn
 module HtmlT.Event where
 
 import Control.Applicative
