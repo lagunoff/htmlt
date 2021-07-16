@@ -47,13 +47,13 @@ addEventListener ListenerOpts{..} target name f = do
       else asyncCallback1
   cb <- mkcallback \event -> do
     when lo_stop_propagation do
-      void $ jscall0 event "stopPropagation"
+      void $ jsCallMethod0 event "stopPropagation"
     when lo_prevent_default do
-      void $ jscall0 event "preventDefault"
+      void $ jsCallMethod0 event "preventDefault"
     f event
-  jscall2 (coerce target) "addEventListener" (jsval (textToJSString name)) (jsval cb)
+  jsCallMethod2 (coerce target) "addEventListener" (jsval (textToJSString name)) (jsval cb)
   return do
-    jscall2 (coerce target) "removeEventListener" (jsval (textToJSString name)) (jsval cb)
+    jsCallMethod2 (coerce target) "removeEventListener" (jsval (textToJSString name)) (jsval cb)
     releaseCallback cb
 
 data MouseDelta = MouseDelta
@@ -157,108 +157,125 @@ decodeKeyboardEvent :: Decoding KeyboardEvent
 decodeKeyboardEvent = withDecoder keyboardEventDecoder
 
 getCurrentWindow :: MonadIO m => m JSVal
-getCurrentWindow = liftIO js_getWindow
-
 getCurrentDocument :: MonadIO m => m JSVal
-getCurrentDocument = liftIO js_getDocument
-
 getCurrentBody :: MonadIO m => m Node
-getCurrentBody = liftIO $ coerce <$> js_getBody
+appendChild :: Node -> Node -> IO ()
+setAttribute :: Node -> Text -> Text -> IO ()
+removeAttribute :: Node -> Text -> IO ()
+removeChild :: Node -> Node -> IO ()
+removeAllChilds :: Node -> IO ()
+replaceChild :: Node -> Node -> Node -> IO ()
+getChildNode :: Node -> Int -> IO Node
+createElement :: Text -> IO Node
+createElementNS :: Text -> Text -> IO Node
+createTextNode :: Text -> IO Node
+classListAdd :: Node -> Text -> IO ()
+classListRemove :: Node -> Text -> IO ()
+setTextValue :: Node -> Text -> IO ()
+onBeforeUnload :: IO () -> IO ()
+appendUnsafeHtml :: Node -> Text -> IO ()
+jsCall0 :: JSVal -> IO JSVal
+jsCall1 :: JSVal -> JSVal -> IO JSVal
+jsCall2 :: JSVal -> JSVal -> JSVal -> IO JSVal
+jsCallMethod0 :: JSVal -> JSString -> IO JSVal
+jsCallMethod1 :: JSVal -> JSString -> JSVal -> IO JSVal
+jsCallMethod2 :: JSVal -> JSString -> JSVal -> JSVal -> IO JSVal
 
-instance (x ~ (), MonadIO m) => IsString (HtmlT m x) where
-  fromString = f . T.pack where
-    f t = do
-      rootEl <- asks html_current_root
-      textNode <- liftIO (createTextNode t)
-      liftIO (appendChild rootEl textNode)
+errorGhcjsOnly :: a
+errorGhcjsOnly = error "Only GHCJS is supported"
 
 #ifndef ghcjs_HOST_OS
-appendChild :: Node -> Node -> IO ()
-appendChild root child = error "Only GHCJS is supported"
-setAttribute :: Node -> Text -> Text -> IO ()
-setAttribute e k v =  error "Only GHCJS is supported"
-removeAttribute :: Node -> Text -> IO ()
-removeAttribute e k =  error "Only GHCJS is supported"
-removeChild :: Node -> Node -> IO ()
-removeChild p ch = error "Only GHCJS is supported"
-removeAllChilds :: Node -> IO ()
-removeAllChilds e = error "Only GHCJS is supported"
-replaceChild :: Node -> Node -> Node -> IO ()
-replaceChild root new old = error "Only GHCJS is supported"
-getChildNode :: Node -> Int -> IO Node
-getChildNode e ix = error "Only GHCJS is supported"
-createElement :: Text -> IO Node
-createElement tag = error "Only GHCJS is supported"
-createElementNS :: Text -> Text -> IO Node
-createElementNS ns tag = error "Only GHCJS is supported"
-createTextNode :: Text -> IO Node
-createTextNode tag = error "Only GHCJS is supported"
-classListAdd :: Node -> Text -> IO ()
-classListAdd e c = error "Only GHCJS is supported"
-classListRemove :: Node -> Text -> IO ()
-classListRemove e c = error "Only GHCJS is supported"
-setTextValue :: Node -> Text -> IO ()
-setTextValue e c = error "Only GHCJS is supported"
-onBeforeUnload :: IO () -> IO ()
-onBeforeUnload _ = error "Only GHCJS is supported"
-js0 :: JSVal -> IO JSVal
-js0 _ = error "Only GHCJS is supported"
-js1 :: JSVal -> JSVal -> IO JSVal
-js1 _ _ = error "Only GHCJS is supported"
-js2 :: JSVal -> JSVal -> JSVal -> IO JSVal
-js2 _ _ _ = error "Only GHCJS is supported"
-jscall0 :: JSVal -> JSString -> IO JSVal
-jscall0 _ _ = error "Only GHCJS is supported"
-jscall1 :: JSVal -> JSString -> JSVal -> IO JSVal
-jscall1 _ _ _ = error "Only GHCJS is supported"
-jscall2 :: JSVal -> JSString -> JSVal -> JSVal -> IO JSVal
-jscall2 _ _ _ _ = error "Only GHCJS is supported"
-js_getWindow :: IO JSVal
-js_getWindow = error "Only GHCJS is supported"
-js_getDocument :: IO JSVal
-js_getDocument = error "Only GHCJS is supported"
-js_getBody :: IO Node
-js_getBody = error "Only GHCJS is supported"
+getCurrentWindow = errorGhcjsOnly
+getCurrentDocument = errorGhcjsOnly
+getCurrentBody = errorGhcjsOnly
+appendChild _ _ = errorGhcjsOnly
+setAttribute _ _ _ = errorGhcjsOnly
+removeAttribute _ _ = errorGhcjsOnly
+removeChild _ _ = errorGhcjsOnly
+removeAllChilds _ = errorGhcjsOnly
+replaceChild _ _ _ = errorGhcjsOnly
+getChildNode _ _ = errorGhcjsOnly
+createElement _ = errorGhcjsOnly
+createElementNS _ _ = errorGhcjsOnly
+createTextNode _ = errorGhcjsOnly
+classListAdd _ _ = errorGhcjsOnly
+classListRemove _ _ = errorGhcjsOnly
+setTextValue _ _ = errorGhcjsOnly
+onBeforeUnload _ = errorGhcjsOnly
+appendUnsafeHtml = errorGhcjsOnly
+jsCall0 _ = errorGhcjsOnly
+jsCall1 _ _ = errorGhcjsOnly
+jsCall2 _ _ _ = errorGhcjsOnly
+jsCallMethod0 _ _ = errorGhcjsOnly
+jsCallMethod1 _ _ _ = errorGhcjsOnly
+jsCallMethod2 _ _ _ _ = errorGhcjsOnly
 #else
+getCurrentWindow = liftIO js_getCurrentWindow
+getCurrentDocument = liftIO js_getCurrentDocument
+getCurrentBody = liftIO $ fmap Node js_getCurrentBody
+onBeforeUnload cb = do
+  syncCb <- syncCallback ThrowWouldBlock cb
+  js_onBeforeUnload syncCb
+appendChild = js_appendChild
+setAttribute = js_setAttribute
+removeAttribute = js_removeAttribute
+removeChild = js_removeChild
+removeAllChilds = js_removeAllChilds
+replaceChild = js_replaceChild
+getChildNode = js_getChildNode
+createElement = js_createElement
+createElementNS = js_createElementNS
+createTextNode = js_createTextNode
+classListAdd = js_classListAdd
+classListRemove = js_classListRemove
+setTextValue = js_setTextValue
+appendUnsafeHtml n t = js_appendUnsafeHtml n (textToJSString t)
+jsCall0 = js_jsCall0
+jsCall1 = js_jsCall1
+jsCall2 = js_jsCall2
+jsCallMethod0 = js_jsCallMethod0
+jsCallMethod1 = js_jsCallMethod1
+jsCallMethod2 = js_jsCallMethod2
+
 foreign import javascript unsafe
   "$1.appendChild($2)"
-  appendChild :: Node -> Node -> IO ()
+  js_appendChild :: Node -> Node -> IO ()
 foreign import javascript unsafe
   "$1.setAttribute($2, $3)"
-  setAttribute :: Node -> Text -> Text -> IO ()
+  js_setAttribute :: Node -> Text -> Text -> IO ()
 foreign import javascript unsafe
   "$1.removeAttribute($2)"
-  removeAttribute :: Node -> Text -> IO ()
+  js_removeAttribute :: Node -> Text -> IO ()
 foreign import javascript unsafe
   "$1.removeChild($2)"
-  removeChild :: Node -> Node -> IO ()
+  js_removeChild :: Node -> Node -> IO ()
 foreign import javascript unsafe
   "$1.innerHTML = ''"
-  removeAllChilds :: Node -> IO ()
+  js_removeAllChilds :: Node -> IO ()
 foreign import javascript unsafe
   "$1.replaceChild($2, $3)"
-  replaceChild :: Node -> Node -> Node -> IO ()
+  js_replaceChild :: Node -> Node -> Node -> IO ()
 foreign import javascript unsafe
   "$1.childNodes[$2]"
-  getChildNode :: Node -> Int -> IO Node
+  js_getChildNode :: Node -> Int -> IO Node
 foreign import javascript unsafe
   "document.createElement($1)"
-  createElement :: Text -> IO Node
+  js_createElement :: Text -> IO Node
 foreign import javascript unsafe
   "document.createElementNS($1, $2)"
-  createElementNS :: Text -> Text -> IO Node
+  js_createElementNS :: Text -> Text -> IO Node
 foreign import javascript unsafe
   "document.createTextNode($1)"
-  createTextNode :: Text -> IO Node
+  js_createTextNode :: Text -> IO Node
 foreign import javascript unsafe
   "$1.classList.add($2)"
-  classListAdd :: Node -> Text -> IO ()
+  js_classListAdd :: Node -> Text -> IO ()
 foreign import javascript unsafe
   "$1.classList.remove($2)"
-  classListRemove :: Node -> Text -> IO ()
+  js_classListRemove :: Node -> Text -> IO ()
 foreign import javascript unsafe
   "$1.nodeValue = $2;"
-  setTextValue :: Node -> Text -> IO ()
+  js_setTextValue :: Node -> Text -> IO ()
 foreign import javascript unsafe
   "(function(cb){\
     window.addEventListener('beforeunload', function(e) {\
@@ -267,17 +284,40 @@ foreign import javascript unsafe
     })\
    })($1)"
   js_onBeforeUnload :: Callback a -> IO ()
-onBeforeUnload :: IO () -> IO ()
-onBeforeUnload cb = do
-  syncCb <- syncCallback ThrowWouldBlock cb
-  js_onBeforeUnload syncCb
-foreign import javascript unsafe "$1()" js0 :: JSVal -> IO ()
-foreign import javascript unsafe "$1($2)" js1 :: JSVal -> JSVal -> IO ()
-foreign import javascript unsafe "$1($2, $3)" js2 :: JSVal -> JSVal -> JSVal -> IO ()
-foreign import javascript unsafe "(function(){ return window; })()" js_getWindow :: IO JSVal
-foreign import javascript unsafe "(function(){ return window.document; })()" js_getDocument :: IO JSVal
-foreign import javascript unsafe "(function(){ return window.document.body; })()" js_getBody :: IO JSVal
-foreign import javascript unsafe "$1[$2]()" jscall0 :: JSVal -> JSString -> IO ()
-foreign import javascript unsafe "$1[$2]($3)" jscall1 :: JSVal -> JSString -> JSVal -> IO ()
-foreign import javascript unsafe "$1[$2]($3, $4)" jscall2 :: JSVal -> JSString -> JSVal -> JSVal -> IO ()
+foreign import javascript unsafe
+  "(function(){ return window; })()"
+  js_getCurrentWindow :: IO JSVal
+foreign import javascript unsafe
+  "(function(){ return window.document; })()"
+  js_getCurrentDocument :: IO JSVal
+foreign import javascript unsafe
+  "(function(){ return window.document.body; })()"
+  js_getCurrentBody :: IO JSVal
+foreign import javascript unsafe "$1()" js_jsCall0 :: JSVal -> IO JSVal
+foreign import javascript unsafe "$1($2)" js_jsCall1 :: JSVal -> JSVal -> IO JSVal
+foreign import javascript unsafe "$1($2, $3)" js_jsCall2 :: JSVal -> JSVal -> JSVal -> IO JSVal
+foreign import javascript unsafe "$1[$2]()" js_jsCallMethod0 :: JSVal -> JSString -> IO JSVal
+foreign import javascript unsafe "$1[$2]($3)" js_jsCallMethod1 :: JSVal -> JSString -> JSVal -> IO JSVal
+foreign import javascript unsafe "$1[$2]($3, $4)" js_jsCallMethod2 :: JSVal -> JSString -> JSVal -> JSVal -> IO JSVal
+foreign import javascript unsafe
+  "(function(el, htmlString){\
+    var div = document.createElement('div');\
+    div.innerHTML = htmlString;\
+    var tempChilds = [];\
+    for (var i = 0; i < div.childNodes.length; i++) {\
+      tempChilds.push(div.childNodes[i]);\
+    }\
+    for (var j = 0; j < tempChilds.length; j++) {\
+      div.removeChild(tempChilds[j]);\
+      el.appendChild(tempChilds[j]);\
+    }\
+  })($1, $2)"
+  js_appendUnsafeHtml :: Node -> JSString -> IO ()
 #endif
+
+instance (x ~ (), MonadIO m) => IsString (HtmlT m x) where
+  fromString = f . T.pack where
+    f t = do
+      rootEl <- asks html_current_root
+      textNode <- liftIO (createTextNode t)
+      liftIO (appendChild rootEl textNode)

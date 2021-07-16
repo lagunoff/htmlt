@@ -362,7 +362,23 @@ addFinalizer fin = do
   liftIO $ modifyIORef (unFinalizers fins) (fin:)
 
 -- | Attach resulting DOM to the given node instead of
--- 'html_current_root'. Might be useful for implementing modals,
--- tooltips etc. Similar to what called portals in React ecosystem
+-- 'html_current_root'. Might be useful for implementing modal
+-- dialogs, tooltips etc. Similar to what called portals in React
+-- ecosystem
 portal :: Node -> Html a -> Html a
 portal rootEl = local (\e -> e {html_current_root = rootEl})
+
+-- | Parse given text as HTML and attach the resulting tree to
+-- 'html_current_root'. This way you can create not only HTML but
+-- anything that @innerHTML@ property can create (e.g. SVG)
+--
+-- > -- Create a div with an SVG image inside that shows a black
+-- > -- circle
+-- > div_ [] do
+-- >   unsafeHtml "<svg viewBox="0 0 100 100">\
+-- >     \<circle cx="50" cy="50" r="50"/>\
+-- >     \</svg>"
+unsafeHtml :: Text -> Html ()
+unsafeHtml htmlText = do
+  rootEl <- asks html_current_root
+  liftIO $ appendUnsafeHtml rootEl htmlText
