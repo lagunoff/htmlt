@@ -42,7 +42,6 @@ library
     bytestring,
     containers,
     exceptions,
-    lens,
     mtl,
     text
 

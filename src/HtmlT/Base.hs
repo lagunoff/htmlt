@@ -2,7 +2,6 @@
 module HtmlT.Base where
 
 import Control.Exception as Exception
-import Control.Lens hiding ((#))
 import Control.Monad.Reader
 import Data.Coerce
 import Data.Foldable
@@ -230,78 +229,77 @@ blank = pure ()
 --
 -- > listRef <- newRef ["One", "Two", "Three"]
 -- > el "ul" do
--- >   simpleList listRef traversed \_idx elemRef -> do
+-- >   simpleList listRef \_idx elemRef -> do
 -- >     el "li" $ dynText $ fromRef elemRef
 -- > el "button" do
 -- >   on_ "click" $ modifyRef listRef ("New Item":)
 -- >   text "Append new item"
 simpleList
-  :: forall s a
-  . DynRef s
+  :: forall a. DynRef [a]
   -- ^ Some dynamic data from the above scope
-  -> IndexedTraversal' Int s a
-  -- ^ Point to some traversable collection inside @s@
   -> (Int -> DynRef a -> Html ())
   -- ^ Function to build children widget. Accepts the index inside the
   -- collection and dynamic data for that particular element
   -> Html ()
-simpleList dynRef l h = do
-  hte <- ask
-  rootEl <- asks html_current_root
-  s <- readRef dynRef
-  itemRefs <- liftIO (newIORef [])
+simpleList dynRef h = do
+  htmlEnv <- ask
+  as <- readRef dynRef
+  elemEnvsRef <- liftIO $ newIORef ([] :: [ElemEnv a])
   let
-    -- FIXME: 'setup' should return new contents for 'itemRefs'
-    setup :: s -> Int -> [ElemEnv a] -> [a] -> [a] -> IO ()
-    setup s idx refs old new = case (refs, old, new) of
-      (_, [], [])    -> pure ()
+    rootEl = html_current_root htmlEnv
+    reactiveEnv = html_reactive_env htmlEnv
+    -- TODO: 'setup' should return new contents for 'elemEnvsRef'
+    setup :: Int -> [ElemEnv a] -> [a] -> [a] -> IO ()
+    setup idx refs old new = case (refs, old, new) of
+      (_, [], []) -> pure ()
       ([], [], x:xs) -> do
         -- New list is longer, append new elements
         fins <- newIORef []
-        elemRef <- runReactiveEnvT (html_reactive_env hte) $ newRef x
+        elemRef <- runReactiveEnvT reactiveEnv $ newRef x
         postRef <- liftIO (newIORef [])
         let
-          elemRef' = elemRef {dynref_modifier=mkModifier idx (fromRef elemRef)}
-          renv = html_reactive_env hte
-          newEnv = hte
-            { html_reactive_env = renv { renv_finalizers = fins }
+          elemRef' = elemRef {dynref_modifier=elemModifier idx (fromRef elemRef)}
+          newEnv = htmlEnv
+            { html_reactive_env = reactiveEnv { renv_finalizers = fins }
             , html_post_hooks = postRef }
           itemRef = ElemEnv newEnv elemRef' (dynref_modifier elemRef)
         runHtmlT newEnv $ h idx elemRef'
-        liftIO (modifyIORef' itemRefs (<> [itemRef]))
-        setup s (idx + 1) [] [] xs
+        liftIO $ modifyIORef' elemEnvsRef (<> [itemRef])
+        setup (idx + 1) [] [] xs
       (_, x:xs, []) -> do
         -- New list is shorter, delete the elements that no longer
         -- present in the new list
-        itemRefsValue <- liftIO (readIORef itemRefs)
+        itemRefsValue <- liftIO (readIORef elemEnvsRef)
         let (newRefs, tailRefs) = L.splitAt idx itemRefsValue
-        unsub tailRefs
+        finalizeElem tailRefs
         childEl <- getChildNode rootEl idx
         removeChild rootEl childEl
-        liftIO (writeIORef itemRefs newRefs)
+        liftIO (writeIORef elemEnvsRef newRefs)
       (r:rs, x:xs, y:ys) -> do
         -- Update child elemens along the way
         liftIO $ sync $ ee_modifier r \_ -> y
-        setup s (idx + 1) rs xs ys
+        setup (idx + 1) rs xs ys
       (_, _, _) -> do
         error "simpleList: Incoherent internal state"
 
-    unsub = traverse_ \ElemEnv{..} -> do
+    finalizeElem = traverse_ \ElemEnv{..} -> do
       let fins = renv_finalizers $ html_reactive_env ee_html_env
       liftIO $ readIORef fins >>= sequence_
 
-    mkModifier :: Int -> Dynamic a -> (a -> a) -> Reactive ()
-    mkModifier idx dyn f = do
+    elemModifier :: Int -> Dynamic a -> (a -> a) -> Reactive ()
+    elemModifier idx dyn f = do
       oldA <- readDyn dyn
-      dynref_modifier dynRef \oldS ->
-        oldS & iover l \i x -> if i == idx then f oldA else x
-  liftIO $ setup s 0 [] [] (toListOf l s)
-  addFinalizer $ readIORef itemRefs >>= unsub
-  let eUpdates = diffEvent s (dynamic_updates $ fromRef dynRef)
-  void $ subscribe eUpdates \(old, new) -> do
-    refs <- liftIO (readIORef itemRefs)
-    liftIO $ setup new 0 refs (toListOf l old) (toListOf l new)
-  pure ()
+      let
+        g 0 (_:xs) = f oldA : xs
+        g n (x:xs) = x : g (n - 1) xs
+        g _ [] = []
+      dynref_modifier dynRef (g idx)
+  liftIO $ setup 0 [] [] as
+  addFinalizer $ readIORef elemEnvsRef >>= finalizeElem
+  let updatesEv = diffEvent as (dynamic_updates $ fromRef dynRef)
+  void $ subscribe updatesEv \(old, new) -> do
+    eenvs <- liftIO (readIORef elemEnvsRef)
+    liftIO $ setup 0 eenvs old new
 
 -- | First build a DOM with the widget that is currently held by the
 -- given Dynamic, then rebuild it every time Dynamic's value
@@ -324,7 +322,7 @@ dyn_ dyn = do
   childRef <- liftIO (newIORef Nothing)
   let
     rootEl = html_current_root env
-    unsub newEnv = do
+    finalizeEnv newEnv = do
       readIORef childRef >>= \case
         Just HtmlEnv{..} -> do
           fins <- readIORef $ renv_finalizers html_reactive_env
@@ -341,11 +339,11 @@ dyn_ dyn = do
             = (html_reactive_env env) { renv_finalizers = fins }
           , html_post_hooks = postHooks }
         commit =
-          unsub (Just newEnv)
+          finalizeEnv (Just newEnv)
           <* removeAllChilds rootEl
           <* (readIORef postHooks >>= sequence_)
       commit *> runHtmlT newEnv html
-  addFinalizer (unsub Nothing)
+  addFinalizer (finalizeEnv Nothing)
   void $ forDyn dyn (liftIO . setup rootEl)
 
 -- | Catch exceptions thrown from event handlers

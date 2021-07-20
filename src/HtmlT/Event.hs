@@ -7,8 +7,8 @@
 module HtmlT.Event where
 
 import Control.Applicative
-import Control.Lens (Lens', over)
 import Control.Monad.Catch
+import Control.Monad.Identity
 import Control.Monad.Reader
 import Control.Monad.State
 import Data.Foldable
@@ -23,6 +23,8 @@ import qualified Data.Map as M
 
 import HtmlT.IdSupply
 import qualified HtmlT.HashMap as H
+
+type Lens' s a = forall f. Functor f => (a -> f a) -> s -> f s
 
 -- | Stream of event occurences of type @a@. Actual representation is
 -- just a function that subscribes to the event and returns the action
@@ -242,10 +244,10 @@ mapMaybeE f e = Event \k -> unEvent e $ maybe mempty k . f
 
 -- | Apply a lens to the value inside 'DynRef'
 lensMap :: Lens' s a -> DynRef s -> DynRef a
-lensMap stab (DynRef d m) = DynRef (Dynamic read updates) modify where
-  read = fmap (getConst . stab Const) $ dynamic_read d
-  updates = fmap (getConst . stab Const) $ dynamic_updates d
-  modify f = m (over stab f)
+lensMap l (DynRef d m) = DynRef (Dynamic read updates) modify where
+  read = fmap (getConst . l Const) $ dynamic_read d
+  updates = fmap (getConst . l Const) $ dynamic_updates d
+  modify f = m (runIdentity . l (Identity . f))
 
 -- | Return a 'Dynamic' for which updates only fire when the value
 -- actually changes according to Eq instance
