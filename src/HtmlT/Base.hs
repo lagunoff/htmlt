@@ -257,13 +257,14 @@ simpleList dynRef l h = do
       (_, [], [])    -> pure ()
       ([], [], x:xs) -> do
         -- New list is longer, append new elements
-        fins <- Finalizers <$> newIORef []
-        elemRef <- runSubscribeT (html_subscriptions hte) $ newRef x
+        fins <- newIORef []
+        elemRef <- runReactiveEnvT (html_reactive_env hte) $ newRef x
         postRef <- liftIO (newIORef [])
         let
           elemRef' = elemRef {dynref_modifier=mkModifier idx (fromRef elemRef)}
+          renv = html_reactive_env hte
           newEnv = hte
-            { html_finalizers = fins
+            { html_reactive_env = renv { renv_finalizers = fins }
             , html_post_hooks = postRef }
           itemRef = ElemEnv newEnv elemRef' (dynref_modifier elemRef)
         runHtmlT newEnv $ h idx elemRef'
@@ -286,8 +287,8 @@ simpleList dynRef l h = do
         error "simpleList: Incoherent internal state"
 
     unsub = traverse_ \ElemEnv{..} -> do
-      let fins = html_finalizers ee_html_env
-      liftIO $ readIORef (unFinalizers fins) >>= sequence_
+      let fins = renv_finalizers $ html_reactive_env ee_html_env
+      liftIO $ readIORef fins >>= sequence_
 
     mkModifier :: Int -> Dynamic a -> (a -> a) -> Reactive ()
     mkModifier idx dyn f = do
@@ -326,17 +327,18 @@ dyn_ dyn = do
     unsub newEnv = do
       readIORef childRef >>= \case
         Just HtmlEnv{..} -> do
-          subs <- readIORef $ unFinalizers html_finalizers
-          sequence_ subs
-          writeIORef (unFinalizers html_finalizers) []
+          fins <- readIORef $ renv_finalizers html_reactive_env
+          sequence_ fins
+          writeIORef (renv_finalizers html_reactive_env) []
         Nothing -> return ()
       writeIORef childRef newEnv
     setup rootEl html = liftIO do
       postHooks <- newIORef []
-      fins <- Finalizers <$> newIORef []
+      fins <- newIORef []
       let
         newEnv = env
-          { html_finalizers = fins
+          { html_reactive_env
+            = (html_reactive_env env) { renv_finalizers = fins }
           , html_post_hooks = postHooks }
         commit =
           unsub (Just newEnv)
@@ -357,9 +359,9 @@ catchInteractive html f =
 -- | Run an action before the current node is detached from the DOM
 addFinalizer :: IO () -> Html ()
 addFinalizer fin = do
-  fins <- askFinalizers
+  ReactiveEnv{..} <- askReactiveEnv
   finRef <- liftIO $ newIORef fin
-  liftIO $ modifyIORef (unFinalizers fins) (fin:)
+  liftIO $ modifyIORef renv_finalizers (fin:)
 
 -- | Attach resulting DOM to the given node instead of
 -- 'html_current_root'. Might be useful for implementing modal

@@ -15,8 +15,7 @@ newtype HtmlT m a = HtmlT {unHtmlT :: ReaderT HtmlEnv m a}
 
 data HtmlEnv = HtmlEnv
   { html_current_root :: Node
-  , html_finalizers :: Finalizers
-  , html_subscriptions :: Subscriptions
+  , html_reactive_env :: ReactiveEnv
   , html_post_hooks :: IORef [IO ()]
   , html_catch_interactive :: SomeException -> IO ()
   } deriving Generic
@@ -39,8 +38,5 @@ instance (Semigroup a, Applicative m) => Semigroup (HtmlT m a) where
 instance (Monoid a, Applicative m) => Monoid (HtmlT m a) where
   mempty = HtmlT $ ReaderT \_ -> pure mempty
 
-instance Monad m => MonadSubscribe (HtmlT m) where
-  askSubscribe = asks html_subscriptions
-
-instance Monad m => MonadFinalize (HtmlT m) where
-  askFinalizers = asks html_finalizers
+instance Monad m => HasReactiveEnv (HtmlT m) where
+  askReactiveEnv = asks html_reactive_env

@@ -1,6 +1,6 @@
--- | Functions and definitions to work with DOM. ghcjs-dom is too
--- heavy, takes about an hour to compile and increases size of the
--- generated JavaScript
+-- | Functions and definitions to work with DOM. This exists because
+-- ghcjs-dom is too heavy, takes about an hour to compile and
+-- increases size of the generated JavaScript
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
@@ -41,20 +41,22 @@ addEventListener
   -> (JSVal -> IO ())
   -> IO (IO ())
 addEventListener ListenerOpts{..} target name f = do
-  let
-    mkcallback = if lo_sync_callback
-      then syncCallback1 ThrowWouldBlock
-      else asyncCallback1
   cb <- mkcallback \event -> do
     when lo_stop_propagation do
       void $ jsCallMethod0 event "stopPropagation"
     when lo_prevent_default do
       void $ jsCallMethod0 event "preventDefault"
     f event
-  jsCallMethod2 (coerce target) "addEventListener" (jsval (textToJSString name)) (jsval cb)
+  jsCallMethod2 (coerce target) "addEventListener"
+    (jsval (textToJSString name)) (jsval cb)
   return do
-    jsCallMethod2 (coerce target) "removeEventListener" (jsval (textToJSString name)) (jsval cb)
+    jsCallMethod2 (coerce target) "removeEventListener"
+      (jsval (textToJSString name)) (jsval cb)
     releaseCallback cb
+  where
+    mkcallback = if lo_sync_callback
+      then syncCallback1 ThrowWouldBlock
+      else asyncCallback1
 
 data MouseDelta = MouseDelta
   { md_delta_x :: Int

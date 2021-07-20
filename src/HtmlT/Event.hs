@@ -1,8 +1,9 @@
 -- | Very simple FRP-like functionality implemented for internal
 -- use. 'Event' and 'Dynamic' are similar to the same concepts from
--- Reflex unlike new to this libary 'DynRef' which is another
--- important definition. Some functions bear the same name as their
--- Reflex counterparts to make API easier to learn
+-- Reflex unlike 'DynRef' another important definition which is new to
+-- this libary and also expected to be widely used. Some functions
+-- bear the same name as their Reflex counterparts to make API easier
+-- to learn
 module HtmlT.Event where
 
 import Control.Applicative
@@ -30,9 +31,8 @@ newtype Event a = Event
   { unEvent :: Callback a -> IO Canceller
   } deriving stock Generic
 
--- | Holds a value that changes over the lifetime of the
--- program. It is possible to read the current value of a 'Dynamic'
--- and subscribe to its future changes.
+-- | Holds a value that changes over the time. Allows to read the
+-- current value and subscribe to its future changes.
 data Dynamic a = Dynamic
   { dynamic_read :: IO a
   -- ^ Read current value. Use public alias 'readDyn' instead
@@ -41,7 +41,7 @@ data Dynamic a = Dynamic
   -- 'updates' instead
   } deriving stock Generic
 
--- | Mutable variable that supports subscription to its changes. Has
+-- | Mutable variable that supports subscribing to new values. Has
 -- similar API to 'IORef' (see 'readRef', 'writeRef', 'modifyRef')
 data DynRef a = DynRef
   { dynref_dynamic :: Dynamic a
@@ -54,13 +54,38 @@ data DynRef a = DynRef
 -- | State inside 'Reactive'
 newtype ReactiveState = ReactiveState
   { unReactiveState :: M.Map (Id Event) (Reactive ())
-  } deriving stock Generic
+  } deriving Generic
 
 -- | Evaluation of effects triggered by event firing
 newtype Reactive a = Reactive (StateT ReactiveState IO a)
   deriving newtype (Functor, Applicative, Monad, MonadIO
     , MonadState ReactiveState, MonadFix, MonadCatch, MonadThrow
     , MonadMask)
+
+-- | The environment required for some operations like creating a new
+-- 'Event' or subscribing to an Event. Usually only one instance of
+-- 'renv_subscriptions' hashmap exists in the whole application unlike
+-- 'renv_finalizers' which will be passed new to each dynamic part,
+-- allowing to free all resources once these parts are being replaced
+-- or removed
+data ReactiveEnv = ReactiveEnv
+  { renv_subscriptions :: H.HashMap (Id Event) [IORef (Callback Any)]
+  -- ^ Keep track of subscriptions for all events
+  , renv_finalizers :: IORef [Canceller]
+  -- ^ List of cancellers, IO actions that detach listeners from
+  -- events allowing them to be garbage collected
+  } deriving Generic
+
+-- | Minimal implementation for 'HasReactiveEnv'
+newtype ReactiveEnvT m a = ReactiveEnvT
+  { unReactiveEnvT :: ReaderT ReactiveEnv m a
+  } deriving newtype (MonadIO, Monad, Functor, Applicative)
+
+class HasReactiveEnv m where
+  askReactiveEnv :: m ReactiveEnv
+
+runReactiveEnvT :: ReactiveEnv -> ReactiveEnvT m a -> m a
+runReactiveEnvT s = (`runReaderT` s) . unReactiveEnvT
 
 type Callback a = a -> Reactive ()
 
@@ -70,42 +95,29 @@ type Modifier a = (a -> a) -> Reactive ()
 
 type Canceller = IO ()
 
-class MonadSubscribe m where
-  askSubscribe :: m Subscriptions
-
-class MonadFinalize m where
-  askFinalizers :: m Finalizers
-
-newtype Subscriptions = Subscriptions
-  { unSubscriptions :: H.HashMap (Id Event) [IORef (Callback Any)]
-  }
-
-newtype Finalizers = Finalizers {unFinalizers :: IORef [Canceller]}
-
-type MonadReactive m = (MonadIO m, MonadSubscribe m, MonadFinalize m)
-
-newtype SubscribeT m a = SubscribeT {unSubscribeT :: ReaderT Subscriptions m a}
-  deriving newtype (MonadIO, Monad, Functor, Applicative)
-
-runSubscribeT :: Subscriptions -> SubscribeT m a -> m a
-runSubscribeT s = (`runReaderT` s) . unSubscribeT
+-- | Create new empty 'ReactiveEnv'
+newReactiveEnv :: MonadIO m => m ReactiveEnv
+newReactiveEnv = liftIO do
+  renv_finalizers <- newIORef []
+  renv_subscriptions <- H.new
+  return ReactiveEnv{..}
 
 -- | Create new event and a function to supply values to that event
 --
 -- > (event, push) <- newEvent @String
 -- > push "New Value" -- event fires with given value
-newEvent :: forall a m. (MonadIO m, MonadSubscribe m) => m (Event a, Trigger a)
+newEvent :: forall a m. (HasReactiveEnv m, MonadIO m) => m (Event a, Trigger a)
 newEvent = do
-  subs <- askSubscribe
+  renv <- askReactiveEnv
   eventId <- liftIO $ nextId @Event
-  let event = Event $ subscribeImpl subs eventId
-  return (event, triggerImpl subs eventId)
+  let event = Event $ subscribeImpl renv eventId
+  return (event, triggerImpl renv eventId)
 
 -- | Create new 'DynRef' using given initial value
 --
 -- > showRef <- newRef False
 -- > writeRef showRef True -- update event fires for showRef
-newRef :: forall a m. (MonadIO m, MonadSubscribe m) => a -> m (DynRef a)
+newRef :: forall a m. (HasReactiveEnv m, MonadIO m) => a -> m (DynRef a)
 newRef initial = do
   ref <- liftIO $ newIORef initial
   (ev, push) <- newEvent
@@ -134,7 +146,6 @@ never = Event \_ -> mempty
 -- "New value"
 writeRef :: MonadIO m => DynRef a -> a -> m ()
 writeRef ref a = modifyRef ref (const a)
-{-# INLINE writeRef #-}
 
 -- | Read the current value held by given 'DynRef'
 --
@@ -143,13 +154,11 @@ writeRef ref a = modifyRef ref (const a)
 -- "Hello there!"
 readRef :: MonadIO m => DynRef a -> m a
 readRef = readDyn . dynref_dynamic
-{-# INLINE readRef #-}
 
 -- | Same as 'readRef' but also applies given function to the value
 -- held by 'DynRef'
 readsRef :: MonadIO m => (a -> b) -> DynRef a -> m b
 readsRef f = readsDyn f . dynref_dynamic
-{-# INLINE readsRef #-}
 
 -- | Update a 'DynRef' by applying a given function to the current
 -- value
@@ -159,38 +168,31 @@ readsRef f = readsDyn f . dynref_dynamic
 -- [2, 4, 6]
 modifyRef :: MonadIO m => DynRef a -> (a -> a) -> m ()
 modifyRef (DynRef _ modifier) = liftIO . sync . modifier
-{-# INLINE modifyRef #-}
 
 -- | Version of 'modifyRef' that runs inside @Reactive@
 modifySync :: DynRef a -> (a -> a) -> Reactive ()
 modifySync = dynref_modifier
-{-# INLINE modifySync #-}
 
 -- | Version of 'writeRef' that runs inside @Reactive@
 writeSync :: DynRef a -> a -> Reactive ()
 writeSync ref a = modifySync ref (const a)
-{-# INLINE writeSync #-}
 
 -- | Extract a 'Dynamic' out of 'DynRef'
 fromRef :: DynRef a -> Dynamic a
 fromRef = dynref_dynamic
-{-# INLINE fromRef #-}
 
 -- | Read the value held by a 'Dynamic'
 readDyn :: MonadIO m => Dynamic a -> m a
 readDyn = liftIO . dynamic_read
-{-# INLINE readDyn #-}
 
 -- | Same as 'readDyn' but also applies given function to the value
 -- held by 'Dynamic'
 readsDyn :: MonadIO m => (a -> b) -> Dynamic a -> m b
 readsDyn f = fmap f . liftIO . dynamic_read
-{-# INLINE readsDyn #-}
 
 -- | Extract the updates Event from a 'Dynamic'
 updates :: Dynamic a -> Event a
 updates = dynamic_updates
-{-# INLINE updates #-}
 
 -- | Defer a computation (usually an event firing) till the end of
 -- current reactive transaction. This makes possible to avoid double
@@ -199,7 +201,7 @@ defer :: Id Event -> Reactive () -> Reactive ()
 defer k act = Reactive (modify f) where
   f (ReactiveState s) = ReactiveState (M.insert k act s)
 
--- | Run a reactive transaction
+-- | Run a reactive transaction.
 sync :: MonadIO m => Reactive a -> m a
 sync act = liftIO $ loop (ReactiveState M.empty) act where
   loop :: ReactiveState -> Reactive a -> IO a
@@ -212,26 +214,25 @@ sync act = liftIO $ loop (ReactiveState M.empty) act where
     Just ((_, act), rest) -> (Just act, ReactiveState rest)
     Nothing               -> (Nothing, intact)
 
--- | Attach a listener to an event and return an action to detach the
+-- | Attach a listener to the event and return an action to detach the
 -- listener
-subscribe :: MonadReactive m => Event a -> Callback a -> m Canceller
+subscribe :: (HasReactiveEnv m, MonadIO m) => Event a -> Callback a -> m Canceller
 subscribe (Event s) k = do
-  subs <- askSubscribe
-  fins <- askFinalizers
+  ReactiveEnv{..} <- askReactiveEnv
   cancel <- liftIO $ s k
-  liftIO $ modifyIORef (unFinalizers fins) (cancel:)
+  liftIO $ modifyIORef renv_finalizers (cancel:)
   return cancel
 
 -- | Perform an action with current value of the given 'Dynamic' and
 -- each time the value changes. Return action to detach listener from
 -- receiving new values
-forDyn :: MonadReactive m => Dynamic a -> Callback a -> m Canceller
+forDyn :: (HasReactiveEnv m, MonadIO m) => Dynamic a -> Callback a -> m Canceller
 forDyn d k = do
   liftIO $ dynamic_read d >>= sync . k
   subscribe (dynamic_updates d) k
 
 -- | Same as 'forDyn', ignore the result
-forDyn_ :: MonadReactive m => Dynamic a -> Callback a -> m ()
+forDyn_ :: (HasReactiveEnv m, MonadIO m) => Dynamic a -> Callback a -> m ()
 forDyn_ = (void .) . forDyn
 
 -- | Filter and map occurences
@@ -268,19 +269,16 @@ holdUniqDynBy equal Dynamic{..} = dynamic where
 -- | Print a debug message when given event fires
 traceEvent :: Show a => String -> Event a -> Event a
 traceEvent = traceEventWith show
-{-# INLINE traceEvent #-}
 
 -- | Print a debug message when the event fires using given printing
 -- function
 traceEventWith :: (a -> String) -> String -> Event a -> Event a
 traceEventWith show' tag (Event f) = Event \c ->
   f (c . (\x -> trace (tag ++ ": " ++ show' x) x))
-{-# INLINE traceEventWith #-}
 
 -- | Print a debug message when value inside Dynamic changes
 traceDyn :: Show a => String -> Dynamic a -> Dynamic a
 traceDyn = traceDynWith show
-{-# INLINE traceDyn #-}
 
 -- | Print a debug message when value inside Dynamic changes
 traceRef :: Show a => String -> DynRef a -> DynRef a
@@ -292,7 +290,6 @@ traceRef s DynRef{..} = DynRef
 traceDynWith :: (a -> String) -> String -> Dynamic a -> Dynamic a
 traceDynWith show' tag d = d {dynamic_updates = e} where
   e = traceEventWith show' tag (dynamic_updates d)
-{-# INLINE traceDynWith #-}
 
 -- | Make an 'Event' with a tuple containing previous value as well as
 -- the current value from the original event
@@ -309,19 +306,23 @@ diffEvent initial (Event s) = Event \k -> do
 -- | Alternative version if 'fmap' where given function will only be
 -- called once every time 'Dynamic a' value changes, whereas in 'fmap'
 -- it would be called once for each subscription per change event
-mapDyn :: MonadReactive m => Dynamic a -> (a -> b) -> m (Dynamic b)
+mapDyn
+  :: (HasReactiveEnv m, MonadIO m)
+  => Dynamic a
+  -> (a -> b)
+  -> m (Dynamic b)
 mapDyn dynA f = do
   initialA <- liftIO $ dynamic_read dynA
   latestA <- liftIO $ newIORef initialA
   latestB <- liftIO $ newIORef (f initialA)
   eventId <- liftIO $ nextId @Event
-  subs <- askSubscribe
+  renv <- askReactiveEnv
   let
-    updates = Event $ subscribeImpl subs eventId
+    updates = Event $ subscribeImpl renv eventId
     fire = defer eventId do
       newB <- liftIO $ f <$> readIORef latestA
       liftIO $ writeIORef latestB newB
-      triggerImpl subs eventId newB
+      triggerImpl renv eventId newB
   dynamic_updates dynA `subscribe` \newA -> do
     liftIO $ writeIORef latestA newA
     defer eventId fire
@@ -330,7 +331,11 @@ mapDyn dynA f = do
 -- | Same as 'mapDyn' but with two Dynamics, @f@ is called each time
 -- any of the two Dynamics changes its value
 mapDyn2
-  :: MonadReactive m => Dynamic a -> Dynamic b -> (a -> b -> c) -> m (Dynamic c)
+  :: (HasReactiveEnv m, MonadIO m)
+  => Dynamic a
+  -> Dynamic b
+  -> (a -> b -> c)
+  -> m (Dynamic c)
 mapDyn2 aDyn bDyn f = do
   initialA <- liftIO $ dynamic_read aDyn
   initialB <- liftIO $ dynamic_read bDyn
@@ -338,13 +343,13 @@ mapDyn2 aDyn bDyn f = do
   latestB <- liftIO $ newIORef initialB
   latestC <- liftIO $ newIORef (f initialA initialB)
   eventId <- liftIO $ nextId @Event
-  subs <- askSubscribe
+  renv <- askReactiveEnv
   let
     fire = defer eventId do
       newC <- liftIO $ liftA2 f (readIORef latestA) (readIORef latestB)
       liftIO $ writeIORef latestC newC
-      triggerImpl subs eventId newC
-    updates = Event $ subscribeImpl subs eventId
+      triggerImpl renv eventId newC
+    updates = Event $ subscribeImpl renv eventId
   dynamic_updates aDyn `subscribe` \newA -> do
     liftIO $ writeIORef latestA newA
     defer eventId fire
@@ -353,21 +358,21 @@ mapDyn2 aDyn bDyn f = do
     defer eventId fire
   return $ Dynamic (readIORef latestC) updates
 
-subscribeImpl :: Subscriptions -> Id Event -> Callback a -> IO Canceller
-subscribeImpl (Subscriptions ht) eventId k = do
+subscribeImpl :: ReactiveEnv -> Id Event -> Callback a -> IO Canceller
+subscribeImpl (ReactiveEnv ht _) eventId k = do
   kref <- newIORef (\(a::Any) -> k (unsafeCoerce a)) -- Need 'IORef' for an 'Eq' instance
   H.mutate ht eventId \mss ->
     (Just (kref : fromMaybe [] mss), ())
   pure $ H.mutate ht eventId \mss ->
     (mfilter (/=[]) $ Just (delete kref $ fromMaybe [] mss), ())
 
-triggerImpl :: Subscriptions -> Id Event -> a -> Reactive ()
-triggerImpl (Subscriptions ht) eventId a = defer eventId do
+triggerImpl :: ReactiveEnv -> Id Event -> a -> Reactive ()
+triggerImpl (ReactiveEnv ht _) eventId a = defer eventId do
   callbacks <- liftIO $ fromMaybe [] <$> H.lookup ht eventId
   for_ callbacks $ liftIO . readIORef >=> ($ unsafeCoerce @_ @Any a)
 
-instance Applicative m => MonadSubscribe (SubscribeT m) where
-  askSubscribe = SubscribeT $ ReaderT pure
+instance Applicative m => HasReactiveEnv (ReactiveEnvT m) where
+  askReactiveEnv = ReactiveEnvT $ ReaderT pure
 
 instance Functor Event where
   fmap f (Event s) = Event \k -> s . (. f) $ k
