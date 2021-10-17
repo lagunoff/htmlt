@@ -1,5 +1,0 @@
-#!/usr/bin/env sh
-
-source $(dirname "${BASH_SOURCE[0]}")/include-ghcjs.sh
-GHCJS_ARGS=$(echo $CABAL_CARGS | sed 's/-package=\([[:alnum:]_\-]\+\)//g' | sed 's/-isrc-ghc//g' || exit 1)
-ghcjs $CABAL_CARGS -j -H14m -outputdir=$OUTPUT_DIR "$@" -isrc-ghcjs

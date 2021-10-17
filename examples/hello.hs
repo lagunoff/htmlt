@@ -1,10 +1,11 @@
 module Main where
 
+import Control.Monad
 import Data.Text
 import HtmlT
 
 main :: IO ()
-main = withJSM $ attachToBody do
+main = void $ attachToBody do
   colorRef <- newRef 0
   div_ [class_ "root"] do
     h1_ do

@@ -1,14 +1,14 @@
 module Main where
 
+import Control.Monad
 import HtmlT
 
-import Todo.Todos
-import Todo.Utils
+import "this" Todo.Todos
+import "this" Todo.Utils
 
 main :: IO ()
-main = withJSM do
-  initial <- initTodos
-  stateRef <- newRef initial
-  let widget = fix1 (todosWidget stateRef)
-  (_, htmlEnv) <- attachToBody (widget RenderTodos)
-  setup (runHtmlT htmlEnv) (widget BeforeUnload) (widget . HashChange)
+main = do
+  env <- newReactiveEnv
+  urlHashRef <- mkUrlHashRef env
+  todosRef <- initTodos env urlHashRef
+  void $ attachToBody $ todosWidget $ TodosConfig todosRef id

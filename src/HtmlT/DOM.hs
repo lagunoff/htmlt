@@ -219,18 +219,18 @@ onBeforeUnload cb = do
   syncCb <- syncCallback ThrowWouldBlock cb
   js_onBeforeUnload syncCb
 appendChild = js_appendChild
-setAttribute = js_setAttribute
-removeAttribute = js_removeAttribute
+setAttribute e k v = js_setAttribute e (textToJSString k) (textToJSString v)
+removeAttribute e k = js_removeAttribute e (textToJSString k)
 removeChild = js_removeChild
 removeAllChilds = js_removeAllChilds
 replaceChild = js_replaceChild
 getChildNode = js_getChildNode
-createElement = js_createElement
-createElementNS = js_createElementNS
-createTextNode = js_createTextNode
-classListAdd = js_classListAdd
-classListRemove = js_classListRemove
-setTextValue = js_setTextValue
+createElement = js_createElement . textToJSString
+createElementNS n t = js_createElementNS (textToJSString n) (textToJSString t)
+createTextNode = js_createTextNode . textToJSString
+classListAdd e c = js_classListAdd e (textToJSString c)
+classListRemove e c = js_classListRemove e (textToJSString c)
+setTextValue v = js_setTextValue v . textToJSString
 appendUnsafeHtml n t = js_appendUnsafeHtml n (textToJSString t)
 jsCall0 = js_jsCall0
 jsCall1 = js_jsCall1
@@ -244,10 +244,10 @@ foreign import javascript unsafe
   js_appendChild :: Node -> Node -> IO ()
 foreign import javascript unsafe
   "$1.setAttribute($2, $3)"
-  js_setAttribute :: Node -> Text -> Text -> IO ()
+  js_setAttribute :: Node -> JSString -> JSString -> IO ()
 foreign import javascript unsafe
   "$1.removeAttribute($2)"
-  js_removeAttribute :: Node -> Text -> IO ()
+  js_removeAttribute :: Node -> JSString -> IO ()
 foreign import javascript unsafe
   "$1.removeChild($2)"
   js_removeChild :: Node -> Node -> IO ()
@@ -262,22 +262,22 @@ foreign import javascript unsafe
   js_getChildNode :: Node -> Int -> IO Node
 foreign import javascript unsafe
   "document.createElement($1)"
-  js_createElement :: Text -> IO Node
+  js_createElement :: JSString -> IO Node
 foreign import javascript unsafe
   "document.createElementNS($1, $2)"
-  js_createElementNS :: Text -> Text -> IO Node
+  js_createElementNS :: JSString -> JSString -> IO Node
 foreign import javascript unsafe
   "document.createTextNode($1)"
-  js_createTextNode :: Text -> IO Node
+  js_createTextNode :: JSString -> IO Node
 foreign import javascript unsafe
   "$1.classList.add($2)"
-  js_classListAdd :: Node -> Text -> IO ()
+  js_classListAdd :: Node -> JSString -> IO ()
 foreign import javascript unsafe
   "$1.classList.remove($2)"
-  js_classListRemove :: Node -> Text -> IO ()
+  js_classListRemove :: Node -> JSString -> IO ()
 foreign import javascript unsafe
   "$1.nodeValue = $2;"
-  js_setTextValue :: Node -> Text -> IO ()
+  js_setTextValue :: Node -> JSString -> IO ()
 foreign import javascript unsafe
   "(function(cb){\
     window.addEventListener('beforeunload', function(e) {\

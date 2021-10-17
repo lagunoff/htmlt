@@ -1,21 +1,21 @@
-{-# LANGUAGE OverloadedStrings #-}
 module Todo.Todos where
 
 import Control.Lens hiding ((#))
+import Control.Monad.IO.Class
 import Data.Foldable
 import Data.Maybe
-import Data.Generics.Product
-import Data.String (fromString)
-import GHC.Generics
-import Language.Javascript.JSaddle
-import HtmlT
 import Data.Text as T hiding (foldl)
+import GHC.Generics (Generic)
+import GHCJS.Marshal
+import HtmlT
 
-import Todo.Item
-import Todo.Utils
+import "this" Todo.Item
+import "this" Todo.Utils
 
-data Filter = All | Active | Completed
-  deriving (Show, Eq, Generic)
+data TodosConfig s = TodosConfig
+  { tdc_ref :: DynRef s
+  , tdc_state :: Lens' s TodosState
+  }
 
 data TodosState = TodosState
   { todos_title  :: Text
@@ -23,159 +23,119 @@ data TodosState = TodosState
   , todos_filter :: Filter
   } deriving (Show, Eq, Generic)
 
-data TodosMsg a where
-  RenderTodos :: TodosMsg ()
-  Edit :: Text -> TodosMsg ()
-  SetFilter :: Filter -> TodosMsg ()
-  ToggleAll :: Bool -> TodosMsg ()
-  ClearCompleted :: TodosMsg ()
-  KeyPress :: Int -> TodosMsg ()
-  HashChange :: Text -> TodosMsg ()
-  BeforeUnload :: TodosMsg ()
-  CommitTitle :: TodosMsg ()
+data Filter = All | Active | Completed
+  deriving (Show, Eq, Generic)
 
-initTodos :: MonadJSM m => m TodosState
-initTodos = liftJSM do
-  hash <- readHash
-  todos <- readTodos
-  let filter = fromMaybe All $ hash ^? url2Filter
-  pure (TodosState "" todos filter)
+initTodos :: ReactiveEnv -> DynRef Text -> IO (DynRef TodosState)
+initTodos env urlHashRef = runReactiveEnvT env do
+  todos <- fromMaybe [] . fmap unLocalStorageTodoItems <$> liftIO localStorageGet
+  initFilter <- readsRef (fromMaybe All . firstOf url2Filter) urlHashRef
+  todosRef <- newRef $ TodosState "" todos initFilter
+  liftIO $ onBeforeUnload $ readRef todosRef >>= \TodosState{..} ->
+    localStorageSet (LocalStorageTodoItems todos_items)
+  subscribe (dynamic_updates (dynref_dynamic urlHashRef)) \urlHash -> do
+    modifyRef todosRef (#todos_filter .~ fromMaybe All (firstOf url2Filter urlHash))
+  return todosRef
 
-todosWidget :: DynRef TodosState -> Component TodosMsg
-todosWidget stateRef yield = \case
-  RenderTodos -> do
-    render
-  Edit x ->
-    modifyRef stateRef $ field @"todos_title" .~ x
-  SetFilter x ->
-    modifyRef stateRef $ field @"todos_filter" .~ x
-  ToggleAll check ->
-    modifyRef stateRef $ field @"todos_items" %~ fmap (field @"item_completed" .~ check)
-  ClearCompleted ->
-    modifyRef stateRef $ field @"todos_items" %~ Prelude.filter (not . item_completed)
-  CommitTitle -> do
-    txt <- T.strip . todos_title <$> readRef stateRef
-    case txt of
-      ""      -> return ()
-      trimmed -> do
-        let newItem = defaultItemState & field @"item_title" .~ trimmed
-        modifyRef stateRef
-          $ (field @"todos_items" %~ (<> [newItem]))
-          . (field @"todos_title" .~ "")
-  KeyPress 13 ->
-    yield CommitTitle
-  KeyPress _ ->
-    pure ()
-  HashChange hash -> case hash ^? url2Filter of
-    Just x  -> modifyRef stateRef $ field @"todos_filter" .~ x
-    Nothing -> do
-      modifyRef stateRef $ field @"todos_filter" .~ All
-      liftJSM $ writeHash (review url2Filter All)
-  BeforeUnload -> do
-    todos <- todos_items <$> readRef stateRef
-    liftJSM $ writeTodos todos
+todosWidget :: TodosConfig s -> Html ()
+todosWidget TodosConfig{..} = do
+  el "style" $ text styles
+  div_ do
+    section_ [class_ "todoapp"] do
+      headerWidget
+      mainWidget
+      footerWidget
+    footerInfoWidget
   where
-    render = do
-      el "style" do text styles
-      div_ do
-        section_ [class_ "todoapp"] do
-          renderHeader
-          renderMain
-          renderFooter
-        viewFooterInfo
-
-    renderHeader =
-      header_ [class_ "header"] do
-        h1_ do text "todos"
-        input_ [class_ "new-todo", placeholder_ "What needs to be done?", autofocus_ True] do
-          dynValue $ todos_title <$> fromRef stateRef
-          on "input" $ decodeValue $ yield . Edit
-          on "keydown" $ decodeKeyCode $ yield . KeyPress
-
-    renderMain :: HtmlT ()
-    renderMain =
-      section_ [class_ "main"] do
-        toggleClass "hidden" $ Prelude.null . todos_items <$> fromRef stateRef
-        input_ [id_ "toggle-all", class_ "toggle-all", type_ "checkbox"] do
-          on "click" $ decodeChecked $ yield . ToggleAll
-        label_ do
-          attr "for" "toggle-all"
-          text "Mark all as completed"
-        ul_ [class_ "todo-list"] do
-          let
-            itemConfig = Config _2 $ ItemEnv . uncurry isHidden
-            mkItemWidget = \itemDyn (override :: Component ItemMsg) ->
-              fix1 (itemWidget (itemConfig itemDyn) `compose1` override) Render
-          itraverseHtml (field @"todos_items" . traversed) stateRef \idx dynA ->
-            mkItemWidget (stateRef <**> dynA) \super -> \case
-              Destroy -> modifyRef stateRef $ field @"todos_items" %~ deleteNth idx
-              msg     -> super msg
-
-    renderFilter :: _ -> HtmlT ()
-    renderFilter x =
-      li_ do
-        a_ [href_ (review url2Filter x)] do
-          toggleClass "selected" $ (==x) . todos_filter <$> fromRef stateRef
-          text $ fromString (show x)
-
-    renderFooter :: HtmlT ()
-    renderFooter =
-      footer_ [class_ "footer"] do
-        toggleClass "hidden" $ Prelude.null . todos_items <$> fromRef stateRef
-        span_ [class_ "todo-count"] do
-          strong_ $ dynText $ T.pack . show . itemsLeft <$> fromRef stateRef
-          dynText $ pluralize " item left" " items left" . itemsLeft <$> fromRef stateRef
-        ul_ [class_ "filters"] do
-          for_ [All, Active, Completed] renderFilter
-        button_ [class_ "clear-completed"] do
-          on_ "click" $ yield ClearCompleted
-          text "Clear completed"
-
-    viewFooterInfo :: HtmlT ()
-    viewFooterInfo =
-      footer_ [class_ "info"] do
-        p_ "Double-click to edit a todo"
-        p_ do
-          text "Created by "
-          a_ [href_ "https://github.com/lagunoff"] "Vlad Lagunov"
-        p_ do
-          text "Part of "
-          a_ [href_ "http://todomvc.com"] "TodoMVC"
-
-itemsLeft :: TodosState -> Int
-itemsLeft TodosState{..} = foldl f 0 todos_items where
-  f acc ItemState{..} =
-    if not item_completed then acc + 1 else acc
-
-isHidden :: TodosState -> ItemState -> Bool
-isHidden TodosState{..} ItemState{..} =
-  case (todos_filter, item_completed) of
-    (Active,    True)  -> True
-    (Completed, False) -> True
-    _                  -> False
+    headerWidget = header_ [class_ "header"] do
+      h1_ (text "todos")
+      input_ [class_ "new-todo", placeholder_ "What needs to be done?", autofocus_ True] do
+        dynValue $ view (tdc_state . #todos_title) <$> fromRef tdc_ref
+        on "input" $ decodeValue \value ->
+          modifyRef tdc_ref (tdc_state . #todos_title .~ value)
+        on "keydown" $ decodeKeyCode \case
+          13 -> commitEditing
+          _ -> return ()
+    mainWidget = section_ [class_ "main"] do
+      toggleClass "hidden" hiddenDyn
+      input_ [id_ "toggle-all", class_ "toggle-all", type_ "checkbox"] do
+        on "click" $ decodeChecked toggleAll
+      label_ do
+        attr "for" "toggle-all"
+        text "Mark all as completed"
+      ul_ [class_ "todo-list"] do
+        simpleList itemsRef \idx todoRef ->
+          todoItemWidget $ TodoItemConfig
+            { tic_dyn_ref = tdc_ref <**> todoRef
+            , tic_state = _2
+            , tic_is_hidden = isTodoItemHidden
+            , tic_delete_item = deleteTodoItem idx }
+    footerWidget = footer_ [class_ "footer"] do
+      toggleClass "hidden" hiddenDyn
+      span_ [class_ "todo-count"] do
+        strong_ $ dynText $ T.pack . show <$> itemsLeftDyn
+        dynText $ pluralize " item left" " items left" <$> itemsLeftDyn
+      ul_ [class_ "filters"] do
+        for_ [All, Active, Completed] filterWidget
+      button_ [class_ "clear-completed"] do
+        on_ "click" clearCompleted
+        text "Clear completed"
+    footerInfoWidget = footer_ [class_ "info"] do
+      p_ "Double-click to edit a todo"
+      p_ do
+        text "Created by "
+        a_ [href_ "https://github.com/lagunoff"] "Vlad Lagunov"
+      p_ do
+        text "Part of "
+        a_ [href_ "http://todomvc.com"] "TodoMVC"
+    filterWidget flt = li_ do
+      a_ [href_ (review url2Filter flt)] do
+        toggleClass "selected" $ filterSelectedDyn flt
+        text $ T.pack (show flt)
+    commitEditing = readTitle >>= \case
+      "" -> return ()
+      title -> modifyRef tdc_ref
+        $ (tdc_state . #todos_items %~ (<> [mkNewItem title]))
+        . (tdc_state . #todos_title .~ "")
+      where
+        readTitle = readsRef (view (tdc_state . #todos_title . to T.strip)) tdc_ref
+        mkNewItem title = defaultItemState {item_title = title}
+    hiddenDyn = view (tdc_state . #todos_items . to Prelude.null) <$> fromRef tdc_ref
+    itemsLeftDyn = view (tdc_state . to countItemsLeft) <$> fromRef tdc_ref
+    toggleAll check = modifyRef tdc_ref (tdc_state . #todos_items %~ fmap (#item_completed .~ check))
+    filterSelectedDyn flt = view (tdc_state . #todos_filter . to (==flt)) <$> fromRef tdc_ref
+    itemsRef = lensMap (tdc_state . #todos_items) tdc_ref
+    clearCompleted = modifyRef tdc_ref (tdc_state . #todos_items %~ Prelude.filter (not . item_completed))
+    countItemsLeft TodosState{..} = foldl (\acc ItemState{..} ->
+      if not item_completed then acc + 1 else acc) 0 todos_items
+    deleteTodoItem idx = modifyRef tdc_ref (tdc_state . #todos_items %~ deleteAt idx)
+    isTodoItemHidden (s, ItemState{..}) =
+      case (s ^. tdc_state . #todos_filter, item_completed) of
+        (Active,    True)  -> True
+        (Completed, False) -> True
+        _                  -> False
 
 pluralize :: Text -> Text -> Int -> Text
 pluralize singular plural 0 = singular
 pluralize singular plural _ = plural
 
 url2Filter :: Prism' Text Filter
-url2Filter = prism' build match
-  where
-    match = \case
-      "#/"          -> Just All
-      "#/active"    -> Just Active
-      "#/completed" -> Just Completed
-      _             -> Nothing
-    build = \case
-      All       -> "#/"
-      Active    -> "#/active"
-      Completed -> "#/completed"
+url2Filter = prism' build match where
+  match = \case
+    "#/"          -> Just All
+    "#/active"    -> Just Active
+    "#/completed" -> Just Completed
+    _             -> Nothing
+  build = \case
+    All       -> "#/"
+    Active    -> "#/active"
+    Completed -> "#/completed"
 
-deleteNth :: Int -> [a] -> [a]
-deleteNth _ []     = []
-deleteNth i (a:as)
+deleteAt :: Int -> [a] -> [a]
+deleteAt _ []     = []
+deleteAt i (a:as)
   | i == 0    = as
-  | otherwise = a : deleteNth (i-1) as
+  | otherwise = a : deleteAt (i-1) as
 
 styles :: Text
 styles = "\
@@ -557,3 +517,6 @@ styles = "\
   \    bottom: 10px;\
   \  }\
   \}"
+
+newtype LocalStorageTodoItems = LocalStorageTodoItems {unLocalStorageTodoItems :: [ItemState]}
+  deriving newtype (ToJSVal, FromJSVal)

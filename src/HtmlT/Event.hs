@@ -24,8 +24,6 @@ import qualified Data.Map as M
 import HtmlT.IdSupply
 import qualified HtmlT.HashMap as H
 
-type Lens' s a = forall f. Functor f => (a -> f a) -> s -> f s
-
 -- | Stream of event occurences of type @a@. Actual representation is
 -- just a function that subscribes to the event and returns the action
 -- to unsubscribe.
@@ -88,6 +86,8 @@ class HasReactiveEnv m where
 
 runReactiveEnvT :: ReactiveEnv -> ReactiveEnvT m a -> m a
 runReactiveEnvT s = (`runReaderT` s) . unReactiveEnvT
+
+type Lens' s a = forall f. Functor f => (a -> f a) -> s -> f s
 
 type Callback a = a -> Reactive ()
 

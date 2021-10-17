@@ -1,5 +1,0 @@
-#!/usr/bin/env sh
-
-source $(dirname "${BASH_SOURCE[0]}")/include.sh
-GHCI_ARGS=$(echo $CABAL_CARGS | sed 's/-XStaticPointers//')
-ghc $GHCI_ARGS -j -outputdir=$OUTPUT_DIR -O0 --interactive "$@"

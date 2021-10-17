@@ -1,5 +1,0 @@
-#!/usr/bin/env sh
-
-source $(dirname "${BASH_SOURCE[0]}")/include.sh
-RUNGHC_CABAL_CARGS=$(for a in $CABAL_CARGS; do echo "--ghc-arg=$a"; done | tr '\r\n' ' ')
-runghc $RUNGHC_CABAL_CARGS --ghc-arg=-j --ghc-arg=-outputdir=$OUTPUT_DIR "$@"

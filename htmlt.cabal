@@ -1,9 +1,9 @@
-cabal-version: 1.12
+cabal-version: 2.4
 
 name:                htmlt
 version:             0.1.0.0
 homepage:            https://github.com/lagunoff/htmlt
-license:             BSD3
+license:             BSD-3-Clause
 author:              Vladislav Lagunov
 maintainer:          vlad.lagunoff@gmail.com
 copyright:           2019 Vladislav Lagunov
@@ -16,7 +16,64 @@ Flag production
   default: True
   description: Add optimisations
 
+Flag examples
+  default: False
+  description: Build examples
+
+common htmlt-common
+  ghc-options:
+    -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches
+    -Wno-unused-do-bind
+  if flag(production)
+    ghc-options: -O2 -dedupe
+  default-extensions:
+    AllowAmbiguousTypes
+    BangPatterns
+    BlockArguments
+    ConstraintKinds
+    DataKinds
+    DefaultSignatures
+    DeriveAnyClass
+    DeriveFunctor
+    DeriveGeneric
+    DerivingStrategies
+    DerivingVia
+    DoAndIfThenElse
+    DuplicateRecordFields
+    EmptyDataDecls
+    FlexibleContexts
+    FlexibleInstances
+    ForeignFunctionInterface
+    FunctionalDependencies
+    GADTs
+    GeneralizedNewtypeDeriving
+    ImplicitParams
+    LambdaCase
+    NamedFieldPuns
+    OverloadedLabels
+    OverloadedStrings
+    PackageImports
+    PartialTypeSignatures
+    PatternGuards
+    PolyKinds
+    QuasiQuotes
+    RankNTypes
+    RecordWildCards
+    RecursiveDo
+    ScopedTypeVariables
+    StandaloneDeriving
+    StrictData
+    TemplateHaskell
+    TupleSections
+    TypeApplications
+    TypeFamilies
+    TypeOperators
+    UndecidableInstances
+    ViewPatterns
+
 library
+  import: htmlt-common         
+  hs-source-dirs: src
   exposed-modules:
     HtmlT
     HtmlT.Base
@@ -30,58 +87,63 @@ library
     HtmlT.Main
     HtmlT.Property
     HtmlT.Types
-
   other-modules: Paths_htmlt
-  hs-source-dirs: src
-  ghc-options:
-    -Wall -Wno-missing-signatures -Wno-name-shadowing
-    -Wno-unused-matches -Wno-unused-do-bind
   build-depends:
     base,
     ghcjs-base,
+    ghcjs-prim,
     bytestring,
     containers,
     exceptions,
     mtl,
     text
 
-  if impl(ghcjs)
-    build-depends: ghcjs-prim
-    if flag(production)
-      ghc-options: -dedupe -O2
+executable htmlt-hello
+  import: htmlt-common         
+  main-is: hello.hs
+  hs-source-dirs: ./examples
+  build-depends:
+    base,
+    htmlt,
+    mtl,
+    text
+  if !flag(examples)
+    buildable: False
 
-  default-extensions:
-    BlockArguments
-    ConstraintKinds
-    DataKinds
-    DeriveAnyClass
-    DeriveFunctor
-    DeriveGeneric
-    DerivingStrategies
-    DuplicateRecordFields
-    FlexibleContexts
-    FlexibleInstances
-    FunctionalDependencies
-    GADTs
-    GeneralizedNewtypeDeriving
-    IncoherentInstances
-    LambdaCase
-    MultiParamTypeClasses
-    NamedFieldPuns
-    OverloadedStrings
-    PolyKinds
-    QuasiQuotes
-    RankNTypes
-    RecordWildCards
-    ScopedTypeVariables
-    StrictData
-    TemplateHaskell
-    TupleSections
-    TypeApplications
-    TypeFamilies
-    TypeOperators
-    TypeSynonymInstances
-    UndecidableInstances
-    ViewPatterns
-    
-  default-language: Haskell2010
+executable htmlt-todo
+  import: htmlt-common         
+  main-is: todo.hs
+  hs-source-dirs: ./examples
+  other-modules:
+    Todo.Item
+    Todo.Utils
+    Todo.Todos
+  build-depends:
+    base,
+    bytestring,
+    lens,
+    generic-lens,
+    mtl,
+    ghcjs-base,
+    ghcjs-prim,
+    htmlt,
+    text,
+  if !flag(examples)
+    buildable: False
+  
+executable htmlt-benchmark
+  import: htmlt-common         
+  main-is: Main.hs
+  hs-source-dirs: ./benchmarks ./src
+  build-depends:
+    base,
+    ghcjs-base,
+    ghcjs-prim,
+    bytestring,
+    containers,
+    exceptions,
+    mtl,
+    text,
+    gauge
+  if !flag(examples)
+    buildable: False

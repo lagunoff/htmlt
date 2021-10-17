@@ -355,7 +355,7 @@ catchInteractive html f =
   local (\e -> e {html_catch_interactive = runHtmlT e . f}) html
 
 -- | Run an action before the current node is detached from the DOM
-addFinalizer :: IO () -> Html ()
+addFinalizer :: (MonadIO m, HasReactiveEnv m) => IO () -> m ()
 addFinalizer fin = do
   ReactiveEnv{..} <- askReactiveEnv
   finRef <- liftIO $ newIORef fin

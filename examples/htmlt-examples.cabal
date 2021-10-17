@@ -13,22 +13,13 @@ build-type:     Simple
 executable htmlt-hello
   main-is: hello.hs
   hs-source-dirs: . ../src
-  ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -Wno-unused-do-bind -O0
+  ghc-options: -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches -Wno-unused-do-bind -O0 -dedupe
   build-depends:
-    array,
-    base >=4.7 && <5,
+    base,
     bytestring,
-    jsaddle,
-    lens,
+    ghcjs-base,
     mtl,
-    text,
-    transformers
-
-  if impl(ghcjs)
-    ghc-options: -dedupe
-    build-depends: ghcjs-base
-  else
-    build-depends: jsaddle-warp
+    text
   default-language: Haskell2010
 
   default-extensions:

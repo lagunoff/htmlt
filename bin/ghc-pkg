@@ -1,4 +1,0 @@
-#!/usr/bin/env sh
-
-source ./include.sh
-ghc-pkg $@
