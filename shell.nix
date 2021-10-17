@@ -1,1 +1,1 @@
-(import ./8.6.0.nix {nixpkgs = <nixpkgs>;}).shell
+(import ./8.6.0.nix {}).shell

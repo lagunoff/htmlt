@@ -7,6 +7,7 @@ import Data.IORef
 import GHC.Generics
 import GHCJS.Prim
 import GHCJS.Types
+import GHCJS.Marshal.Pure
 import HtmlT.Event
 
 newtype HtmlT m a = HtmlT {unHtmlT :: ReaderT HtmlEnv m a}
@@ -15,6 +16,7 @@ newtype HtmlT m a = HtmlT {unHtmlT :: ReaderT HtmlEnv m a}
 
 data HtmlEnv = HtmlEnv
   { html_current_root :: Node
+  , html_insert_before_anchor :: Maybe Node
   , html_reactive_env :: ReactiveEnv
   , html_post_hooks :: IORef [IO ()]
   , html_catch_interactive :: SomeException -> IO ()
@@ -24,9 +26,11 @@ type Html = HtmlT IO
 
 newtype Node = Node {unNode :: JSVal}
   deriving anyclass (IsJSVal)
+  deriving newtype (PToJSVal, PFromJSVal)
 
 newtype DOMEvent = DOMEvent {unDOMEvent :: JSVal}
   deriving anyclass (IsJSVal)
+  deriving newtype (PToJSVal, PFromJSVal)
 
 runHtmlT :: HtmlEnv -> HtmlT m a -> m a
 runHtmlT e = flip runReaderT e . unHtmlT

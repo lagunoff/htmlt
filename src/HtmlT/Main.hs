@@ -21,6 +21,7 @@ startWithOptions StartOpts{..} render = do
   let
     htmlEnv = HtmlEnv
       { html_current_root = startopts_root_element
+      , html_insert_before_anchor = Nothing
       , html_reactive_env = startopts_reactive_env
       , html_post_hooks = postHooks
       , html_catch_interactive = throwM

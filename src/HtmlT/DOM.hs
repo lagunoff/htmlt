@@ -18,6 +18,7 @@ import GHCJS.Foreign.Callback
 import GHCJS.Prim as Prim
 import GHCJS.Marshal
 import GHCJS.Types
+import GHCJS.Nullable
 
 import HtmlT.Decode
 import HtmlT.Types
@@ -171,11 +172,13 @@ getChildNode :: Node -> Int -> IO Node
 createElement :: Text -> IO Node
 createElementNS :: Text -> Text -> IO Node
 createTextNode :: Text -> IO Node
+createComment :: Text -> IO Node
 classListAdd :: Node -> Text -> IO ()
 classListRemove :: Node -> Text -> IO ()
 setTextValue :: Node -> Text -> IO ()
 onBeforeUnload :: IO () -> IO ()
-appendUnsafeHtml :: Node -> Text -> IO ()
+appendUnsafeHtml :: Node -> Maybe Node -> Text -> IO ()
+removeBetween :: Node -> Node -> Node -> IO ()
 jsCall0 :: JSVal -> IO JSVal
 jsCall1 :: JSVal -> JSVal -> IO JSVal
 jsCall2 :: JSVal -> JSVal -> JSVal -> IO JSVal
@@ -200,6 +203,7 @@ getChildNode _ _ = errorGhcjsOnly
 createElement _ = errorGhcjsOnly
 createElementNS _ _ = errorGhcjsOnly
 createTextNode _ = errorGhcjsOnly
+createComment _ = errorGhcjsOnly
 classListAdd _ _ = errorGhcjsOnly
 classListRemove _ _ = errorGhcjsOnly
 setTextValue _ _ = errorGhcjsOnly
@@ -211,6 +215,7 @@ jsCall2 _ _ _ = errorGhcjsOnly
 jsCallMethod0 _ _ = errorGhcjsOnly
 jsCallMethod1 _ _ _ = errorGhcjsOnly
 jsCallMethod2 _ _ _ _ = errorGhcjsOnly
+removeBetween _ _ _ = errorGhcjsOnly
 #else
 getCurrentWindow = liftIO js_getCurrentWindow
 getCurrentDocument = liftIO js_getCurrentDocument
@@ -228,20 +233,25 @@ getChildNode = js_getChildNode
 createElement = js_createElement . textToJSString
 createElementNS n t = js_createElementNS (textToJSString n) (textToJSString t)
 createTextNode = js_createTextNode . textToJSString
+createComment = js_createComment . textToJSString
 classListAdd e c = js_classListAdd e (textToJSString c)
 classListRemove e c = js_classListRemove e (textToJSString c)
 setTextValue v = js_setTextValue v . textToJSString
-appendUnsafeHtml n t = js_appendUnsafeHtml n (textToJSString t)
+appendUnsafeHtml n ma t = js_appendUnsafeHtml n (maybeToNullable ma) (textToJSString t)
 jsCall0 = js_jsCall0
 jsCall1 = js_jsCall1
 jsCall2 = js_jsCall2
 jsCallMethod0 = js_jsCallMethod0
 jsCallMethod1 = js_jsCallMethod1
 jsCallMethod2 = js_jsCallMethod2
+removeBetween = js_removeBetween
 
 foreign import javascript unsafe
   "$1.appendChild($2)"
   js_appendChild :: Node -> Node -> IO ()
+foreign import javascript unsafe
+  "$1.insertBefore($2, $3)"
+  js_insertBefore :: Node -> Node -> Node -> IO ()
 foreign import javascript unsafe
   "$1.setAttribute($2, $3)"
   js_setAttribute :: Node -> JSString -> JSString -> IO ()
@@ -270,6 +280,9 @@ foreign import javascript unsafe
   "document.createTextNode($1)"
   js_createTextNode :: JSString -> IO Node
 foreign import javascript unsafe
+  "document.createComment($1)"
+  js_createComment :: JSString -> IO Node
+foreign import javascript unsafe
   "$1.classList.add($2)"
   js_classListAdd :: Node -> JSString -> IO ()
 foreign import javascript unsafe
@@ -295,6 +308,14 @@ foreign import javascript unsafe
 foreign import javascript unsafe
   "(function(){ return window.document.body; })()"
   js_getCurrentBody :: IO JSVal
+foreign import javascript unsafe
+  "(function (parent, begin, end) {\
+    for (;;){\
+      if (!end.previousSibling || end.previousSibling === begin) break;\
+      parent.removeChild(end.previousSibling);\
+    }\
+  })($1, $2, $3)"
+  js_removeBetween :: Node -> Node -> Node -> IO ()
 foreign import javascript unsafe "$1()" js_jsCall0 :: JSVal -> IO JSVal
 foreign import javascript unsafe "$1($2)" js_jsCall1 :: JSVal -> JSVal -> IO JSVal
 foreign import javascript unsafe "$1($2, $3)" js_jsCall2 :: JSVal -> JSVal -> JSVal -> IO JSVal
@@ -302,7 +323,7 @@ foreign import javascript unsafe "$1[$2]()" js_jsCallMethod0 :: JSVal -> JSStrin
 foreign import javascript unsafe "$1[$2]($3)" js_jsCallMethod1 :: JSVal -> JSString -> JSVal -> IO JSVal
 foreign import javascript unsafe "$1[$2]($3, $4)" js_jsCallMethod2 :: JSVal -> JSString -> JSVal -> JSVal -> IO JSVal
 foreign import javascript unsafe
-  "(function(el, htmlString){\
+  "(function(el, anchor, htmlString){\
     var div = document.createElement('div');\
     div.innerHTML = htmlString;\
     var tempChilds = [];\
@@ -311,10 +332,14 @@ foreign import javascript unsafe
     }\
     for (var j = 0; j < tempChilds.length; j++) {\
       div.removeChild(tempChilds[j]);\
-      el.appendChild(tempChilds[j]);\
+      if (anchor) {\
+        el.insertBefore(tempChilds[j], anchor);\
+      } else{\
+        el.appendChild(tempChilds[j]);\
+      }\
     }\
   })($1, $2)"
-  js_appendUnsafeHtml :: Node -> JSString -> IO ()
+  js_appendUnsafeHtml :: Node -> Nullable Node -> JSString -> IO ()
 #endif
 
 instance (x ~ (), MonadIO m) => IsString (HtmlT m x) where

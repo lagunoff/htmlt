@@ -52,19 +52,17 @@ elns ns tag child = do
 -- | Create a TextNode and attach it to the root
 text :: Text -> Html ()
 text txt = do
-  rootEl <- asks html_current_root
   textNode <- liftIO (createTextNode txt)
-  liftIO $ appendChild rootEl textNode
+  insertNode textNode
 
 -- | Create a TextNode with dynamic content
 dynText :: Dynamic Text -> Html ()
 dynText d = do
   txt <- readDyn d
-  rootEl <- asks html_current_root
   textNode <- liftIO (createTextNode txt)
   void $ subscribe (updates d) \new -> void $ liftIO do
     setTextValue textNode new
-  liftIO $ appendChild rootEl textNode
+  insertNode textNode
 
 -- | Assign a property to the root element. Don't confuse attributes
 -- and properties
@@ -222,10 +220,7 @@ blank :: Applicative m => m ()
 blank = pure ()
 
 -- | Attach a dynamic list to the root. Convenient for displaying
--- small dynamic collections (<100 elements). Currently has a
--- limitation — the children widgets have to has exactly one element
--- in their root level otherwise it is possible you get runtime error
--- after list modifications
+-- small dynamic collections (<100 elements).
 --
 -- > listRef <- newRef ["One", "Two", "Three"]
 -- > el "ul" do
@@ -262,8 +257,9 @@ simpleList dynRef h = do
           newEnv = htmlEnv
             { html_reactive_env = reactiveEnv { renv_finalizers = fins }
             , html_post_hooks = postRef }
-          itemRef = ElemEnv newEnv elemRef' (dynref_modifier elemRef)
-        runHtmlT newEnv $ h idx elemRef'
+        (begin, end) <- runHtmlT newEnv insertBoundaries
+        runHtmlT newEnv {html_insert_before_anchor = Just end} $ h idx elemRef'
+        let itemRef = ElemEnv newEnv elemRef' (dynref_modifier elemRef) begin end
         liftIO $ modifyIORef' elemEnvsRef (<> [itemRef])
         setup (idx + 1) [] [] xs
       (_, x:xs, []) -> do
@@ -271,9 +267,7 @@ simpleList dynRef h = do
         -- present in the new list
         itemRefsValue <- liftIO (readIORef elemEnvsRef)
         let (newRefs, tailRefs) = L.splitAt idx itemRefsValue
-        finalizeElem tailRefs
-        childEl <- getChildNode rootEl idx
-        removeChild rootEl childEl
+        finalizeElems tailRefs
         liftIO (writeIORef elemEnvsRef newRefs)
       (r:rs, x:xs, y:ys) -> do
         -- Update child elemens along the way
@@ -282,7 +276,10 @@ simpleList dynRef h = do
       (_, _, _) -> do
         error "simpleList: Incoherent internal state"
 
-    finalizeElem = traverse_ \ElemEnv{..} -> do
+    finalizeElems = traverse_ \ElemEnv{..} -> do
+      liftIO $ removeBetween rootEl ee_begin ee_end
+      liftIO $ removeChild rootEl ee_end
+      liftIO $ removeChild rootEl ee_begin
       let fins = renv_finalizers $ html_reactive_env ee_html_env
       liftIO $ readIORef fins >>= sequence_
 
@@ -295,7 +292,7 @@ simpleList dynRef h = do
         g _ [] = []
       dynref_modifier dynRef (g idx)
   liftIO $ setup 0 [] [] as
-  addFinalizer $ readIORef elemEnvsRef >>= finalizeElem
+  addFinalizer $ readIORef elemEnvsRef >>= finalizeElems
   let updatesEv = diffEvent as (dynamic_updates $ fromRef dynRef)
   void $ subscribe updatesEv \(old, new) -> do
     eenvs <- liftIO (readIORef elemEnvsRef)
@@ -303,9 +300,7 @@ simpleList dynRef h = do
 
 -- | First build a DOM with the widget that is currently held by the
 -- given Dynamic, then rebuild it every time Dynamic's value
--- changes. Useful for SPA routing, tabbed components etc. Currently
--- has a limitation — 'dyn_' can only be used as a sole descendant of
--- its parent element (i.e. should have no siblings)
+-- changes. Useful for SPA routing, tabbed components etc.
 --
 -- > routeRef <- newRef Home
 -- > el "div"
@@ -316,10 +311,11 @@ simpleList dynRef h = do
 -- > el "button" do
 -- >   on_ "click" $ writeRef routeRef Blog
 -- >   text "Show my blog page"
-dyn_ :: Dynamic (Html ()) -> Html ()
-dyn_ dyn = do
+dyn :: Dynamic (Html ()) -> Html ()
+dyn dyn = do
   env <- ask
   childRef <- liftIO (newIORef Nothing)
+  (begin, end) <- insertBoundaries
   let
     rootEl = html_current_root env
     finalizeEnv newEnv = do
@@ -340,9 +336,9 @@ dyn_ dyn = do
           , html_post_hooks = postHooks }
         commit =
           finalizeEnv (Just newEnv)
-          <* removeAllChilds rootEl
+          <* removeBetween rootEl begin end
           <* (readIORef postHooks >>= sequence_)
-      commit *> runHtmlT newEnv html
+      commit *> runHtmlT newEnv {html_insert_before_anchor = Just end} html
   addFinalizer (finalizeEnv Nothing)
   void $ forDyn dyn (liftIO . setup rootEl)
 
@@ -365,8 +361,9 @@ addFinalizer fin = do
 -- 'html_current_root'. Might be useful for implementing modal
 -- dialogs, tooltips etc. Similar to what called portals in React
 -- ecosystem
-portal :: Node -> Html a -> Html a
-portal rootEl = local (\e -> e {html_current_root = rootEl})
+portal :: MonadIO m => Node -> HtmlT m a -> HtmlT m a
+portal rootEl = local (\e -> e
+  {html_current_root = rootEl, html_insert_before_anchor = Nothing})
 
 -- | Parse given text as HTML and attach the resulting tree to
 -- 'html_current_root'. This way you can create not only HTML but
@@ -378,7 +375,7 @@ portal rootEl = local (\e -> e {html_current_root = rootEl})
 -- >   unsafeHtml "<svg viewBox="0 0 100 100">\
 -- >     \<circle cx="50" cy="50" r="50"/>\
 -- >     \</svg>"
-unsafeHtml :: Text -> Html ()
+unsafeHtml :: MonadIO m => Text -> HtmlT m ()
 unsafeHtml htmlText = do
-  rootEl <- asks html_current_root
-  liftIO $ appendUnsafeHtml rootEl htmlText
+  HtmlEnv{..} <- ask
+  liftIO $ appendUnsafeHtml html_current_root html_insert_before_anchor htmlText
