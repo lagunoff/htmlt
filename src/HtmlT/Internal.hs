@@ -2,12 +2,10 @@ module HtmlT.Internal where
 
 import Control.Monad.Reader
 import GHC.Generics
-import Data.Text as T
 
 import HtmlT.Event
 import HtmlT.Types
 import HtmlT.DOM
-import HtmlT.IdSupply
 
 data ElemEnv a = ElemEnv
   { ee_html_env :: HtmlEnv
@@ -33,9 +31,8 @@ insertNode n = do
 
 insertBoundaries :: MonadIO m => HtmlT m (Node, Node)
 insertBoundaries = do
-  boundaryId <- T.pack . show . unId <$> liftIO (nextId @())
-  beginAnchor <- liftIO $ createComment $ ">>> " <> boundaryId
-  endAnchor <- liftIO $ createComment $ "<<< " <> boundaryId
+  beginAnchor <- liftIO $ createComment ">>> BOUNDARY BEGIN"
+  endAnchor <- liftIO $ createComment "<<< BOUNDARY END"
   insertNode beginAnchor
   insertNode endAnchor
   return (beginAnchor, endAnchor)

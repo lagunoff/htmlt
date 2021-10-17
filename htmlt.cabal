@@ -131,6 +131,30 @@ executable htmlt-todo
   if !flag(examples)
     buildable: False
   
+executable htmlt-simple-routing
+  import: htmlt-common         
+  main-is: simple-routing.hs
+  hs-source-dirs: ./examples/simple-routing
+  other-modules:
+    Assets
+    Router
+    Pages
+    Utils
+  build-depends:
+    base,
+    bytestring,
+    lens,
+    generic-lens,
+    mtl,
+    ghcjs-base,
+    ghcjs-prim,
+    network-uri,
+    http-api-data,
+    htmlt,
+    text,
+  if !flag(examples)
+    buildable: False
+  
 executable htmlt-benchmark
   import: htmlt-common         
   main-is: Main.hs

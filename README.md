@@ -108,14 +108,21 @@ colors =
     <tr>
       <td>Hello World</td>
       <td>
-	    <a href=./examples/hello.hs target=_blank>source</a> |
+	    <a href=./examples/hello/hello.hs target=_blank>source</a> |
 		<a href=https://lagunoff.github.io/massaraksh-hello-world/ target=_blank>demo<a>
 	  </td>
     </tr>
     <tr>
       <td>TodoMVC</td>
       <td>
-	    <a href=./examples/todo.hs target=_blank>source</a> |
+	    <a href=./examples/todo/todo.hs target=_blank>source</a> |
+		<a href=https://lagunoff.github.io/massaraksh-todomvc target=_blank>demo<a>
+	  </td>
+    </tr>
+    <tr>
+      <td>Simple Routing</td>
+      <td>
+	    <a href=./examples/simple-routing/simple-routing.hs target=_blank>source</a> |
 		<a href=https://lagunoff.github.io/massaraksh-todomvc target=_blank>demo<a>
 	  </td>
     </tr>

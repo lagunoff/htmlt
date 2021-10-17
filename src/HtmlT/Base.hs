@@ -279,13 +279,13 @@ simpleList dynRef h = do
       liftIO $ readIORef fins >>= sequence_
 
     elemModifier :: Int -> Dynamic a -> (a -> a) -> Reactive ()
-    elemModifier idx dyn f = do
+    elemModifier i dyn f = do
       oldA <- readDyn dyn
       let
-        g 0 (_:xs) = f oldA : xs
-        g n (x:xs) = x : g (n - 1) xs
-        g _ [] = []
-      dynref_modifier dynRef (g idx)
+        atIx 0 (_:xs) = f oldA : xs
+        atIx n (x:xs) = x : atIx (n - 1) xs
+        atIx _ [] = []
+      dynref_modifier dynRef (atIx i)
   ees <- liftIO $ setup 0 [] as []
   liftIO $ writeIORef elemEnvsRef ees
   addFinalizer $ readIORef elemEnvsRef >>= finalizeElems

@@ -18,8 +18,8 @@ data TodoListConfig s = TodoListConfig
   }
 
 data TodoListState = TodoListState
-  { tls_title  :: Text
-  , tls_items  :: [TodoItemState]
+  { tls_title :: Text
+  , tls_items :: ~[TodoItemState]
   , tls_filter :: Filter
   } deriving (Show, Eq, Generic)
 

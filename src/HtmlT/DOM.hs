@@ -338,7 +338,7 @@ foreign import javascript unsafe
         el.appendChild(tempChilds[j]);\
       }\
     }\
-  })($1, $2)"
+  })($1, $2, $3)"
   js_appendUnsafeHtml :: Node -> Nullable Node -> JSString -> IO ()
 #endif
 

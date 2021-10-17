@@ -1,5 +1,3 @@
-module Main where
-
 import Control.Monad
 import Data.Text
 import HtmlT
