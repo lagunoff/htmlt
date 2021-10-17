@@ -1,4 +1,4 @@
-module Todo.Todos where
+module TodoList where
 
 import Control.Lens hiding ((#))
 import Control.Monad.IO.Class
@@ -9,36 +9,36 @@ import GHC.Generics (Generic)
 import GHCJS.Marshal
 import HtmlT
 
-import "this" Todo.Item
-import "this" Todo.Utils
+import "this" TodoItem
+import "this" Utils
 
-data TodosConfig s = TodosConfig
-  { tdc_ref :: DynRef s
-  , tdc_state :: Lens' s TodosState
+data TodoListConfig s = TodoListConfig
+  { tlc_ref :: DynRef s
+  , tlc_state :: Lens' s TodoListState
   }
 
-data TodosState = TodosState
-  { todos_title  :: Text
-  , todos_items  :: [ItemState]
-  , todos_filter :: Filter
+data TodoListState = TodoListState
+  { tls_title  :: Text
+  , tls_items  :: [TodoItemState]
+  , tls_filter :: Filter
   } deriving (Show, Eq, Generic)
 
 data Filter = All | Active | Completed
   deriving (Show, Eq, Generic)
 
-initTodos :: ReactiveEnv -> DynRef Text -> IO (DynRef TodosState)
+initTodos :: ReactiveEnv -> DynRef Text -> IO (DynRef TodoListState)
 initTodos env urlHashRef = runReactiveEnvT env do
   todos <- fromMaybe [] . fmap unLocalStorageTodoItems <$> liftIO localStorageGet
   initFilter <- readsRef (fromMaybe All . firstOf url2Filter) urlHashRef
-  todosRef <- newRef $ TodosState "" todos initFilter
-  liftIO $ onBeforeUnload $ readRef todosRef >>= \TodosState{..} ->
-    localStorageSet (LocalStorageTodoItems todos_items)
+  todosRef <- newRef $ TodoListState "" todos initFilter
+  liftIO $ onBeforeUnload $ readRef todosRef >>= \TodoListState{..} ->
+    localStorageSet (LocalStorageTodoItems tls_items)
   subscribe (dynamic_updates (dynref_dynamic urlHashRef)) \urlHash -> do
-    modifyRef todosRef (#todos_filter .~ fromMaybe All (firstOf url2Filter urlHash))
+    modifyRef todosRef (#tls_filter .~ fromMaybe All (firstOf url2Filter urlHash))
   return todosRef
 
-todosWidget :: TodosConfig s -> Html ()
-todosWidget TodosConfig{..} = do
+todoListWidget :: TodoListConfig s -> Html ()
+todoListWidget TodoListConfig{..} = do
   el "style" $ text styles
   div_ do
     section_ [class_ "todoapp"] do
@@ -50,9 +50,9 @@ todosWidget TodosConfig{..} = do
     headerWidget = header_ [class_ "header"] do
       h1_ (text "todos")
       input_ [class_ "new-todo", placeholder_ "What needs to be done?", autofocus_ True] do
-        dynValue $ view (tdc_state . #todos_title) <$> fromRef tdc_ref
+        dynValue $ view (tlc_state . #tls_title) <$> fromRef tlc_ref
         on "input" $ decodeValue \value ->
-          modifyRef tdc_ref (tdc_state . #todos_title .~ value)
+          modifyRef tlc_ref (tlc_state . #tls_title .~ value)
         on "keydown" $ decodeKeyCode \case
           13 -> commitEditing
           _ -> return ()
@@ -66,7 +66,7 @@ todosWidget TodosConfig{..} = do
       ul_ [class_ "todo-list"] do
         simpleList itemsRef \idx todoRef ->
           todoItemWidget $ TodoItemConfig
-            { tic_dyn_ref = tdc_ref <**> todoRef
+            { tic_ref = tlc_ref <**> todoRef
             , tic_state = _2
             , tic_is_hidden = isTodoItemHidden
             , tic_delete_item = deleteTodoItem idx }
@@ -94,23 +94,23 @@ todosWidget TodosConfig{..} = do
         text $ T.pack (show flt)
     commitEditing = readTitle >>= \case
       "" -> return ()
-      title -> modifyRef tdc_ref
-        $ (tdc_state . #todos_items %~ (<> [mkNewItem title]))
-        . (tdc_state . #todos_title .~ "")
+      title -> modifyRef tlc_ref
+        $ (tlc_state . #tls_items %~ (<> [mkNewItem title]))
+        . (tlc_state . #tls_title .~ "")
       where
-        readTitle = readsRef (view (tdc_state . #todos_title . to T.strip)) tdc_ref
-        mkNewItem title = defaultItemState {item_title = title}
-    hiddenDyn = view (tdc_state . #todos_items . to Prelude.null) <$> fromRef tdc_ref
-    itemsLeftDyn = view (tdc_state . to countItemsLeft) <$> fromRef tdc_ref
-    toggleAll check = modifyRef tdc_ref (tdc_state . #todos_items %~ fmap (#item_completed .~ check))
-    filterSelectedDyn flt = view (tdc_state . #todos_filter . to (==flt)) <$> fromRef tdc_ref
-    itemsRef = lensMap (tdc_state . #todos_items) tdc_ref
-    clearCompleted = modifyRef tdc_ref (tdc_state . #todos_items %~ Prelude.filter (not . item_completed))
-    countItemsLeft TodosState{..} = foldl (\acc ItemState{..} ->
-      if not item_completed then acc + 1 else acc) 0 todos_items
-    deleteTodoItem idx = modifyRef tdc_ref (tdc_state . #todos_items %~ deleteAt idx)
-    isTodoItemHidden (s, ItemState{..}) =
-      case (s ^. tdc_state . #todos_filter, item_completed) of
+        readTitle = readsRef (view (tlc_state . #tls_title . to T.strip)) tlc_ref
+        mkNewItem title = defaultItemState {tis_title = title}
+    hiddenDyn = view (tlc_state . #tls_items . to Prelude.null) <$> fromRef tlc_ref
+    itemsLeftDyn = view (tlc_state . to countItemsLeft) <$> fromRef tlc_ref
+    toggleAll check = modifyRef tlc_ref (tlc_state . #tls_items %~ fmap (#tis_completed .~ check))
+    filterSelectedDyn flt = view (tlc_state . #tls_filter . to (==flt)) <$> fromRef tlc_ref
+    itemsRef = lensMap (tlc_state . #tls_items) tlc_ref
+    clearCompleted = modifyRef tlc_ref (tlc_state . #tls_items %~ Prelude.filter (not . tis_completed))
+    countItemsLeft TodoListState{..} = foldl (\acc TodoItemState{..} ->
+      if not tis_completed then acc + 1 else acc) 0 tls_items
+    deleteTodoItem idx = modifyRef tlc_ref (tlc_state . #tls_items %~ deleteAt idx)
+    isTodoItemHidden (s, TodoItemState{..}) =
+      case (s ^. tlc_state . #tls_filter, tis_completed) of
         (Active,    True)  -> True
         (Completed, False) -> True
         _                  -> False
@@ -518,5 +518,5 @@ styles = "\
   \  }\
   \}"
 
-newtype LocalStorageTodoItems = LocalStorageTodoItems {unLocalStorageTodoItems :: [ItemState]}
+newtype LocalStorageTodoItems = LocalStorageTodoItems {unLocalStorageTodoItems :: [TodoItemState]}
   deriving newtype (ToJSVal, FromJSVal)

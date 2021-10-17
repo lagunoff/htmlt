@@ -3,12 +3,12 @@ module Main where
 import Control.Monad
 import HtmlT
 
-import "this" Todo.Todos
-import "this" Todo.Utils
+import "this" TodoList
+import "this" Utils
 
 main :: IO ()
 main = do
   env <- newReactiveEnv
   urlHashRef <- mkUrlHashRef env
   todosRef <- initTodos env urlHashRef
-  void $ attachToBody $ todosWidget $ TodosConfig todosRef id
+  void $ attachToBody $ todoListWidget $ TodoListConfig todosRef id

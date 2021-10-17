@@ -1,7 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE JavaScriptFFI #-}
-module Todo.Utils where
+module Utils where
 
 import Control.Monad.Reader
 import Control.Applicative

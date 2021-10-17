@@ -101,7 +101,7 @@ library
 executable htmlt-hello
   import: htmlt-common         
   main-is: hello.hs
-  hs-source-dirs: ./examples
+  hs-source-dirs: ./examples/hello
   build-depends:
     base,
     htmlt,
@@ -113,11 +113,11 @@ executable htmlt-hello
 executable htmlt-todo
   import: htmlt-common         
   main-is: todo.hs
-  hs-source-dirs: ./examples
+  hs-source-dirs: ./examples/todo
   other-modules:
-    Todo.Item
-    Todo.Utils
-    Todo.Todos
+    TodoItem
+    TodoList
+    Utils
   build-depends:
     base,
     bytestring,
