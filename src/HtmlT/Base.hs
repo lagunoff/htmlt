@@ -7,7 +7,6 @@ import Data.Coerce
 import Data.Foldable
 import Data.IORef
 import Data.JSString.Text as JSS
-import Data.List as L
 import Data.Text as T hiding (index)
 import GHCJS.Marshal
 import JavaScript.Object as Object
@@ -243,10 +242,9 @@ simpleList dynRef h = do
   let
     rootEl = html_current_root htmlEnv
     reactiveEnv = html_reactive_env htmlEnv
-    -- TODO: 'setup' should return new contents for 'elemEnvsRef'
-    setup :: Int -> [ElemEnv a] -> [a] -> [a] -> IO ()
-    setup idx refs old new = case (refs, old, new) of
-      (_, [], []) -> pure ()
+    setup :: Int -> [a] -> [a] -> [ElemEnv a] -> IO [ElemEnv a]
+    setup idx old new refs = case (refs, old, new) of
+      (_, [], []) -> return []
       ([], [], x:xs) -> do
         -- New list is longer, append new elements
         fins <- newIORef []
@@ -260,19 +258,16 @@ simpleList dynRef h = do
         (begin, end) <- runHtmlT newEnv insertBoundaries
         runHtmlT newEnv {html_insert_before_anchor = Just end} $ h idx elemRef'
         let itemRef = ElemEnv newEnv elemRef' (dynref_modifier elemRef) begin end
-        liftIO $ modifyIORef' elemEnvsRef (<> [itemRef])
-        setup (idx + 1) [] [] xs
-      (_, x:xs, []) -> do
+        (itemRef:) <$> setup (idx + 1) [] xs []
+      (r:rs, x:xs, []) -> do
         -- New list is shorter, delete the elements that no longer
         -- present in the new list
-        itemRefsValue <- liftIO (readIORef elemEnvsRef)
-        let (newRefs, tailRefs) = L.splitAt idx itemRefsValue
-        finalizeElems tailRefs
-        liftIO (writeIORef elemEnvsRef newRefs)
+        finalizeElems (r:rs)
+        return []
       (r:rs, x:xs, y:ys) -> do
-        -- Update child elemens along the way
+        -- Update child elements along the way
         liftIO $ sync $ ee_modifier r \_ -> y
-        setup (idx + 1) rs xs ys
+        (r:) <$> setup (idx + 1) xs ys rs
       (_, _, _) -> do
         error "simpleList: Incoherent internal state"
 
@@ -291,12 +286,15 @@ simpleList dynRef h = do
         g n (x:xs) = x : g (n - 1) xs
         g _ [] = []
       dynref_modifier dynRef (g idx)
-  liftIO $ setup 0 [] [] as
+  ees <- liftIO $ setup 0 [] as []
+  liftIO $ writeIORef elemEnvsRef ees
   addFinalizer $ readIORef elemEnvsRef >>= finalizeElems
   let updatesEv = diffEvent as (dynamic_updates $ fromRef dynRef)
   void $ subscribe updatesEv \(old, new) -> do
     eenvs <- liftIO (readIORef elemEnvsRef)
-    liftIO $ setup 0 eenvs old new
+    newEenvs <- liftIO $ setup 0 old new eenvs
+    liftIO $ writeIORef elemEnvsRef newEenvs
+
 
 -- | First build a DOM with the widget that is currently held by the
 -- given Dynamic, then rebuild it every time Dynamic's value
