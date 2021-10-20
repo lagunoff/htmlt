@@ -30,8 +30,6 @@ data ListenerOpts = ListenerOpts
   } deriving stock (Eq, Show, Generic)
     deriving anyclass (ToJSVal)
 
-type Decoding a = (a -> Html ()) -> DOMEvent -> Html ()
-
 defaultListenerOpts :: ListenerOpts
 defaultListenerOpts = ListenerOpts True False False
 
@@ -44,14 +42,14 @@ addEventListener
 addEventListener ListenerOpts{..} target name f = do
   cb <- mkcallback \event -> do
     when lo_stop_propagation do
-      void $ jsCallMethod0 event "stopPropagation"
+      void $ js_callMethod0 event "stopPropagation"
     when lo_prevent_default do
-      void $ jsCallMethod0 event "preventDefault"
+      void $ js_callMethod0 event "preventDefault"
     f event
-  jsCallMethod2 (coerce target) "addEventListener"
+  js_callMethod2 (coerce target) "addEventListener"
     (jsval (textToJSString name)) (jsval cb)
   return do
-    jsCallMethod2 (coerce target) "removeEventListener"
+    js_callMethod2 (coerce target) "removeEventListener"
       (jsval (textToJSString name)) (jsval cb)
     releaseCallback cb
   where
@@ -122,6 +120,8 @@ keyboardEventDecoder = KeyboardEvent
   <*> decodeAt ["keyCode"] decoder
   <*> decodeAt ["repeat"] decoder
 
+type Decoding a = (a -> Html ()) -> DOMEvent -> Html ()
+
 decodeTarget :: Decoding JSVal
 decodeTarget = withDecoder $
   decodeAt ["target"] decodeJSVal
@@ -160,92 +160,102 @@ decodeKeyboardEvent :: Decoding KeyboardEvent
 decodeKeyboardEvent = withDecoder keyboardEventDecoder
 
 getCurrentWindow :: MonadIO m => m JSVal
+getCurrentWindow = liftIO js_getCurrentWindow
+
 getCurrentDocument :: MonadIO m => m JSVal
+getCurrentDocument = liftIO js_getCurrentDocument
+
 getCurrentBody :: MonadIO m => m Node
+getCurrentBody = liftIO $ fmap Node js_getCurrentBody
+
 appendChild :: Node -> Node -> IO ()
+appendChild = js_appendChild
+
 setAttribute :: Node -> Text -> Text -> IO ()
+setAttribute e k v = js_setAttribute e (textToJSString k) (textToJSString v)
+
 removeAttribute :: Node -> Text -> IO ()
+removeAttribute e k = js_removeAttribute e (textToJSString k)
+
 removeChild :: Node -> Node -> IO ()
+removeChild = js_removeChild
+
 removeAllChilds :: Node -> IO ()
+removeAllChilds = js_removeAllChilds
+
 replaceChild :: Node -> Node -> Node -> IO ()
+replaceChild = js_replaceChild
+
 getChildNode :: Node -> Int -> IO Node
+getChildNode = js_getChildNode
+
 createElement :: Text -> IO Node
+createElement = js_createElement . textToJSString
+
 createElementNS :: Text -> Text -> IO Node
+createElementNS n t = js_createElementNS (textToJSString n) (textToJSString t)
+
 createTextNode :: Text -> IO Node
+createTextNode = js_createTextNode . textToJSString
+
 createComment :: Text -> IO Node
+createComment = js_createComment . textToJSString
+
 classListAdd :: Node -> Text -> IO ()
+classListAdd e c = js_classListAdd e (textToJSString c)
+
 classListRemove :: Node -> Text -> IO ()
+classListRemove e c = js_classListRemove e (textToJSString c)
+
 setTextValue :: Node -> Text -> IO ()
+setTextValue v = js_setTextValue v . textToJSString
+
+insertUnsafeHtml :: Node -> Maybe Node -> Text -> IO ()
+insertUnsafeHtml n ma t = js_insertUnsafeHtml n (maybeToNullable ma)
+  (textToJSString t)
+
 onBeforeUnload :: IO () -> IO ()
-appendUnsafeHtml :: Node -> Maybe Node -> Text -> IO ()
+onBeforeUnload cb = do
+  syncCb <- syncCallback ThrowWouldBlock cb
+  js_onBeforeUnload syncCb
+
 removeBetween :: Node -> Node -> Node -> IO ()
-jsCall0 :: JSVal -> IO JSVal
-jsCall1 :: JSVal -> JSVal -> IO JSVal
-jsCall2 :: JSVal -> JSVal -> JSVal -> IO JSVal
-jsCallMethod0 :: JSVal -> JSString -> IO JSVal
-jsCallMethod1 :: JSVal -> JSString -> JSVal -> IO JSVal
-jsCallMethod2 :: JSVal -> JSString -> JSVal -> JSVal -> IO JSVal
+removeBetween = js_removeBetween
 
 errorGhcjsOnly :: a
 errorGhcjsOnly = error "Only GHCJS is supported"
 
 #ifndef ghcjs_HOST_OS
-getCurrentWindow = errorGhcjsOnly
-getCurrentDocument = errorGhcjsOnly
-getCurrentBody = errorGhcjsOnly
-appendChild _ _ = errorGhcjsOnly
-setAttribute _ _ _ = errorGhcjsOnly
-removeAttribute _ _ = errorGhcjsOnly
-removeChild _ _ = errorGhcjsOnly
-removeAllChilds _ = errorGhcjsOnly
-replaceChild _ _ _ = errorGhcjsOnly
-getChildNode _ _ = errorGhcjsOnly
-createElement _ = errorGhcjsOnly
-createElementNS _ _ = errorGhcjsOnly
-createTextNode _ = errorGhcjsOnly
-createComment _ = errorGhcjsOnly
-classListAdd _ _ = errorGhcjsOnly
-classListRemove _ _ = errorGhcjsOnly
-setTextValue _ _ = errorGhcjsOnly
-onBeforeUnload _ = errorGhcjsOnly
-appendUnsafeHtml = errorGhcjsOnly
-jsCall0 _ = errorGhcjsOnly
-jsCall1 _ _ = errorGhcjsOnly
-jsCall2 _ _ _ = errorGhcjsOnly
-jsCallMethod0 _ _ = errorGhcjsOnly
-jsCallMethod1 _ _ _ = errorGhcjsOnly
-jsCallMethod2 _ _ _ _ = errorGhcjsOnly
-removeBetween _ _ _ = errorGhcjsOnly
-#else
-getCurrentWindow = liftIO js_getCurrentWindow
-getCurrentDocument = liftIO js_getCurrentDocument
-getCurrentBody = liftIO $ fmap Node js_getCurrentBody
-onBeforeUnload cb = do
-  syncCb <- syncCallback ThrowWouldBlock cb
-  js_onBeforeUnload syncCb
-appendChild = js_appendChild
-setAttribute e k v = js_setAttribute e (textToJSString k) (textToJSString v)
-removeAttribute e k = js_removeAttribute e (textToJSString k)
-removeChild = js_removeChild
-removeAllChilds = js_removeAllChilds
-replaceChild = js_replaceChild
-getChildNode = js_getChildNode
-createElement = js_createElement . textToJSString
-createElementNS n t = js_createElementNS (textToJSString n) (textToJSString t)
-createTextNode = js_createTextNode . textToJSString
-createComment = js_createComment . textToJSString
-classListAdd e c = js_classListAdd e (textToJSString c)
-classListRemove e c = js_classListRemove e (textToJSString c)
-setTextValue v = js_setTextValue v . textToJSString
-appendUnsafeHtml n ma t = js_appendUnsafeHtml n (maybeToNullable ma) (textToJSString t)
-jsCall0 = js_jsCall0
-jsCall1 = js_jsCall1
-jsCall2 = js_jsCall2
-jsCallMethod0 = js_jsCallMethod0
-jsCallMethod1 = js_jsCallMethod1
-jsCallMethod2 = js_jsCallMethod2
-removeBetween = js_removeBetween
+js_onBeforeUnload :: Callback a -> IO ()
+js_onBeforeUnload = errorGhcjsOnly
 
+js_appendChild :: Node -> Node -> IO () = errorGhcjsOnly
+js_insertBefore :: Node -> Node -> Node -> IO () = errorGhcjsOnly
+js_removeBetween :: Node -> Node -> Node -> IO () = errorGhcjsOnly
+js_setAttribute :: Node -> JSString -> JSString -> IO () = errorGhcjsOnly
+js_removeAttribute :: Node -> JSString -> IO ()  = errorGhcjsOnly
+js_removeChild :: Node -> Node -> IO ()  = errorGhcjsOnly
+js_removeAllChilds :: Node -> IO ()  = errorGhcjsOnly
+js_replaceChild :: Node -> Node -> Node -> IO ()  = errorGhcjsOnly
+js_getChildNode :: Node -> Int -> IO Node  = errorGhcjsOnly
+js_createElement :: JSString -> IO Node  = errorGhcjsOnly
+js_createElementNS :: JSString -> JSString -> IO Node  = errorGhcjsOnly
+js_createTextNode :: JSString -> IO Node  = errorGhcjsOnly
+js_createComment :: JSString -> IO Node  = errorGhcjsOnly
+js_classListAdd :: Node -> JSString -> IO ()  = errorGhcjsOnly
+js_classListRemove :: Node -> JSString -> IO ()  = errorGhcjsOnly
+js_setTextValue :: Node -> JSString -> IO ()  = errorGhcjsOnly
+js_getCurrentWindow :: IO JSVal  = errorGhcjsOnly
+js_getCurrentDocument :: IO JSVal  = errorGhcjsOnly
+js_getCurrentBody :: IO JSVal = errorGhcjsOnly
+js_appendUnsafeHtml :: Node -> Nullable Node -> JSString -> IO () = errorGhcjsOnly
+js_call0 :: JSVal -> IO JSVal = errorGhcjsOnly
+js_call1 :: JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
+js_call2 :: JSVal -> JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
+js_callMethod0 :: JSVal -> JSString -> IO JSVal = errorGhcjsOnly
+js_callMethod1 :: JSVal -> JSString -> JSVal -> IO JSVal = errorGhcjsOnly
+js_callMethod2 :: JSVal -> JSString -> JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
+#else
 foreign import javascript unsafe
   "$1.appendChild($2)"
   js_appendChild :: Node -> Node -> IO ()
@@ -316,12 +326,18 @@ foreign import javascript unsafe
     }\
   })($1, $2, $3)"
   js_removeBetween :: Node -> Node -> Node -> IO ()
-foreign import javascript unsafe "$1()" js_jsCall0 :: JSVal -> IO JSVal
-foreign import javascript unsafe "$1($2)" js_jsCall1 :: JSVal -> JSVal -> IO JSVal
-foreign import javascript unsafe "$1($2, $3)" js_jsCall2 :: JSVal -> JSVal -> JSVal -> IO JSVal
-foreign import javascript unsafe "$1[$2]()" js_jsCallMethod0 :: JSVal -> JSString -> IO JSVal
-foreign import javascript unsafe "$1[$2]($3)" js_jsCallMethod1 :: JSVal -> JSString -> JSVal -> IO JSVal
-foreign import javascript unsafe "$1[$2]($3, $4)" js_jsCallMethod2 :: JSVal -> JSString -> JSVal -> JSVal -> IO JSVal
+foreign import javascript unsafe "$1()"
+  js_call0 :: JSVal -> IO JSVal
+foreign import javascript unsafe "$1($2)"
+  js_call1 :: JSVal -> JSVal -> IO JSVal
+foreign import javascript unsafe "$1($2, $3)"
+  js_call2 :: JSVal -> JSVal -> JSVal -> IO JSVal
+foreign import javascript unsafe "$1[$2]()"
+  js_callMethod0 :: JSVal -> JSString -> IO JSVal
+foreign import javascript unsafe "$1[$2]($3)"
+  js_callMethod1 :: JSVal -> JSString -> JSVal -> IO JSVal
+foreign import javascript unsafe "$1[$2]($3, $4)"
+  js_callMethod2 :: JSVal -> JSString -> JSVal -> JSVal -> IO JSVal
 foreign import javascript unsafe
   "(function(el, anchor, htmlString){\
     var div = document.createElement('div');\
@@ -339,7 +355,7 @@ foreign import javascript unsafe
       }\
     }\
   })($1, $2, $3)"
-  js_appendUnsafeHtml :: Node -> Nullable Node -> JSString -> IO ()
+  js_insertUnsafeHtml :: Node -> Nullable Node -> JSString -> IO ()
 #endif
 
 instance (x ~ (), MonadIO m) => IsString (HtmlT m x) where

@@ -271,12 +271,12 @@ simpleList dynRef h = do
       (_, _, _) -> do
         error "simpleList: Incoherent internal state"
 
-    finalizeElems = traverse_ \ElemEnv{..} -> do
-      liftIO $ removeBetween rootEl ee_begin ee_end
-      liftIO $ removeChild rootEl ee_end
-      liftIO $ removeChild rootEl ee_begin
+    finalizeElems = traverse_ \ElemEnv{..} -> liftIO do
+      removeBetween rootEl ee_begin ee_end
+      removeChild rootEl ee_end
+      removeChild rootEl ee_begin
       let fins = renv_finalizers $ html_reactive_env ee_html_env
-      liftIO $ readIORef fins >>= sequence_
+      readIORef fins >>= sequence_
 
     elemModifier :: Int -> Dynamic a -> (a -> a) -> Reactive ()
     elemModifier i dyn f = do
@@ -376,4 +376,4 @@ portal rootEl = local (\e -> e
 unsafeHtml :: MonadIO m => Text -> HtmlT m ()
 unsafeHtml htmlText = do
   HtmlEnv{..} <- ask
-  liftIO $ appendUnsafeHtml html_current_root html_insert_before_anchor htmlText
+  liftIO $ insertUnsafeHtml html_current_root html_insert_before_anchor htmlText
