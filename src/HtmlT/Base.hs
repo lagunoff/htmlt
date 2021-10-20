@@ -13,6 +13,7 @@ import JavaScript.Object as Object
 import JavaScript.Object.Internal
 
 import HtmlT.DOM
+import HtmlT.Decode
 import HtmlT.Event
 import HtmlT.Internal
 import HtmlT.Types
@@ -99,7 +100,7 @@ dynAttr k d = do
   rootEl <- asks html_current_root
   void $ forDyn d $ liftIO . setAttribute rootEl k
 
--- | Attach a listener to the root element. First agument is the name
+-- | Attach listener to the root element. First agument is the name
 -- of the DOM event to listen. Second is the callback that accepts the fired
 -- DOM event object
 --
@@ -120,9 +121,9 @@ onOptions :: Text -> ListenerOpts -> (DOMEvent -> Html ()) -> Html ()
 onOptions name opts f = ask >>= \HtmlEnv{..} ->
   onGlobalEvent opts html_current_root name f
 
--- | Same as 'onOptions' but ignores 'DOMEvent' inside the callback
-onOptions_ :: Text -> ListenerOpts -> Html () -> Html ()
-onOptions_ name opts = onOptions name opts . const
+-- | Attach listener, extract data of type @a@ using specified decoder
+onDecoder :: Text -> Decoder a -> (a -> Html ()) -> Html ()
+onDecoder name dec = on name . withDecoder dec
 
 -- | Attach a listener to arbitrary target, not just the current root
 -- element (usually that would be @window@, @document@ or @body@
@@ -282,10 +283,10 @@ simpleList dynRef h = do
     elemModifier i dyn f = do
       oldA <- readDyn dyn
       let
-        atIx 0 (_:xs) = f oldA : xs
-        atIx n (x:xs) = x : atIx (n - 1) xs
-        atIx _ [] = []
-      dynref_modifier dynRef (atIx i)
+        overIx 0 (_:xs) = f oldA : xs
+        overIx n (x:xs) = x : overIx (n - 1) xs
+        overIx _ [] = []
+      dynref_modifier dynRef (overIx i)
   ees <- liftIO $ setup 0 [] as []
   liftIO $ writeIORef elemEnvsRef ees
   addFinalizer $ readIORef elemEnvsRef >>= finalizeElems

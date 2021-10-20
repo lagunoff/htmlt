@@ -30,13 +30,13 @@ countriesWidget :: CountriesQ -> Html ()
 countriesWidget q@CountriesQ{..} = do
   queryRef <- newRef q
   form_ do
-    onOptions_ "submit" (ListenerOpts True True True) do
+    onOptions "submit" (ListenerOpts True True True) $ const do
       pushUrl =<< readsRef (toUrl . CountriesR . (set #page Nothing)) queryRef
 
     div_ [style_ "display:flex;"] do
       input_ [type_ "text", placeholder_ "Search countries by title", autofocus_ True ] do
         dynValue $ view (#search . to (fromMaybe "")) <$> fromRef queryRef
-        on "input" $ decodeValue \value -> modifyRef queryRef
+        onDecoder "input" valueDecoder \value -> modifyRef queryRef
           (set #search (Just value))
       button_ [type_ "submit"] "Search"
   table_ do

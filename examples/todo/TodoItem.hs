@@ -32,23 +32,23 @@ todoItemWidget TodoItemConfig{..} = li_ do
   toggleClass "editing" editingDyn
   toggleClass "hidden" hiddenDyn
   div_ [class_ "view"] do
-    on "dblclick" $ decodeTarget \targetEl -> do
+    onDecoder "dblclick" targetDecoder \targetEl -> do
       title <- readsRef (view (tic_state . #tis_title)) tic_ref
       modifyRef tic_ref $ tic_state . #tis_editing .~ Just title
       liftIO $ js_focus targetEl
     input_ [class_ "toggle", type_ "checkbox"] do
       dynChecked $ view (tic_state . #tis_completed) <$> fromRef tic_ref
-      on "change" $ decodeChecked \isChecked -> do
+      onDecoder "change" checkedDecoder \isChecked -> do
         modifyRef tic_ref $ tic_state . #tis_completed .~ isChecked
     label_ $ dynText $ view (tic_state . #tis_title) <$> fromRef tic_ref
     button_ [class_ "destroy"] do
       on_ "click" $ tic_delete_item
   input_ [class_ "edit", type_ "text"] do
     dynValue valueDyn
-    on "input" $ decodeValue \value -> do
+    onDecoder "input" valueDecoder \value -> do
       modifyRef tic_ref $ tic_state . #tis_editing .~ Just value
     on_ "blur" commitEditing
-    on "keydown" $ decodeKeyCode \case
+    onDecoder "keydown" keyCodeDecoder \case
       13 -> commitEditing -- Enter
       27 -> cancelEditing -- Escape
       _  -> return ()

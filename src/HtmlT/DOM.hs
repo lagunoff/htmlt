@@ -25,14 +25,111 @@ import HtmlT.Types
 
 data ListenerOpts = ListenerOpts
   { lo_stop_propagation :: Bool
+  -- ^ If true call @event.stopPropagation()@
+  -- FIXME: check if it works with lo_sync_callback = False
   , lo_prevent_default :: Bool
+  -- ^ If true call @event.preventDefault()@
   , lo_sync_callback :: Bool
+  -- ^ If true create callback with @syncCallback1 ThrowWouldBlock@
+  -- otherwise — @asyncCallback1@ this is relevant for example when
+  -- listening to @BeforeUnloadEvent@
+  -- https://developer.mozilla.org/en-US/docs/Web/API/BeforeUnloadEvent
   } deriving stock (Eq, Show, Generic)
     deriving anyclass (ToJSVal)
 
 defaultListenerOpts :: ListenerOpts
 defaultListenerOpts = ListenerOpts True False False
 
+-- | Get global Window object @window@
+-- https://developer.mozilla.org/en-US/docs/Web/API/Window
+getCurrentWindow :: MonadIO m => m JSVal
+getCurrentWindow = liftIO js_getCurrentWindow
+
+-- | Get global Window object
+-- https://developer.mozilla.org/en-US/docs/Web/API/Document
+getCurrentDocument :: MonadIO m => m JSVal
+getCurrentDocument = liftIO js_getCurrentDocument
+
+-- | Get Document.body property
+-- https://developer.mozilla.org/en-US/docs/Web/API/Document/body
+getCurrentBody :: MonadIO m => m Node
+getCurrentBody = liftIO $ fmap Node js_getCurrentBody
+
+-- | Node.appendChild()
+-- https://developer.mozilla.org/en-US/docs/Web/API/Node/appendChild
+appendChild :: Node -> Node -> IO ()
+appendChild = js_appendChild
+
+-- | Element.setAttribute()
+-- https://developer.mozilla.org/en-US/docs/Web/API/Element/setAttribute
+setAttribute :: Node -> Text -> Text -> IO ()
+setAttribute e k v = js_setAttribute e (textToJSString k) (textToJSString v)
+
+-- | Element.removeAttribute()
+-- https://developer.mozilla.org/en-US/docs/Web/API/Element/removeAttribute
+removeAttribute :: Node -> Text -> IO ()
+removeAttribute e k = js_removeAttribute e (textToJSString k)
+
+-- | Node.removeChild()
+-- https://developer.mozilla.org/en-US/docs/Web/API/Node/removeChild
+removeChild :: Node -> Node -> IO ()
+removeChild = js_removeChild
+
+-- | Document.createElement()
+-- https://developer.mozilla.org/en-US/docs/Web/API/Document/createElement
+createElement :: Text -> IO Node
+createElement = js_createElement . textToJSString
+
+-- | Document.createElementNS()
+-- https://developer.mozilla.org/en-US/docs/Web/API/Document/createElementNS
+createElementNS :: Text -> Text -> IO Node
+createElementNS n t = js_createElementNS (textToJSString n) (textToJSString t)
+
+-- | Document.createTextNode()
+-- https://developer.mozilla.org/en-US/docs/Web/API/Document/createTextNode
+createTextNode :: Text -> IO Node
+createTextNode = js_createTextNode . textToJSString
+
+-- | Document.createComment()
+-- https://developer.mozilla.org/en-US/docs/Web/API/Document/createComment
+createComment :: Text -> IO Node
+createComment = js_createComment . textToJSString
+
+-- | Element.classList.add()
+-- https://developer.mozilla.org/en-US/docs/Web/API/Element/classList
+classListAdd :: Node -> Text -> IO ()
+classListAdd e c = js_classListAdd e (textToJSString c)
+
+-- | Element.classList.remove()
+-- https://developer.mozilla.org/en-US/docs/Web/API/Element/classList
+classListRemove :: Node -> Text -> IO ()
+classListRemove e c = js_classListRemove e (textToJSString c)
+
+-- | Assign text to Node.nodeValue
+-- https://developer.mozilla.org/en-US/docs/Web/API/Node/nodeValue
+setTextValue :: Node -> Text -> IO ()
+setTextValue v = js_setTextValue v . textToJSString
+
+-- | Insert raw HTML code, similar to @parent.innerHTML = rawHtml@ but
+-- does not removes siblings
+insertUnsafeHtml :: Node -> Maybe Node -> Text -> IO ()
+insertUnsafeHtml parent manchor rawHtml = js_insertUnsafeHtml parent
+  (maybeToNullable manchor) (textToJSString rawHtml)
+
+-- | Assuming @begin@ and @end@ are chidren nodes of the @parent@ node
+-- and @begin@ stands before the @end@, remove all nodes between them
+removeBetween :: Node -> Node -> Node -> IO ()
+removeBetween parent begin end = js_removeBetween parent begin end
+
+-- | Run a given callback on BeforeUnloadEvent
+-- https://developer.mozilla.org/en-US/docs/Web/API/BeforeUnloadEvent
+onBeforeUnload :: IO () -> IO ()
+onBeforeUnload cb = do
+  syncCb <- syncCallback ThrowWouldBlock cb
+  js_onBeforeUnload syncCb
+
+-- | EventTarget.addEventListener()
+-- https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener
 addEventListener
   :: ListenerOpts
   -> Node
@@ -57,6 +154,8 @@ addEventListener ListenerOpts{..} target name f = do
       then syncCallback1 ThrowWouldBlock
       else asyncCallback1
 
+-- | Collection of deltaX, deltaY and deltaZ properties from WheelEvent
+-- https://developer.mozilla.org/en-US/docs/Web/API/WheelEvent
 data MouseDelta = MouseDelta
   { md_delta_x :: Int
   , md_delta_y :: Int
@@ -69,26 +168,36 @@ mouseDeltaDecoder = MouseDelta
   <*> decodeAt ["deltaY"] decoder
   <*> decodeAt ["deltaZ"] decoder
 
+-- | Collection of @X@ and @Y@ coordinates, intended to extract
+-- position from MouseEvent
 data Position = Position
   { pos_x :: Int
   , pos_y :: Int
   } deriving stock (Eq, Show, Ord, Generic)
 
+-- | Read clientX and clientY properties from MouseEvent
+-- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
 clientXYDecoder :: Decoder Position
 clientXYDecoder = Position
   <$> decodeAt ["clientX"] decoder
   <*> decodeAt ["clientY"] decoder
 
+-- | Read offsetX and offsetY properties from MouseEvent
+-- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
 offsetXYDecoder :: Decoder Position
 offsetXYDecoder = Position
   <$> decodeAt ["offsetX"] decoder
   <*> decodeAt ["offsetY"] decoder
 
+-- | Read pageX and pageY properties from MouseEvent
+-- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
 pageXYDecoder :: Decoder Position
 pageXYDecoder = Position
   <$> decodeAt ["pageX"] decoder
   <*> decodeAt ["pageY"] decoder
 
+-- | Collection of altKey, ctrlKey, metaKey and shiftKey properties
+-- from KeyboardEvent
 data KeyModifiers = KeyModifiers
   { kmod_alt_key :: Bool
   , kmod_ctrl_key :: Bool
@@ -96,6 +205,9 @@ data KeyModifiers = KeyModifiers
   , kmod_shift_key :: Bool
   } deriving stock (Eq, Show, Generic)
 
+-- | Read altKey, ctrlKey, metaKey and shiftKey properties from
+-- KeyboardEvent
+-- https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent
 keyModifiersDecoder :: Decoder KeyModifiers
 keyModifiersDecoder = KeyModifiers
   <$> decodeAt ["altKey"] decoder
@@ -103,9 +215,12 @@ keyModifiersDecoder = KeyModifiers
   <*> decodeAt ["metaKey"] decoder
   <*> decodeAt ["shiftKey"] decoder
 
+-- | Read keyCode properties from KeyboardEvent
+-- https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/keyCode
 keyCodeDecoder :: Decoder Int
 keyCodeDecoder = decodeAt ["keyCode"] decoder
 
+-- | Collection of some useful information from KeyboardEvent
 data KeyboardEvent = KeyboardEvent
   { ke_modifiers :: KeyModifiers
   , ke_key :: Maybe Text
@@ -113,6 +228,7 @@ data KeyboardEvent = KeyboardEvent
   , ke_repeat :: Bool
   } deriving stock (Eq, Show, Generic)
 
+-- | Read information from KeyboardEvent
 keyboardEventDecoder :: Decoder KeyboardEvent
 keyboardEventDecoder = KeyboardEvent
   <$> keyModifiersDecoder
@@ -120,107 +236,27 @@ keyboardEventDecoder = KeyboardEvent
   <*> decodeAt ["keyCode"] decoder
   <*> decodeAt ["repeat"] decoder
 
-type Decoding a = (a -> Html ()) -> DOMEvent -> Html ()
+-- | Event.target
+-- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
+targetDecoder :: Decoder JSVal
+targetDecoder = decodeAt ["target"] decodeJSVal
 
-decodeTarget :: Decoding JSVal
-decodeTarget = withDecoder $
-  decodeAt ["target"] decodeJSVal
+-- | Event.target.value
+-- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
+-- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-value
+valueDecoder :: Decoder Text
+valueDecoder = decodeAt ["target", "value"] decoder
 
-decodeValue :: Decoding Text
-decodeValue = withDecoder $
-  decodeAt ["target", "value"] decoder
+-- | Event.currentTarget
+-- https://developer.mozilla.org/en-US/docs/Web/API/Event/currentTarget
+currentTargetDecoder :: Decoder JSVal
+currentTargetDecoder = decodeAt ["currentTarget"] decodeJSVal
 
-decodeCurrentTarget :: Decoding JSVal
-decodeCurrentTarget = withDecoder $
-  decodeAt ["currentTarget"] decodeJSVal
-
-decodeChecked :: Decoding Bool
-decodeChecked = withDecoder $
-  decodeAt ["target", "checked"] decoder
-
-decodeMouseDelta :: Decoding MouseDelta
-decodeMouseDelta = withDecoder mouseDeltaDecoder
-
-decodeKeyModifiers :: Decoding KeyModifiers
-decodeKeyModifiers = withDecoder keyModifiersDecoder
-
-decodeKeyCode :: Decoding Int
-decodeKeyCode = withDecoder keyCodeDecoder
-
-decodeOffsetXY :: Decoding Position
-decodeOffsetXY = withDecoder offsetXYDecoder
-
-decodeClientXY :: Decoding Position
-decodeClientXY = withDecoder clientXYDecoder
-
-decodePageXY :: Decoding Position
-decodePageXY = withDecoder pageXYDecoder
-
-decodeKeyboardEvent :: Decoding KeyboardEvent
-decodeKeyboardEvent = withDecoder keyboardEventDecoder
-
-getCurrentWindow :: MonadIO m => m JSVal
-getCurrentWindow = liftIO js_getCurrentWindow
-
-getCurrentDocument :: MonadIO m => m JSVal
-getCurrentDocument = liftIO js_getCurrentDocument
-
-getCurrentBody :: MonadIO m => m Node
-getCurrentBody = liftIO $ fmap Node js_getCurrentBody
-
-appendChild :: Node -> Node -> IO ()
-appendChild = js_appendChild
-
-setAttribute :: Node -> Text -> Text -> IO ()
-setAttribute e k v = js_setAttribute e (textToJSString k) (textToJSString v)
-
-removeAttribute :: Node -> Text -> IO ()
-removeAttribute e k = js_removeAttribute e (textToJSString k)
-
-removeChild :: Node -> Node -> IO ()
-removeChild = js_removeChild
-
-removeAllChilds :: Node -> IO ()
-removeAllChilds = js_removeAllChilds
-
-replaceChild :: Node -> Node -> Node -> IO ()
-replaceChild = js_replaceChild
-
-getChildNode :: Node -> Int -> IO Node
-getChildNode = js_getChildNode
-
-createElement :: Text -> IO Node
-createElement = js_createElement . textToJSString
-
-createElementNS :: Text -> Text -> IO Node
-createElementNS n t = js_createElementNS (textToJSString n) (textToJSString t)
-
-createTextNode :: Text -> IO Node
-createTextNode = js_createTextNode . textToJSString
-
-createComment :: Text -> IO Node
-createComment = js_createComment . textToJSString
-
-classListAdd :: Node -> Text -> IO ()
-classListAdd e c = js_classListAdd e (textToJSString c)
-
-classListRemove :: Node -> Text -> IO ()
-classListRemove e c = js_classListRemove e (textToJSString c)
-
-setTextValue :: Node -> Text -> IO ()
-setTextValue v = js_setTextValue v . textToJSString
-
-insertUnsafeHtml :: Node -> Maybe Node -> Text -> IO ()
-insertUnsafeHtml n ma t = js_insertUnsafeHtml n (maybeToNullable ma)
-  (textToJSString t)
-
-onBeforeUnload :: IO () -> IO ()
-onBeforeUnload cb = do
-  syncCb <- syncCallback ThrowWouldBlock cb
-  js_onBeforeUnload syncCb
-
-removeBetween :: Node -> Node -> Node -> IO ()
-removeBetween = js_removeBetween
+-- | Event.target.value
+-- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
+-- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input/checkbox#checked
+checkedDecoder :: Decoder Bool
+checkedDecoder = decodeAt ["target", "checked"] decoder
 
 errorGhcjsOnly :: a
 errorGhcjsOnly = error "Only GHCJS is supported"
@@ -235,9 +271,7 @@ js_removeBetween :: Node -> Node -> Node -> IO () = errorGhcjsOnly
 js_setAttribute :: Node -> JSString -> JSString -> IO () = errorGhcjsOnly
 js_removeAttribute :: Node -> JSString -> IO ()  = errorGhcjsOnly
 js_removeChild :: Node -> Node -> IO ()  = errorGhcjsOnly
-js_removeAllChilds :: Node -> IO ()  = errorGhcjsOnly
 js_replaceChild :: Node -> Node -> Node -> IO ()  = errorGhcjsOnly
-js_getChildNode :: Node -> Int -> IO Node  = errorGhcjsOnly
 js_createElement :: JSString -> IO Node  = errorGhcjsOnly
 js_createElementNS :: JSString -> JSString -> IO Node  = errorGhcjsOnly
 js_createTextNode :: JSString -> IO Node  = errorGhcjsOnly
@@ -248,7 +282,7 @@ js_setTextValue :: Node -> JSString -> IO ()  = errorGhcjsOnly
 js_getCurrentWindow :: IO JSVal  = errorGhcjsOnly
 js_getCurrentDocument :: IO JSVal  = errorGhcjsOnly
 js_getCurrentBody :: IO JSVal = errorGhcjsOnly
-js_appendUnsafeHtml :: Node -> Nullable Node -> JSString -> IO () = errorGhcjsOnly
+js_insertUnsafeHtml :: Node -> Nullable Node -> JSString -> IO () = errorGhcjsOnly
 js_call0 :: JSVal -> IO JSVal = errorGhcjsOnly
 js_call1 :: JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
 js_call2 :: JSVal -> JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
@@ -272,14 +306,8 @@ foreign import javascript unsafe
   "$1.removeChild($2)"
   js_removeChild :: Node -> Node -> IO ()
 foreign import javascript unsafe
-  "$1.innerHTML = ''"
-  js_removeAllChilds :: Node -> IO ()
-foreign import javascript unsafe
   "$1.replaceChild($2, $3)"
   js_replaceChild :: Node -> Node -> Node -> IO ()
-foreign import javascript unsafe
-  "$1.childNodes[$2]"
-  js_getChildNode :: Node -> Int -> IO Node
 foreign import javascript unsafe
   "document.createElement($1)"
   js_createElement :: JSString -> IO Node

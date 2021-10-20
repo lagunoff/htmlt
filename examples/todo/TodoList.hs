@@ -51,15 +51,15 @@ todoListWidget TodoListConfig{..} = do
       h1_ (text "todos")
       input_ [class_ "new-todo", placeholder_ "What needs to be done?", autofocus_ True] do
         dynValue $ view (tlc_state . #tls_title) <$> fromRef tlc_ref
-        on "input" $ decodeValue \value ->
+        onDecoder "input" valueDecoder \value ->
           modifyRef tlc_ref (tlc_state . #tls_title .~ value)
-        on "keydown" $ decodeKeyCode \case
+        onDecoder "keydown" keyCodeDecoder \case
           13 -> commitEditing
           _ -> return ()
     mainWidget = section_ [class_ "main"] do
       toggleClass "hidden" hiddenDyn
       input_ [id_ "toggle-all", class_ "toggle-all", type_ "checkbox"] do
-        on "click" $ decodeChecked toggleAll
+        onDecoder "click" checkedDecoder toggleAll
       label_ do
         attr "for" "toggle-all"
         text "Mark all as completed"

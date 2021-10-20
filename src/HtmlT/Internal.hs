@@ -7,6 +7,7 @@ import HtmlT.Event
 import HtmlT.Types
 import HtmlT.DOM
 
+-- | Auxiliary type to help implement 'simpleList'
 data ElemEnv a = ElemEnv
   { ee_html_env :: HtmlEnv
   , ee_ref :: DynRef a
@@ -15,6 +16,8 @@ data ElemEnv a = ElemEnv
   , ee_end :: Node
   } deriving Generic
 
+-- | Insert given node to @html_current_root@ and run action with
+-- inserted node as a new root
 appendHtmlT :: MonadIO m => Node -> HtmlT m a -> HtmlT m a
 appendHtmlT newRootEl html = do
   result <- local (\env -> env
@@ -22,6 +25,8 @@ appendHtmlT newRootEl html = do
     , html_insert_before_anchor = Nothing }) html
   result <$ insertNode newRootEl
 
+-- | Insert new node to @html_current_root@ with respect to
+-- @html_insert_before_anchor@`
 insertNode :: MonadIO m => Node -> HtmlT m ()
 insertNode n = do
   HtmlEnv{..} <- ask
@@ -29,6 +34,9 @@ insertNode n = do
     Just anchor -> liftIO $ js_insertBefore html_current_root n anchor
     Nothing -> liftIO $ appendChild html_current_root n
 
+-- | Insert two comment nodes inteded to be use as boundary for
+-- dynamic content and as arguments to @removeBetween@ to clear
+-- content in a finalizer
 insertBoundaries :: MonadIO m => HtmlT m (Node, Node)
 insertBoundaries = do
   beginAnchor <- liftIO $ createComment ">>> BOUNDARY BEGIN"
