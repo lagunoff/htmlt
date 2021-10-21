@@ -34,13 +34,13 @@ insertNode n = do
     Just anchor -> liftIO $ js_insertBefore html_current_root n anchor
     Nothing -> liftIO $ appendChild html_current_root n
 
--- | Insert two comment nodes inteded to be use as boundary for
--- dynamic content and as arguments to @removeBetween@ to clear
+-- | Insert two comment nodes intended to be used as a boundary for
+-- dynamic content and as arguments to @removeBetween@ to clear the
 -- content in a finalizer
 insertBoundaries :: MonadIO m => HtmlT m (Node, Node)
 insertBoundaries = do
-  beginAnchor <- liftIO $ createComment ">>> BOUNDARY BEGIN"
-  endAnchor <- liftIO $ createComment "<<< BOUNDARY END"
+  beginAnchor <- liftIO $ createComment ">>> begin"
+  endAnchor <- liftIO $ createComment "<<< end"
   insertNode beginAnchor
   insertNode endAnchor
   return (beginAnchor, endAnchor)

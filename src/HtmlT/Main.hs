@@ -8,7 +8,6 @@ import GHC.Generics
 
 import HtmlT.DOM
 import HtmlT.Event
-import HtmlT.Internal
 import HtmlT.Types
 import qualified HtmlT.HashMap as H
 
@@ -25,8 +24,11 @@ data RunningApp = RunningApp
 
 startWithOptions :: StartOpts -> Html a -> IO (a, RunningApp)
 startWithOptions StartOpts{..} render = mdo
-  postHooks <- liftIO (newIORef [])
-  (begin, end) <- runHtmlT htmlEnv insertBoundaries
+  postHooks <- newIORef []
+  begin <- createComment ">>> begin"
+  end <- createComment "<<< end"
+  appendChild startopts_root_element begin
+  appendChild startopts_root_element end
   let
     htmlEnv = HtmlEnv
       { html_current_root = startopts_root_element

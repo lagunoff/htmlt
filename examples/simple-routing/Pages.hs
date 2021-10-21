@@ -7,32 +7,26 @@ import Data.Foldable
 import Data.Text as T
 import Data.Ord
 import Data.Maybe
+import Data.JSString.Text
+import GHCJS.Nullable
+import Control.Monad.IO.Class
+import Control.Monad.Reader
 import Data.List as L
 
 import "this" Assets
 import "this" Router
 import "this" Utils
 
-homeWidget :: Html ()
-homeWidget = do
+homePage :: Html ()
+homePage = do
   h1_ "Home Page"
 
-
-politicalMapWidget :: Html ()
-politicalMapWidget = do
-  h1_ "Countries on the Map"
-  figure_ do
-    a_ [href_ "https://upload.wikimedia.org/wikipedia/commons/f/f7/World_Map_%28political%29.svg"] do
-      img_ [src_ "https://upload.wikimedia.org/wikipedia/commons/f/f7/World_Map_%28political%29.svg"] blank
-    figcaption_ "political map of the planet Earth"
-
-countriesWidget :: CountriesQ -> Html ()
-countriesWidget q@CountriesQ{..} = do
+countriesListPage :: CountriesListQ -> Html ()
+countriesListPage q@CountriesListQ{..} = div_ [class_ "CountriesList"] do
   queryRef <- newRef q
   form_ do
     onOptions "submit" (ListenerOpts True True True) $ const do
-      pushUrl =<< readsRef (toUrl . CountriesR . (set #page Nothing)) queryRef
-
+      pushUrl =<< readsRef (toUrl . CountriesListR . (set #page Nothing)) queryRef
     div_ [style_ "display:flex;"] do
       input_ [type_ "text", placeholder_ "Search countries by title", autofocus_ True ] do
         dynValue $ view (#search . to (fromMaybe "")) <$> fromRef queryRef
@@ -50,17 +44,18 @@ countriesWidget q@CountriesQ{..} = do
       for_ pageResults \(n, Country{..}) -> tr_ do
         td_ do text (T.pack (show @Int n))
         td_ do
-          a_ [href_ wiki_href ] do
+          a_ [href_ (toUrl (CountriesMapR CountriesMapQ {selected = Just (T.toLower code)}))] do
             for_ flag_icon (img_ . (>> style_ "display:inline"). src_)
             text title
         td_ do text region
         td_ do text subregion
         td_ do text (T.pack (show population))
   center_ do
-    for_ (paginate total (fromMaybe 1 page) itemsPerPage) \case
+    for_ (paginate total currentPage itemsPerPage) \case
       Nothing -> button_ [disabled_ True] "..."
-      Just p -> a_ [href_ (toUrl (CountriesR q {page = Just p}))] $
-        button_ $ text $ T.pack $ show p
+      Just p -> a_
+        [ href_ (toUrl (CountriesListR q {page = Just p}))] $
+        button_ [disabled_ (currentPage == p)] $ text $ T.pack $ show p
   dl_ do
     dt_ "Country"
     dd_ $ unsafeHtml "The word <i>country</i> comes from <a href=\"\
@@ -80,9 +75,9 @@ countriesWidget q@CountriesQ{..} = do
         (sortVal, Asc) | sortVal == sortBy -> text "▲"
         (sortVal, Desc) | sortVal == sortBy -> text "▼"
         otherwise -> text ""
-      on_ "click" do pushUrl $ toUrl . CountriesR . toggleSortBy sortBy $ q
+      on_ "click" do pushUrl $ toUrl . CountriesListR . toggleSortBy sortBy $ q
 
-    toggleSortBy sortBy q@CountriesQ{..}
+    toggleSortBy sortBy q@CountriesListQ{..}
       | Just sb <- sort_by, sb == sortBy = q {sort_dir = flipDir sort_dir}
       | otherwise = q {sort_by = Just sortBy, sort_dir = Asc}
       where
@@ -108,6 +103,21 @@ countriesWidget q@CountriesQ{..} = do
       Asc -> Left . countrySortBy
       Desc -> Right . Down . countrySortBy
     itemsPerPage = 40
+    currentPage = fromMaybe 1 page
+
+countriesMapPage :: CountriesMapQ -> Html ()
+countriesMapPage CountriesMapQ{..} = div_ [class_ "CountriesMap"] do
+  figure_ do
+    center_ do
+      unsafeHtml countriesMap
+      figcaption_ "political map of the planet Earth"
+      centerEl <- asks html_current_root
+      liftIO $ js_selectCountry centerEl $ maybeToNullable $
+        textToJSString <$> selected
+      on "click" \event -> do
+        mcode <- fmap textFromJSString . nullableToMaybe <$>
+          liftIO (js_svgClickGetCountryCode event)
+        mapM_ (pushUrl . toUrl . CountriesMapR . CountriesMapQ . Just) mcode
 
 paginate
   :: Int -- ^ Total number of items

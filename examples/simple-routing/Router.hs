@@ -16,20 +16,39 @@ data UrlParts = Url
 
 data Route
   = HomeR
-  | PoliticalMapR
-  | CountriesR CountriesQ
+  | CountriesMapR CountriesMapQ
+  | CountriesListR CountriesListQ
+  deriving (Eq, Show, Generic)
+
+data CountriesListQ = CountriesListQ
+  { search :: Maybe Text
+  , page :: Maybe Int
+  , sort_by :: Maybe CountrySortBy
+  , sort_dir :: SortDir
+  } deriving (Eq, Show, Generic)
+
+data CountriesMapQ = CountriesMapQ
+  { selected :: Maybe Text
+  } deriving (Eq, Show, Generic)
+
+data SortDir = Asc | Desc
+  deriving (Eq, Show, Generic)
+
+data CountrySortBy = SortByTitle | SortByPopulation
   deriving (Eq, Show, Generic)
 
 toRoute :: UrlParts -> Maybe Route
 toRoute = \case
   Url [] [] -> Just HomeR
-  Url ["map"] _ -> Just PoliticalMapR
-  Url ["countries"] q
+  Url ["map"] q
+    | selected <- L.lookup "selected" q
+    -> Just $ CountriesMapR CountriesMapQ{..}
+  Url ["list"] q
     | search <- L.lookup "search" q
     , page <- parseQueryParamMaybe <=< L.lookup "page" $ q
     , sort_dir <- fromMaybe Asc $ parseSortDir <=< L.lookup "sort_dir" $ q
     , sort_by <- parseSortBy <=< L.lookup "sort_by" $ q
-    -> Just $ CountriesR CountriesQ{..}
+    -> Just $ CountriesListR CountriesListQ{..}
   _ -> Nothing
   where
     parseSortDir = \case
@@ -44,10 +63,11 @@ toRoute = \case
 fromRoute :: Route -> UrlParts
 fromRoute = \case
   HomeR -> Url [] []
-  PoliticalMapR -> Url ["map"] []
-  CountriesR CountriesQ{..} -> Url ["countries"] $ catMaybes
+  CountriesMapR CountriesMapQ{..} -> Url ["map"] $ catMaybes
+    [ ("selected",) <$> selected ]
+  CountriesListR CountriesListQ{..} -> Url ["list"] $ catMaybes
     [ ("search",) <$> mfilter (/="") search
-    , ("page",) . toQueryParam <$> mfilter (/=0) page
+    , ("page",) . toQueryParam <$> mfilter (/=1) page
     , ("sort_dir",) . printSortDir <$> mfilter (/=Asc) (Just sort_dir)
     , ("sort_by",) . printSortBy <$> sort_by
     ]
@@ -59,25 +79,17 @@ fromRoute = \case
       SortByTitle -> "title"
       SortByPopulation -> "population"
 
-data CountriesQ = CountriesQ
-  { search :: Maybe Text
-  , page :: Maybe Int
-  , sort_by :: Maybe CountrySortBy
-  , sort_dir :: SortDir
-  } deriving (Eq, Show, Generic)
-
-data SortDir = Asc | Desc
-  deriving (Eq, Show, Generic)
-
-data CountrySortBy = SortByTitle | SortByPopulation
-  deriving (Eq, Show, Generic)
-
-defaultCountriesQuery :: CountriesQ
-defaultCountriesQuery = CountriesQ
+defaultCountriesListQ :: CountriesListQ
+defaultCountriesListQ = CountriesListQ
   { search = Nothing
   , page = Nothing
   , sort_by = Nothing
   , sort_dir = Asc
+  }
+
+defaultCountriesMapQ :: CountriesMapQ
+defaultCountriesMapQ = CountriesMapQ
+  { selected = Nothing
   }
 
 toUrl :: Route -> Text
