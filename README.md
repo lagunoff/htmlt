@@ -123,7 +123,7 @@ colors =
       <td>Simple Routing</td>
       <td>
 	    <a href=./examples/simple-routing/simple-routing.hs target=_blank>source</a> |
-		<a href=https://lagunoff.github.io/massaraksh-todomvc target=_blank>demo<a>
+		<a href=https://lagunoff.github.io/htmlt-simple-routing/ target=_blank>demo<a>
 	  </td>
     </tr>
   </tbody>

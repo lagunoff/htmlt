@@ -49,11 +49,12 @@ foreign import javascript unsafe
 
 foreign import javascript unsafe
   "(function(event){\
-    for(var i = 0; i < event.path.length; i++){\
+    var iter = event.target;\
+    for(;;){\
+      if (!iter || !iter.parentNode) break;\
       /* <svg> immediate children contains the country code */\
-      if (event.path[i] instanceof SVGSVGElement && event.path[i - 1]){\
-        return event.path[i - 1].id;\
-      }\
+      if (iter.parentNode instanceof SVGSVGElement) return iter.id;\
+      iter = iter.parentNode;\
     }\
     return null;\
   })($1)"
