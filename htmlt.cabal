@@ -25,7 +25,10 @@ common htmlt-common
     -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches
     -Wno-unused-do-bind
   if flag(production)
-    ghc-options: -O2 -dedupe
+    if impl(ghcjs)
+      ghc-options: -O2 -dedupe
+    else
+      ghc-options: -O2
   default-extensions:
     AllowAmbiguousTypes
     BangPatterns

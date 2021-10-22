@@ -22,8 +22,8 @@ data Route
 
 data CountriesListQ = CountriesListQ
   { search :: Maybe Text
-  , page :: Maybe Int
-  , sort_by :: Maybe CountrySortBy
+  , page :: Int
+  , sort_by :: CountrySortBy
   , sort_dir :: SortDir
   } deriving (Eq, Show, Generic)
 
@@ -34,7 +34,11 @@ data CountriesMapQ = CountriesMapQ
 data SortDir = Asc | Desc
   deriving (Eq, Show, Generic)
 
-data CountrySortBy = SortByTitle | SortByPopulation
+data CountrySortBy
+  = SortByTitle
+  | SortByPopulation
+  | SortByRegion
+  | SortBySubregion
   deriving (Eq, Show, Generic)
 
 parseRoute :: UrlParts -> Maybe Route
@@ -45,20 +49,24 @@ parseRoute = \case
     -> Just $ CountriesMapR CountriesMapQ{..}
   Url ["list"] q
     | search <- L.lookup "search" q
-    , page <- parseQueryParamMaybe <=< L.lookup "page" $ q
-    , sort_dir <- fromMaybe Asc $ parseSortDir <=< L.lookup "sort_dir" $ q
-    , sort_by <- parseSortBy <=< L.lookup "sort_by" $ q
+    , page <- parsePage $ L.lookup "page" q
+    , sort_dir <- parseSortDir $ L.lookup "sort_dir" q
+    , sort_by <- parseSortBy $ L.lookup "sort_by" q
     -> Just $ CountriesListR CountriesListQ{..}
   _ -> Nothing
   where
+    parsePage = fromMaybe (page defaultCountriesListQ)
+      . (parseQueryParamMaybe =<<)
     parseSortDir = \case
-      "asc" -> Just Asc
-      "desc" -> Just Desc
-      _ -> Nothing
+      Just "asc" -> Asc
+      Just "desc" -> Desc
+      _ -> sort_dir defaultCountriesListQ
     parseSortBy = \case
-      "title" -> Just SortByTitle
-      "population" -> Just SortByPopulation
-      _ -> Nothing
+      Just "title" -> SortByTitle
+      Just "population" -> SortByPopulation
+      Just "region" -> SortByRegion
+      Just "subregion" -> SortBySubregion
+      _ -> sort_by defaultCountriesListQ
 
 printRoute :: Route -> UrlParts
 printRoute = \case
@@ -67,24 +75,30 @@ printRoute = \case
     [ ("selected",) <$> selected ]
   CountriesListR CountriesListQ{..} -> Url ["list"] $ catMaybes
     [ ("search",) <$> mfilter (/="") search
-    , ("page",) . toQueryParam <$> mfilter (/=1) page
-    , ("sort_dir",) . printSortDir <$> mfilter (/=Asc) (Just sort_dir)
-    , ("sort_by",) . printSortBy <$> sort_by
+    , ("page",) <$> printPage page
+    , ("sort_dir",) <$> printSortDir sort_dir
+    , ("sort_by",) <$> printSortBy sort_by
     ]
   where
-    printSortDir = \case
+    printPage = fmap toQueryParam .
+      mfilter (/=page defaultCountriesListQ) . Just
+    printSortDir = fmap (\case
       Asc -> "asc"
-      Desc -> "desc"
-    printSortBy = \case
+      Desc -> "desc") .
+      mfilter (/=sort_dir defaultCountriesListQ) . Just
+    printSortBy = fmap (\case
       SortByTitle -> "title"
       SortByPopulation -> "population"
+      SortByRegion -> "region"
+      SortBySubregion -> "subregion") .
+      mfilter (/=sort_by defaultCountriesListQ) . Just
 
 defaultCountriesListQ :: CountriesListQ
 defaultCountriesListQ = CountriesListQ
   { search = Nothing
-  , page = Nothing
-  , sort_by = Nothing
-  , sort_dir = Asc
+  , page = 1
+  , sort_by = SortByPopulation
+  , sort_dir = Desc
   }
 
 defaultCountriesMapQ :: CountriesMapQ

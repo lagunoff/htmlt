@@ -23,7 +23,7 @@ homePage = unsafeHtml $ "\
   \<p>Inside the \
   \<a href=\"https://github.com/lagunoff/htmlt/blob/master/examples/simple-routing/Router.hs\">Router</a> \
   \module there is a definition of type <code>Route</code>:</p>\
-  \<pre>" <> hightlightHaskell "\
+  \<pre>" <> highlightHaskell "\
   \data Route\n\
   \  = HomeR -- matches root route\n\
   \  | CountriesMapR CountriesMapQ -- example: #map?selected=ru\n\
@@ -35,7 +35,7 @@ homePage = unsafeHtml $ "\
   \parameters or URL segments. By convention route contructors have suffix \
   \<code>-R</code> and constructor parameters has suffix <code>-Q</code></p>\
   \<p>Another importants definitions are these two functions:\
-  \<pre>" <> hightlightHaskell "\
+  \<pre>" <> highlightHaskell "\
   \parseRoute :: UrlParts -> Maybe Route\n\
   \parseRoute = \\case\n\
   \  Url [] [] -> Just HomeR\n\
@@ -44,9 +44,9 @@ homePage = unsafeHtml $ "\
   \    -> Just $ CountriesMapR CountriesMapQ{..}\n\
   \  Url [\"list\"] q\n\
   \    | search <- L.lookup \"search\" q\n\
-  \    , page <- parseQueryParamMaybe <=< L.lookup \"page\" $ q\n\
-  \    , sort_dir <- fromMaybe Asc $ parseSortDir <=< L.lookup \"sort_dir\" $ q\n\
-  \    , sort_by <- parseSortBy <=< L.lookup \"sort_by\" $ q\n\
+  \    , page <- parsePage $ L.lookup \"page\" q\n\
+  \    , sort_dir <- parseSortDir $ L.lookup \"sort_dir\" q\n\
+  \    , sort_by <- parseSortBy $ L.lookup \"sort_by\" q\n\
   \    -> Just $ CountriesListR CountriesListQ{..}\n\n\
   \printRoute :: Route -> UrlParts\n\
   \printRoute = \\case\n\
@@ -55,9 +55,9 @@ homePage = unsafeHtml $ "\
   \    [ (\"selected\",) <$> selected ]\n\
   \  CountriesListR CountriesListQ{..} -> Url [\"list\"] $ catMaybes\n\
   \    [ (\"search\",) <$> mfilter (/=\"\") search\n\
-  \    , (\"page\",) . toQueryParam <$> mfilter (/=1) page\n\
-  \    , (\"sort_dir\",) . printSortDir <$> mfilter (/=Asc) (Just sort_dir)\n\
-  \    , (\"sort_by\",) . printSortBy <$> sort_by\n\
+  \    , (\"page\",) <$> printPage page\n\
+  \    , (\"sort_dir\",) <$> printSortDir sort_dir\n\
+  \    , (\"sort_by\",) <$> printSortBy sort_by\n\
   \    ]\n\
   \ " <>  "\
   \</pre>\
@@ -74,7 +74,7 @@ homePage = unsafeHtml $ "\
   \and then mapped with <code>(<&>)</code> operator to \
   \<code>Dynamic (Html ())</code> the <code>dyn</code> function can be used to \
   \attach the contents of dynamic pages to the application.\
-  \<pre>" <> hightlightHaskell "\
+  \<pre>" <> highlightHaskell "\
   \dyn $ routeDyn <&> \\case\n\
   \  HomeR -> homePage\n\
   \  CountriesMapR q -> countriesMapPage q\n\
@@ -87,36 +87,39 @@ countriesListPage q@CountriesListQ{..} = div_ [class_ "CountriesList"] do
   queryRef <- newRef q
   form_ do
     onOptions "submit" (ListenerOpts True True True) $ const do
-      pushUrl =<< readsRef (toUrl . CountriesListR . (set #page Nothing)) queryRef
+      pushUrl =<< readsRef (toUrl . CountriesListR . (set #page 1)) queryRef
     div_ [style_ "display:flex;"] do
-      input_ [type_ "text", placeholder_ "Search countries by title", autofocus_ True ] do
-        dynValue $ view (#search . to (fromMaybe "")) <$> fromRef queryRef
-        onDecoder "input" valueDecoder \value -> modifyRef queryRef
-          (set #search (Just value))
+      input_ [type_ "text", placeholder_ "Search countries by title"
+        , autofocus_ True
+        ] do
+          dynValue $ view (#search . to (fromMaybe "")) <$> fromRef queryRef
+          onDecoder "input" valueDecoder \value -> modifyRef queryRef
+            (set #search (Just value))
       button_ [type_ "submit"] "Search"
   table_ do
     thead_ $ tr_ do
       th_ ""
       thSort SortByTitle "Country Name"
-      th_ "Region"
-      th_ "Subregion"
+      thSort SortByRegion "Region"
+      thSort SortBySubregion "Subregion"
       thSort SortByPopulation "Population"
     tbody_ do
       for_ pageResults \(n, Country{..}) -> tr_ do
         td_ do text (T.pack (show @Int n))
         td_ do
-          a_ [href_ (toUrl (CountriesMapR CountriesMapQ {selected = Just (T.toLower code)}))] do
-            for_ flag_icon (img_ . (>> style_ "display:inline"). src_)
+          a_ [href_ (mkMapLink code)] do
+            for_ flag_icon
+              (img_ . (>> style_ "display:inline; margin-right: 6px"). src_)
             text title
         td_ do text region
         td_ do text subregion
         td_ do text (T.pack (show population))
   center_ do
-    for_ (paginate total currentPage itemsPerPage) \case
+    for_ (paginate total page itemsPerPage) \case
       Nothing -> button_ [disabled_ True] "..."
       Just p -> a_
-        [ href_ (toUrl (CountriesListR q {page = Just p}))] $
-        button_ [disabled_ (currentPage == p)] $ text $ T.pack $ show p
+        [ href_ (toUrl (CountriesListR q {page = p}))] $
+        button_ [disabled_ (page == p)] $ text $ T.pack $ show p
   dl_ do
     dt_ "Country"
     dd_ $ unsafeHtml "The word <i>country</i> comes from <a href=\"\
@@ -132,19 +135,19 @@ countriesListPage q@CountriesListQ{..} = div_ [class_ "CountriesList"] do
   where
     thSort sortBy title = th_ [style_ "cursor: pointer"] do
       text title
-      case (fromMaybe SortByTitle sort_by, sort_dir) of
+      case (sort_by, sort_dir) of
         (sortVal, Asc) | sortVal == sortBy -> text "▲"
         (sortVal, Desc) | sortVal == sortBy -> text "▼"
         otherwise -> text ""
       on_ "click" do pushUrl $ toUrl . CountriesListR . toggleSortBy sortBy $ q
 
     toggleSortBy sortBy q@CountriesListQ{..}
-      | Just sb <- sort_by, sb == sortBy = q {sort_dir = flipDir sort_dir}
-      | otherwise = q {sort_by = Just sortBy, sort_dir = Asc}
+      | sort_by == sortBy = q {sort_dir = flipDir sort_dir}
+      | otherwise = q {sort_by = sortBy, sort_dir = Asc}
       where
         flipDir = \case Asc -> Desc; Desc -> Asc
 
-    offset = maybe 0 pred page * itemsPerPage
+    offset = pred page * itemsPerPage
     total = Prelude.length countryResults
     pageResults = Prelude.zip [offset + 1..]
       . Prelude.take itemsPerPage
@@ -158,13 +161,15 @@ countriesListPage q@CountriesListQ{..} = div_ [class_ "CountriesList"] do
         T.isInfixOf (T.toLower needle) (T.toLower title)
       | otherwise = const True
     countrySortBy = case sort_by of
-      Just SortByPopulation -> \Country{..} -> Left population
-      _ -> \Country{..} -> Right title
+      SortByTitle -> Left . view #title
+      SortByRegion -> Right . Left . view #region
+      SortBySubregion -> Right . Right . Left . view #subregion
+      SortByPopulation -> Right . Right . Right . view #population
     countrySortDir = case sort_dir of
       Asc -> Left . countrySortBy
       Desc -> Right . Down . countrySortBy
     itemsPerPage = 40
-    currentPage = fromMaybe 1 page
+    mkMapLink = toUrl . CountriesMapR . CountriesMapQ . Just . T.toLower
 
 countriesMapPage :: CountriesMapQ -> Html ()
 countriesMapPage CountriesMapQ{..} =

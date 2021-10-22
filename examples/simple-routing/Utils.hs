@@ -35,8 +35,11 @@ pushUrl url = liftIO do
   loc <- JS.getWindowLocation
   JS.setHref (textToJSString url) loc
 
-hightlightHaskell :: Text -> Text
-hightlightHaskell = textFromJSString . js_hightlightHaskell . textToJSString
+highlightHaskell :: Text -> Text
+highlightHaskell = textFromJSString . js_highlightHaskell . textToJSString
+
+insertScript :: Text -> IO ()
+insertScript = js_insertScript . textToJSString
 
 foreign import javascript unsafe
   "(function(el, code){\
@@ -66,4 +69,12 @@ foreign import javascript unsafe
 
 foreign import javascript unsafe
   "Prism.highlight($1, Prism.languages.haskell, 'haskell')"
-  js_hightlightHaskell :: JSString -> JSString
+  js_highlightHaskell :: JSString -> JSString
+
+foreign import javascript unsafe
+  "(function(script){\
+    var scriptEl = document.createElement('script');\
+    scriptEl.innerText = script;\
+    document.head.appendChild(scriptEl);\
+  })($1)"
+  js_insertScript :: JSString -> IO ()

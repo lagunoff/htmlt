@@ -11,6 +11,7 @@ import "this" Assets
 
 main :: IO ()
 main = do
+  insertScript prismJs
   env <- newReactiveEnv
   urlHashRef <- mkUrlHashRef env
   bodyEl <- getCurrentBody
