@@ -19,6 +19,7 @@ main = do
   void $ startWithOptions startOpts do
     el "style" (text awsmCss)
     el "style" (text customCss)
+    el "style" (text prismCss)
     header_ do
       h1_ "Simple in-browser routing example"
       p_ do
@@ -43,7 +44,7 @@ customCss = "\
   \  max-width: 80rem;\
   \}\
   \.CountriesList table {\
-  \  width: 100%;\
+  \  width: 100%;;\
   \}\
   \.CountriesList table th, .CountriesList table td {\
   \  white-space: nowrap;\

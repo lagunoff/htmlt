@@ -18,24 +18,24 @@ import "this" Router
 import "this" Utils
 
 homePage :: Html ()
-homePage = unsafeHtml "\
+homePage = unsafeHtml $ "\
   \<h3>How routing works</h3>\
   \<p>Inside the \
   \<a href=\"https://github.com/lagunoff/htmlt/blob/master/examples/simple-routing/Router.hs\">Router</a> \
   \module there is a definition of type <code>Route</code>:</p>\
-  \<pre>\
+  \<pre>" <> hightlightHaskell "\
   \data Route\n\
   \  = HomeR -- matches root route\n\
   \  | CountriesMapR CountriesMapQ -- example: #map?selected=ru\n\
   \  | CountriesListR CountriesListQ -- example: #list?page=3\n\
-  \</pre>\
+  \ " <> "</pre>\
   \<p>Here <code>Route</code> defines the list of webpages in the site. \
   \Constructor parameters (like <code>CountriesMapQ</code>) indicate \
   \that this page takes some information from the URL string encoded in GET \
   \parameters or URL segments. By convention route contructors have suffix \
   \<code>-R</code> and constructor parameters has suffix <code>-Q</code></p>\
   \<p>Another importants definitions are these two functions:\
-  \<pre>\
+  \<pre>" <> hightlightHaskell "\
   \parseRoute :: UrlParts -> Maybe Route\n\
   \parseRoute = \\case\n\
   \  Url [] [] -> Just HomeR\n\
@@ -59,6 +59,7 @@ homePage = unsafeHtml "\
   \    , (\"sort_dir\",) . printSortDir <$> mfilter (/=Asc) (Just sort_dir)\n\
   \    , (\"sort_by\",) . printSortBy <$> sort_by\n\
   \    ]\n\
+  \ " <>  "\
   \</pre>\
   \With help of haskell guarded pattern-match syntax it's easy to convert a \
   \URL in form of <code>UrlParts</code> to a structured datatype like \
@@ -73,12 +74,12 @@ homePage = unsafeHtml "\
   \and then mapped with <code>(<&>)</code> operator to \
   \<code>Dynamic (Html ())</code> the <code>dyn</code> function can be used to \
   \attach the contents of dynamic pages to the application.\
-  \<pre>\
+  \<pre>" <> hightlightHaskell "\
   \dyn $ routeDyn <&> \\case\n\
   \  HomeR -> homePage\n\
   \  CountriesMapR q -> countriesMapPage q\n\
   \  CountriesListR q -> countriesListPage q\n\
-  \</pre></p>\
+  \ " <> "</pre></p>\
   \"
 
 countriesListPage :: CountriesListQ -> Html ()
@@ -166,9 +167,9 @@ countriesListPage q@CountriesListQ{..} = div_ [class_ "CountriesList"] do
     currentPage = fromMaybe 1 page
 
 countriesMapPage :: CountriesMapQ -> Html ()
-countriesMapPage CountriesMapQ{..} = div_ [class_ "CountriesMap"] do
-  figure_ do
-    center_ do
+countriesMapPage CountriesMapQ{..} =
+  div_ [class_ "CountriesMap"] $
+    figure_ $ center_ do
       unsafeHtml countriesMap
       figcaption_ "political map of the planet Earth"
       centerEl <- asks html_current_root
