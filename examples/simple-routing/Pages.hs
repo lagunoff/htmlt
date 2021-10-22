@@ -1,25 +1,85 @@
 module Pages where
 
-import HtmlT
 import Control.Lens
-import Data.Generics.Labels ()
-import Data.Foldable
-import Data.Text as T
-import Data.Ord
-import Data.Maybe
-import Data.JSString.Text
-import GHCJS.Nullable
 import Control.Monad.IO.Class
 import Control.Monad.Reader
+import Data.Foldable
+import Data.Generics.Labels ()
+import Data.JSString.Text
 import Data.List as L
+import Data.Maybe
+import Data.Ord
+import Data.Text as T
+import GHCJS.Nullable
+import HtmlT
 
 import "this" Assets
 import "this" Router
 import "this" Utils
 
 homePage :: Html ()
-homePage = do
-  h1_ "Home Page"
+homePage = unsafeHtml "\
+  \<h3>How routing works</h3>\
+  \<p>Inside the \
+  \<a href=\"https://github.com/lagunoff/htmlt/blob/master/examples/simple-routing/Router.hs\">Router</a> \
+  \module there is a definition of type <code>Route</code>:</p>\
+  \<pre>\
+  \data Route\n\
+  \  = HomeR -- matches root route\n\
+  \  | CountriesMapR CountriesMapQ -- example: #map?selected=ru\n\
+  \  | CountriesListR CountriesListQ -- example: #list?page=3\n\
+  \</pre>\
+  \<p>Here <code>Route</code> defines the list of webpages in the site. \
+  \Constructor parameters (like <code>CountriesMapQ</code>) indicate \
+  \that this page takes some information from the URL string encoded in GET \
+  \parameters or URL segments. By convention route contructors have suffix \
+  \<code>-R</code> and constructor parameters has suffix <code>-Q</code></p>\
+  \<p>Another importants definitions are these two functions:\
+  \<pre>\
+  \parseRoute :: UrlParts -> Maybe Route\n\
+  \parseRoute = \\case\n\
+  \  Url [] [] -> Just HomeR\n\
+  \  Url [\"map\"] q\n\
+  \    | selected <- L.lookup \"selected\" q\n\
+  \    -> Just $ CountriesMapR CountriesMapQ{..}\n\
+  \  Url [\"list\"] q\n\
+  \    | search <- L.lookup \"search\" q\n\
+  \    , page <- parseQueryParamMaybe <=< L.lookup \"page\" $ q\n\
+  \    , sort_dir <- fromMaybe Asc $ parseSortDir <=< L.lookup \"sort_dir\" $ q\n\
+  \    , sort_by <- parseSortBy <=< L.lookup \"sort_by\" $ q\n\
+  \    -> Just $ CountriesListR CountriesListQ{..}\n\n\
+  \printRoute :: Route -> UrlParts\n\
+  \printRoute = \\case\n\
+  \  HomeR -> Url [] []\n\
+  \  CountriesMapR CountriesMapQ{..} -> Url [\"map\"] $ catMaybes\n\
+  \    [ (\"selected\",) <$> selected ]\n\
+  \  CountriesListR CountriesListQ{..} -> Url [\"list\"] $ catMaybes\n\
+  \    [ (\"search\",) <$> mfilter (/=\"\") search\n\
+  \    , (\"page\",) . toQueryParam <$> mfilter (/=1) page\n\
+  \    , (\"sort_dir\",) . printSortDir <$> mfilter (/=Asc) (Just sort_dir)\n\
+  \    , (\"sort_by\",) . printSortBy <$> sort_by\n\
+  \    ]\n\
+  \</pre>\
+  \With help of haskell guarded pattern-match syntax it's easy to convert a \
+  \URL in form of <code>UrlParts</code> to a structured datatype like \
+  \<code>Route</code> and other way around. The type <code>Route</code> and \
+  \these two functions conclude the portable part of the routing mechanism. \
+  \They can and should be shared with backend code to construct correct URLs \
+  \and implement backend part of HTML5-style routing.</p>\
+  \<p>Last thing we need to run the site is this auxiliary function \
+  \<a href=\"https://github.com/lagunoff/htmlt/blob/master/examples/simple-routing/Utils.hs#L18\">mkUrlHashRef</a> \
+  \that creates a <code>DynRef Text</code> — dynamic value containing current \
+  \hash-string from the browser. When parsed to <code>Dynamic Route</code> \
+  \and then mapped with <code>(<&>)</code> operator to \
+  \<code>Dynamic (Html ())</code> the <code>dyn</code> function can be used to \
+  \attach the contents of dynamic pages to the application.\
+  \<pre>\
+  \dyn $ routeDyn <&> \\case\n\
+  \  HomeR -> homePage\n\
+  \  CountriesMapR q -> countriesMapPage q\n\
+  \  CountriesListR q -> countriesListPage q\n\
+  \</pre></p>\
+  \"
 
 countriesListPage :: CountriesListQ -> Html ()
 countriesListPage q@CountriesListQ{..} = div_ [class_ "CountriesList"] do

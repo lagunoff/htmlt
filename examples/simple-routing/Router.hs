@@ -1,12 +1,12 @@
 module Router where
 
-import Control.Monad
 import Control.Lens
-import Data.Maybe
+import Control.Monad
 import Data.List as L
+import Data.Maybe
 import Data.Text as T
-import Network.URI
 import GHC.Generics
+import Network.URI
 import Web.HttpApiData
 
 data UrlParts = Url
@@ -37,8 +37,8 @@ data SortDir = Asc | Desc
 data CountrySortBy = SortByTitle | SortByPopulation
   deriving (Eq, Show, Generic)
 
-toRoute :: UrlParts -> Maybe Route
-toRoute = \case
+parseRoute :: UrlParts -> Maybe Route
+parseRoute = \case
   Url [] [] -> Just HomeR
   Url ["map"] q
     | selected <- L.lookup "selected" q
@@ -60,8 +60,8 @@ toRoute = \case
       "population" -> Just SortByPopulation
       _ -> Nothing
 
-fromRoute :: Route -> UrlParts
-fromRoute = \case
+printRoute :: Route -> UrlParts
+printRoute = \case
   HomeR -> Url [] []
   CountriesMapR CountriesMapQ{..} -> Url ["map"] $ catMaybes
     [ ("selected",) <$> selected ]
@@ -93,11 +93,11 @@ defaultCountriesMapQ = CountriesMapQ
   }
 
 toUrl :: Route -> Text
-toUrl = ("#"<>) . partsToText . fromRoute
+toUrl = ("#"<>) . partsToText . printRoute
 
 fromUrl :: Text -> Maybe Route
 fromUrl url =
-  toRoute . textToParts . fromMaybe url . T.stripPrefix "#" $ url
+  parseRoute . textToParts . fromMaybe url . T.stripPrefix "#" $ url
 
 partsToText :: UrlParts -> Text
 partsToText (Url s q) = T.intercalate "?" (segments : query) where

@@ -3,13 +3,13 @@
 {-# LANGUAGE JavaScriptFFI #-}
 module Utils where
 
-import Data.Coerce
 import Control.Monad.IO.Class
+import Data.Coerce
 import Data.JSString.Text
 import Data.Text
 import GHCJS.Foreign.Callback
-import GHCJS.Types
 import GHCJS.Nullable
+import GHCJS.Types
 import HtmlT
 import JavaScript.Object.Internal
 import qualified JavaScript.Object as Object

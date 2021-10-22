@@ -35,6 +35,7 @@ main = do
         HomeR -> homePage
         CountriesMapR q -> countriesMapPage q
         CountriesListR q -> countriesListPage q
+    footer_ $ p_ $ a_ [href_ "https://github.com/lagunoff"] "Vladislav Lagunov"
 
 customCss :: Text
 customCss = "\
