@@ -31,7 +31,7 @@ el tag child = do
   appendHtmlT newRootEl child
 
 -- | Same as 'el' but also returns the reference to the new element
-el' :: Text -> Html a -> Html (a, Node)
+el' :: Text -> Html a -> Html (a, DOMNode)
 el' tag child = do
   newRootEl <- liftIO (createElement tag)
   (,newRootEl) <$> appendHtmlT newRootEl child
@@ -132,7 +132,7 @@ onGlobalEvent
   :: ListenerOpts
   -- ^ Specify whether to call @event.stopPropagation()@ and
   -- @event.preventDefault()@ on the fired event
-  -> Node
+  -> DOMNode
   -- ^ Event target
   -> Text
   -- ^ Event name
@@ -326,7 +326,6 @@ dyn d = do
           sequence_ finalizers
           writeIORef (renv_finalizers html_reactive_env) []
         Nothing -> return ()
-      removeBetween rootEl begin end
       writeIORef childRef newEnv
     setup html = liftIO do
       finalizers <- newIORef []
@@ -337,6 +336,7 @@ dyn d = do
           , html_insert_before_anchor = Just end
           }
       finalizeEnv (Just newEnv)
+      removeBetween rootEl begin end
       runHtmlT newEnv html
   addFinalizer (finalizeEnv Nothing)
   forDyn_ d setup
@@ -360,7 +360,7 @@ addFinalizer fin = do
 -- 'html_current_root'. Might be useful for implementing modal
 -- dialogs, tooltips etc. Similar to what called portals in React
 -- ecosystem
-portal :: MonadIO m => Node -> HtmlT m a -> HtmlT m a
+portal :: MonadIO m => DOMNode -> HtmlT m a -> HtmlT m a
 portal rootEl = local (\e -> e
   {html_current_root = rootEl, html_insert_before_anchor = Nothing})
 

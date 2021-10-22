@@ -13,13 +13,13 @@ import qualified HtmlT.HashMap as H
 
 data StartOpts = StartOpts
   { startopts_reactive_env :: ReactiveEnv
-  , startopts_root_element :: Node
+  , startopts_root_element :: DOMNode
   } deriving Generic
 
 data RunningApp = RunningApp
   { runapp_html_env :: HtmlEnv
-  , runapp_boundary_begin :: Node
-  , runapp_boundary_end :: Node
+  , runapp_boundary_begin :: DOMNode
+  , runapp_boundary_end :: DOMNode
   } deriving Generic
 
 startWithOptions :: StartOpts -> Html a -> IO (a, RunningApp)
@@ -42,7 +42,7 @@ startWithOptions StartOpts{..} render = mdo
     sequence_ fins
   pure (result, runApp)
 
-attachTo :: Node -> Html a -> IO (a, RunningApp)
+attachTo :: DOMNode -> Html a -> IO (a, RunningApp)
 attachTo rootEl render = do
   fins <- liftIO $ newIORef []
   subs <- liftIO $ H.new

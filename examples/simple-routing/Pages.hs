@@ -27,8 +27,8 @@ homePage = unsafeHtml $ "\
   \data Route\n\
   \  = HomeR -- matches root route\n\
   \  | CountriesMapR CountriesMapQ -- example: #map?selected=ru\n\
-  \  | CountriesListR CountriesListQ -- example: #list?page=3\n\
-  \ " <> "</pre>\
+  \  | CountriesListR CountriesListQ -- example: #list?page=3"
+  <> "</pre>\
   \<p>Here <code>Route</code> defines the list of webpages in the site. \
   \Constructor parameters (like <code>CountriesMapQ</code>) indicate \
   \that this page takes some information from the URL string encoded in GET \
@@ -47,7 +47,8 @@ homePage = unsafeHtml $ "\
   \    , page <- parsePage $ L.lookup \"page\" q\n\
   \    , sort_dir <- parseSortDir $ L.lookup \"sort_dir\" q\n\
   \    , sort_by <- parseSortBy $ L.lookup \"sort_by\" q\n\
-  \    -> Just $ CountriesListR CountriesListQ{..}\n\n\
+  \    -> Just $ CountriesListR CountriesListQ{..}"
+  <> "</pre><pre>" <> highlightHaskell "\
   \printRoute :: Route -> UrlParts\n\
   \printRoute = \\case\n\
   \  HomeR -> Url [] []\n\
@@ -58,9 +59,8 @@ homePage = unsafeHtml $ "\
   \    , (\"page\",) <$> printPage page\n\
   \    , (\"sort_dir\",) <$> printSortDir sort_dir\n\
   \    , (\"sort_by\",) <$> printSortBy sort_by\n\
-  \    ]\n\
-  \ " <>  "\
-  \</pre>\
+  \    ]"
+  <>  "</pre>\
   \With help of haskell guarded pattern-match syntax it's easy to convert a \
   \URL in form of <code>UrlParts</code> to a structured datatype like \
   \<code>Route</code> and other way around. The type <code>Route</code> and \
@@ -78,9 +78,8 @@ homePage = unsafeHtml $ "\
   \dyn $ routeDyn <&> \\case\n\
   \  HomeR -> homePage\n\
   \  CountriesMapR q -> countriesMapPage q\n\
-  \  CountriesListR q -> countriesListPage q\n\
-  \ " <> "</pre></p>\
-  \"
+  \  CountriesListR q -> countriesListPage q"
+  <> "</pre></p>"
 
 countriesListPage :: CountriesListQ -> Html ()
 countriesListPage q@CountriesListQ{..} = div_ [class_ "CountriesList"] do

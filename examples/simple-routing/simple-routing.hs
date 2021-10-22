@@ -44,6 +44,11 @@ customCss = "\
   \body header, body main, body footer, body article {\
   \  max-width: 80rem;\
   \}\
+  \pre {\
+  \  border-left: solid 8px rgb(0 0 0 / 14%);\
+  \  padding-left: 16px;\
+  \  background: transparent;\
+  \}\
   \.CountriesList table {\
   \  width: 100%;;\
   \}\
