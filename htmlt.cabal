@@ -113,10 +113,10 @@ executable htmlt-hello
   if !flag(examples)
     buildable: False
 
-executable htmlt-todo
+executable htmlt-todomvc
   import: htmlt-common         
-  main-is: todo.hs
-  hs-source-dirs: ./examples/todo
+  main-is: todomvc.hs
+  hs-source-dirs: ./examples/todomvc
   other-modules:
     TodoItem
     TodoList
@@ -158,19 +158,3 @@ executable htmlt-simple-routing
   if !flag(examples)
     buildable: False
   
-executable htmlt-benchmark
-  import: htmlt-common         
-  main-is: Main.hs
-  hs-source-dirs: ./benchmarks ./src
-  build-depends:
-    base,
-    ghcjs-base,
-    ghcjs-prim,
-    bytestring,
-    containers,
-    exceptions,
-    mtl,
-    text,
-    gauge
-  if !flag(examples)
-    buildable: False

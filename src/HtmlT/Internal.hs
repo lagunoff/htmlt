@@ -17,12 +17,12 @@ data ElemEnv a = ElemEnv
 
 -- | Insert given node to @html_current_root@ and run action with
 -- inserted node as a new root
-appendHtmlT :: MonadIO m => DOMNode -> HtmlT m a -> HtmlT m a
+appendHtmlT :: MonadIO m => DOMElement -> HtmlT m a -> HtmlT m a
 appendHtmlT newRootEl html = do
   result <- local (\env -> env
     { html_current_root = newRootEl
     , html_insert_before_anchor = Nothing }) html
-  result <$ insertNode newRootEl
+  result <$ insertNode (nodeFromElement newRootEl)
 
 -- | Insert new node to @html_current_root@ with respect to
 -- @html_insert_before_anchor@`

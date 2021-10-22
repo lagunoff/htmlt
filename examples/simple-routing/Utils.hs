@@ -51,7 +51,7 @@ foreign import javascript unsafe
     }\
     svgGroup.parentElement.appendChild(svgGroup);\
   })($1, $2)"
-  js_selectCountry :: DOMNode -> Nullable JSString -> IO ()
+  js_selectCountry :: DOMElement -> Nullable JSString -> IO ()
 
 foreign import javascript unsafe
   "(function(event){\

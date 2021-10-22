@@ -31,7 +31,7 @@ el tag child = do
   appendHtmlT newRootEl child
 
 -- | Same as 'el' but also returns the reference to the new element
-el' :: Text -> Html a -> Html (a, DOMNode)
+el' :: Text -> Html a -> Html (a, DOMElement)
 el' tag child = do
   newRootEl <- liftIO (createElement tag)
   (,newRootEl) <$> appendHtmlT newRootEl child
@@ -110,7 +110,7 @@ dynAttr k d = do
 -- >   text "Click here"
 on :: Text -> (DOMEvent -> Html ()) -> Html ()
 on name f = ask >>= \HtmlEnv{..} ->
-  onGlobalEvent defaultListenerOpts html_current_root name f
+  onGlobalEvent defaultListenerOpts (nodeFromElement html_current_root) name f
 
 -- | Same as 'on' but ignores 'DOMEvent' inside the callback
 on_ :: Text -> Html () -> Html ()
@@ -119,7 +119,7 @@ on_ name = on name . const
 -- | Same as 'on' but allows to specify 'ListenerOpts'
 onOptions :: Text -> ListenerOpts -> (DOMEvent -> Html ()) -> Html ()
 onOptions name opts f = ask >>= \HtmlEnv{..} ->
-  onGlobalEvent opts html_current_root name f
+  onGlobalEvent opts (nodeFromElement html_current_root) name f
 
 -- | Attach listener, extract data of type @a@ using specified decoder
 onDecoder :: Text -> Decoder a -> (a -> Html ()) -> Html ()
@@ -360,7 +360,7 @@ addFinalizer fin = do
 -- 'html_current_root'. Might be useful for implementing modal
 -- dialogs, tooltips etc. Similar to what called portals in React
 -- ecosystem
-portal :: MonadIO m => DOMNode -> HtmlT m a -> HtmlT m a
+portal :: MonadIO m => DOMElement -> HtmlT m a -> HtmlT m a
 portal rootEl = local (\e -> e
   {html_current_root = rootEl, html_insert_before_anchor = Nothing})
 

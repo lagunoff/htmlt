@@ -52,37 +52,37 @@ getCurrentDocument = liftIO js_getCurrentDocument
 
 -- | Get Document.body property
 -- https://developer.mozilla.org/en-US/docs/Web/API/Document/body
-getCurrentBody :: MonadIO m => m DOMNode
-getCurrentBody = liftIO $ fmap DOMNode js_getCurrentBody
+getCurrentBody :: MonadIO m => m DOMElement
+getCurrentBody = liftIO $ fmap DOMElement js_getCurrentBody
 
--- | DOMNode.appendChild()
+-- | DOMElement.appendChild()
 -- https://developer.mozilla.org/en-US/docs/Web/API/DOMNode/appendChild
-appendChild :: DOMNode -> DOMNode -> IO ()
+appendChild :: DOMElement -> DOMNode -> IO ()
 appendChild = js_appendChild
 
 -- | Element.setAttribute()
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/setAttribute
-setAttribute :: DOMNode -> Text -> Text -> IO ()
+setAttribute :: DOMElement -> Text -> Text -> IO ()
 setAttribute e k v = js_setAttribute e (textToJSString k) (textToJSString v)
 
 -- | Element.removeAttribute()
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/removeAttribute
-removeAttribute :: DOMNode -> Text -> IO ()
+removeAttribute :: DOMElement -> Text -> IO ()
 removeAttribute e k = js_removeAttribute e (textToJSString k)
 
 -- | DOMNode.removeChild()
 -- https://developer.mozilla.org/en-US/docs/Web/API/DOMNode/removeChild
-removeChild :: DOMNode -> DOMNode -> IO ()
+removeChild :: DOMElement -> DOMNode -> IO ()
 removeChild = js_removeChild
 
 -- | Document.createElement()
 -- https://developer.mozilla.org/en-US/docs/Web/API/Document/createElement
-createElement :: Text -> IO DOMNode
+createElement :: Text -> IO DOMElement
 createElement = js_createElement . textToJSString
 
 -- | Document.createElementNS()
 -- https://developer.mozilla.org/en-US/docs/Web/API/Document/createElementNS
-createElementNS :: Text -> Text -> IO DOMNode
+createElementNS :: Text -> Text -> IO DOMElement
 createElementNS n t = js_createElementNS (textToJSString n) (textToJSString t)
 
 -- | Document.createTextNode()
@@ -97,12 +97,12 @@ createComment = js_createComment . textToJSString
 
 -- | Element.classList.add()
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/classList
-classListAdd :: DOMNode -> Text -> IO ()
+classListAdd :: DOMElement -> Text -> IO ()
 classListAdd e c = js_classListAdd e (textToJSString c)
 
 -- | Element.classList.remove()
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/classList
-classListRemove :: DOMNode -> Text -> IO ()
+classListRemove :: DOMElement -> Text -> IO ()
 classListRemove e c = js_classListRemove e (textToJSString c)
 
 -- | Assign text to DOMNode.nodeValue
@@ -112,13 +112,13 @@ setTextValue v = js_setTextValue v . textToJSString
 
 -- | Insert raw HTML code, similar to @parent.innerHTML = rawHtml@ but
 -- does not removes siblings
-insertUnsafeHtml :: DOMNode -> Maybe DOMNode -> Text -> IO ()
+insertUnsafeHtml :: DOMElement -> Maybe DOMNode -> Text -> IO ()
 insertUnsafeHtml parent manchor rawHtml = js_insertUnsafeHtml parent
   (maybeToNullable manchor) (textToJSString rawHtml)
 
 -- | Assuming @begin@ and @end@ are chidren nodes of the @parent@ node
 -- and @begin@ stands before the @end@, remove all nodes between them
-removeBetween :: DOMNode -> DOMNode -> DOMNode -> IO ()
+removeBetween :: DOMElement -> DOMNode -> DOMNode -> IO ()
 removeBetween parent begin end = js_removeBetween parent begin end
 
 -- | Run a given callback on BeforeUnloadEvent
@@ -265,24 +265,24 @@ errorGhcjsOnly = error "Only GHCJS is supported"
 js_onBeforeUnload :: Callback a -> IO ()
 js_onBeforeUnload = errorGhcjsOnly
 
-js_appendChild :: DOMNode -> DOMNode -> IO () = errorGhcjsOnly
-js_insertBefore :: DOMNode -> DOMNode -> DOMNode -> IO () = errorGhcjsOnly
-js_removeBetween :: DOMNode -> DOMNode -> DOMNode -> IO () = errorGhcjsOnly
-js_setAttribute :: DOMNode -> JSString -> JSString -> IO () = errorGhcjsOnly
-js_removeAttribute :: DOMNode -> JSString -> IO ()  = errorGhcjsOnly
-js_removeChild :: DOMNode -> DOMNode -> IO ()  = errorGhcjsOnly
-js_replaceChild :: DOMNode -> DOMNode -> DOMNode -> IO ()  = errorGhcjsOnly
-js_createElement :: JSString -> IO DOMNode  = errorGhcjsOnly
-js_createElementNS :: JSString -> JSString -> IO DOMNode  = errorGhcjsOnly
+js_appendChild :: DOMElement -> DOMNode -> IO () = errorGhcjsOnly
+js_insertBefore :: DOMElement -> DOMNode -> DOMNode -> IO () = errorGhcjsOnly
+js_removeBetween :: DOMElement -> DOMNode -> DOMNode -> IO () = errorGhcjsOnly
+js_setAttribute :: DOMElement -> JSString -> JSString -> IO () = errorGhcjsOnly
+js_removeAttribute :: DOMElement -> JSString -> IO ()  = errorGhcjsOnly
+js_removeChild :: DOMElement -> DOMNode -> IO ()  = errorGhcjsOnly
+js_replaceChild :: DOMElement -> DOMNode -> DOMNode -> IO ()  = errorGhcjsOnly
+js_createElement :: JSString -> IO DOMElement  = errorGhcjsOnly
+js_createElementNS :: JSString -> JSString -> IO DOMElement  = errorGhcjsOnly
 js_createTextNode :: JSString -> IO DOMNode  = errorGhcjsOnly
 js_createComment :: JSString -> IO DOMNode  = errorGhcjsOnly
-js_classListAdd :: DOMNode -> JSString -> IO ()  = errorGhcjsOnly
-js_classListRemove :: DOMNode -> JSString -> IO ()  = errorGhcjsOnly
+js_classListAdd :: DOMElement -> JSString -> IO ()  = errorGhcjsOnly
+js_classListRemove :: DOMElement -> JSString -> IO ()  = errorGhcjsOnly
 js_setTextValue :: DOMNode -> JSString -> IO ()  = errorGhcjsOnly
 js_getCurrentWindow :: IO JSVal  = errorGhcjsOnly
 js_getCurrentDocument :: IO JSVal  = errorGhcjsOnly
 js_getCurrentBody :: IO JSVal = errorGhcjsOnly
-js_insertUnsafeHtml :: DOMNode -> Nullable DOMNode -> JSString -> IO () = errorGhcjsOnly
+js_insertUnsafeHtml :: DOMElement -> Nullable DOMNode -> JSString -> IO () = errorGhcjsOnly
 js_call0 :: JSVal -> IO JSVal = errorGhcjsOnly
 js_call1 :: JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
 js_call2 :: JSVal -> JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
@@ -292,28 +292,28 @@ js_callMethod2 :: JSVal -> JSString -> JSVal -> JSVal -> IO JSVal = errorGhcjsOn
 #else
 foreign import javascript unsafe
   "$1.appendChild($2)"
-  js_appendChild :: DOMNode -> DOMNode -> IO ()
+  js_appendChild :: DOMElement -> DOMNode -> IO ()
 foreign import javascript unsafe
   "$1.insertBefore($2, $3)"
-  js_insertBefore :: DOMNode -> DOMNode -> DOMNode -> IO ()
+  js_insertBefore :: DOMElement -> DOMNode -> DOMNode -> IO ()
 foreign import javascript unsafe
   "$1.setAttribute($2, $3)"
-  js_setAttribute :: DOMNode -> JSString -> JSString -> IO ()
+  js_setAttribute :: DOMElement -> JSString -> JSString -> IO ()
 foreign import javascript unsafe
   "$1.removeAttribute($2)"
-  js_removeAttribute :: DOMNode -> JSString -> IO ()
+  js_removeAttribute :: DOMElement -> JSString -> IO ()
 foreign import javascript unsafe
   "$1.removeChild($2)"
-  js_removeChild :: DOMNode -> DOMNode -> IO ()
+  js_removeChild :: DOMElement -> DOMNode -> IO ()
 foreign import javascript unsafe
   "$1.replaceChild($2, $3)"
-  js_replaceChild :: DOMNode -> DOMNode -> DOMNode -> IO ()
+  js_replaceChild :: DOMElement -> DOMNode -> DOMNode -> IO ()
 foreign import javascript unsafe
   "document.createElement($1)"
-  js_createElement :: JSString -> IO DOMNode
+  js_createElement :: JSString -> IO DOMElement
 foreign import javascript unsafe
   "document.createElementNS($1, $2)"
-  js_createElementNS :: JSString -> JSString -> IO DOMNode
+  js_createElementNS :: JSString -> JSString -> IO DOMElement
 foreign import javascript unsafe
   "document.createTextNode($1)"
   js_createTextNode :: JSString -> IO DOMNode
@@ -322,10 +322,10 @@ foreign import javascript unsafe
   js_createComment :: JSString -> IO DOMNode
 foreign import javascript unsafe
   "$1.classList.add($2)"
-  js_classListAdd :: DOMNode -> JSString -> IO ()
+  js_classListAdd :: DOMElement -> JSString -> IO ()
 foreign import javascript unsafe
   "$1.classList.remove($2)"
-  js_classListRemove :: DOMNode -> JSString -> IO ()
+  js_classListRemove :: DOMElement -> JSString -> IO ()
 foreign import javascript unsafe
   "$1.nodeValue = $2;"
   js_setTextValue :: DOMNode -> JSString -> IO ()
@@ -353,7 +353,7 @@ foreign import javascript unsafe
       parent.removeChild(end.previousSibling);\
     }\
   })($1, $2, $3)"
-  js_removeBetween :: DOMNode -> DOMNode -> DOMNode -> IO ()
+  js_removeBetween :: DOMElement -> DOMNode -> DOMNode -> IO ()
 foreign import javascript unsafe "$1()"
   js_call0 :: JSVal -> IO JSVal
 foreign import javascript unsafe "$1($2)"
@@ -383,7 +383,7 @@ foreign import javascript unsafe
       }\
     }\
   })($1, $2, $3)"
-  js_insertUnsafeHtml :: DOMNode -> Nullable DOMNode -> JSString -> IO ()
+  js_insertUnsafeHtml :: DOMElement -> Nullable DOMNode -> JSString -> IO ()
 #endif
 
 instance (x ~ (), MonadIO m) => IsString (HtmlT m x) where
