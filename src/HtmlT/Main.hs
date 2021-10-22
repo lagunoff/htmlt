@@ -24,7 +24,6 @@ data RunningApp = RunningApp
 
 startWithOptions :: StartOpts -> Html a -> IO (a, RunningApp)
 startWithOptions StartOpts{..} render = mdo
-  postHooks <- newIORef []
   begin <- createComment ">>> begin"
   end <- createComment "<<< end"
   appendChild startopts_root_element begin
@@ -34,12 +33,10 @@ startWithOptions StartOpts{..} render = mdo
       { html_current_root = startopts_root_element
       , html_insert_before_anchor = Just end
       , html_reactive_env = startopts_reactive_env
-      , html_post_hooks = postHooks
       , html_catch_interactive = throwM
       }
     runApp = RunningApp htmlEnv begin end
   result <- runHtmlT htmlEnv render
-  liftIO (readIORef postHooks >>= sequence_)
   onBeforeUnload do
     fins <- readIORef $ renv_finalizers startopts_reactive_env
     sequence_ fins

@@ -18,7 +18,6 @@ data HtmlEnv = HtmlEnv
   { html_current_root :: Node
   , html_insert_before_anchor :: Maybe Node
   , html_reactive_env :: ReactiveEnv
-  , html_post_hooks :: IORef [IO ()]
   , html_catch_interactive :: SomeException -> IO ()
   } deriving Generic
 

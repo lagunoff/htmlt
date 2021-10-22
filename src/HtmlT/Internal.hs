@@ -10,7 +10,6 @@ import HtmlT.DOM
 -- | Auxiliary type to help implement 'simpleList'
 data ElemEnv a = ElemEnv
   { ee_html_env :: HtmlEnv
-  , ee_ref :: DynRef a
   , ee_modifier :: Modifier a
   , ee_begin :: Node
   , ee_end :: Node
@@ -36,7 +35,7 @@ insertNode n = do
 
 -- | Insert two comment nodes intended to be used as a boundary for
 -- dynamic content and as arguments to @removeBetween@ to clear the
--- content in a finalizer
+-- content in the finalizer
 insertBoundaries :: MonadIO m => HtmlT m (Node, Node)
 insertBoundaries = do
   beginAnchor <- liftIO $ createComment ">>> begin"

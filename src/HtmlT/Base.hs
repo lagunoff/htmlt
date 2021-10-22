@@ -81,7 +81,7 @@ dynProp
   -> Html ()
 dynProp textKey dyn = do
   rootEl <- asks html_current_root
-  void $ forDyn dyn (liftIO . setup rootEl)
+  forDyn_ dyn (liftIO . setup rootEl)
   where
     setup el t = toJSVal t
       >>= flip (unsafeSetProp jsKey) (coerce el)
@@ -98,7 +98,7 @@ attr k v = asks html_current_root
 dynAttr :: Text -> Dynamic Text -> Html ()
 dynAttr k d = do
   rootEl <- asks html_current_root
-  void $ forDyn d $ liftIO . setAttribute rootEl k
+  forDyn_ d $ liftIO . setAttribute rootEl k
 
 -- | Attach listener to the root element. First agument is the name
 -- of the DOM event to listen. Second is the callback that accepts the fired
@@ -172,7 +172,7 @@ classes cs = do
 toggleClass :: Text -> Dynamic Bool -> Html ()
 toggleClass cs dyn = do
   rootEl <- asks html_current_root
-  void $ forDyn dyn (liftIO . setup rootEl cs)
+  forDyn_ dyn (liftIO . setup rootEl cs)
   where
     setup rootEl cs = \case
       True -> classListAdd rootEl cs
@@ -190,7 +190,7 @@ toggleClass cs dyn = do
 toggleAttr :: Text -> Dynamic Bool -> Html ()
 toggleAttr att dyn = do
   rootEl <- asks html_current_root
-  void $ forDyn dyn (liftIO . setup rootEl att)
+  forDyn_ dyn (liftIO . setup rootEl att)
   where
     setup rootEl name = \case
       True -> setAttribute rootEl name "on"
@@ -207,7 +207,7 @@ toggleAttr att dyn = do
 dynStyle :: Text -> Dynamic Text -> Html ()
 dynStyle cssProp dyn = do
   rootEl <- asks html_current_root
-  void $ forDyn dyn (liftIO . setup rootEl)
+  forDyn_ dyn (liftIO . setup rootEl)
   where
     setup el t = do
       styleVal <- Object.getProp "style" (coerce el)
@@ -248,17 +248,19 @@ simpleList dynRef h = do
       (_, [], []) -> return []
       ([], [], x:xs) -> do
         -- New list is longer, append new elements
-        fins <- newIORef []
+        finalizers <- newIORef []
         elemRef <- runReactiveEnvT reactiveEnv $ newRef x
-        postRef <- liftIO (newIORef [])
         let
-          elemRef' = elemRef {dynref_modifier=elemModifier idx (fromRef elemRef)}
+          controlledRef = elemRef
+            {dynref_modifier=elemModifier idx (fromRef elemRef)
+            }
           newEnv = htmlEnv
-            { html_reactive_env = reactiveEnv { renv_finalizers = fins }
-            , html_post_hooks = postRef }
+            { html_reactive_env = reactiveEnv { renv_finalizers = finalizers }
+            }
         (begin, end) <- runHtmlT newEnv insertBoundaries
-        runHtmlT newEnv {html_insert_before_anchor = Just end} $ h idx elemRef'
-        let itemRef = ElemEnv newEnv elemRef' (dynref_modifier elemRef) begin end
+        runHtmlT newEnv {html_insert_before_anchor = Just end} $
+          h idx controlledRef
+        let itemRef = ElemEnv newEnv (dynref_modifier elemRef) begin end
         (itemRef:) <$> setup (idx + 1) [] xs []
       (r:rs, x:xs, []) -> do
         -- New list is shorter, delete the elements that no longer
@@ -311,35 +313,33 @@ simpleList dynRef h = do
 -- >   on_ "click" $ writeRef routeRef Blog
 -- >   text "Show my blog page"
 dyn :: Dynamic (Html ()) -> Html ()
-dyn dyn = do
-  env <- ask
+dyn d = do
+  htmlEnv <- ask
   childRef <- liftIO (newIORef Nothing)
   (begin, end) <- insertBoundaries
   let
-    rootEl = html_current_root env
+    rootEl = html_current_root htmlEnv
     finalizeEnv newEnv = do
       readIORef childRef >>= \case
         Just HtmlEnv{..} -> do
-          fins <- readIORef $ renv_finalizers html_reactive_env
-          sequence_ fins
+          finalizers <- readIORef $ renv_finalizers html_reactive_env
+          sequence_ finalizers
           writeIORef (renv_finalizers html_reactive_env) []
         Nothing -> return ()
+      removeBetween rootEl begin end
       writeIORef childRef newEnv
-    setup rootEl html = liftIO do
-      postHooks <- newIORef []
-      fins <- newIORef []
+    setup html = liftIO do
+      finalizers <- newIORef []
       let
-        newEnv = env
-          { html_reactive_env
-            = (html_reactive_env env) { renv_finalizers = fins }
-          , html_post_hooks = postHooks }
-        commit =
-          finalizeEnv (Just newEnv)
-          <* removeBetween rootEl begin end
-          <* (readIORef postHooks >>= sequence_)
-      commit *> runHtmlT newEnv {html_insert_before_anchor = Just end} html
+        newEnv = htmlEnv
+          { html_reactive_env = (html_reactive_env htmlEnv)
+            { renv_finalizers = finalizers }
+          , html_insert_before_anchor = Just end
+          }
+      finalizeEnv (Just newEnv)
+      runHtmlT newEnv html
   addFinalizer (finalizeEnv Nothing)
-  void $ forDyn dyn (liftIO . setup rootEl)
+  forDyn_ d setup
 
 -- | Catch exceptions thrown from event handlers
 catchInteractive
