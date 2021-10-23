@@ -94,12 +94,14 @@ library
   build-depends:
     base,
     ghcjs-base,
-    ghcjs-prim,
     bytestring,
     containers,
     exceptions,
     mtl,
     text
+  if impl(ghcjs)
+    build-depends:
+      ghcjs-prim,
 
 executable htmlt-hello
   import: htmlt-common         
@@ -128,7 +130,6 @@ executable htmlt-todomvc
     generic-lens,
     mtl,
     ghcjs-base,
-    ghcjs-prim,
     htmlt,
     text,
   if !flag(examples)
@@ -150,11 +151,22 @@ executable htmlt-simple-routing
     generic-lens,
     mtl,
     ghcjs-base,
-    ghcjs-prim,
     network-uri,
     http-api-data,
     htmlt,
     text,
+  if !flag(examples)
+    buildable: False
+  
+executable htmlt-benchmarks
+  import: htmlt-common         
+  main-is: benchmarks.hs
+  hs-source-dirs: ./benchmarks/
+  build-depends:
+    base,
+    htmlt,
+    text,
+    gauge,
   if !flag(examples)
     buildable: False
   

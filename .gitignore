@@ -24,5 +24,3 @@ locals.nix
 node_modules
 package.json
 yarn.lock
-benchmarks.jsexe
-benchmarks

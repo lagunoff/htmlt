@@ -41,16 +41,21 @@ let
     foundation = cure super.foundation;
     basement = cure super.basement;
     gauge = cure super.gauge;
+    http-api-data = cure super.http-api-data;
+    network-uri = cure super.network-uri;
   };
 
-  ghcjsPackages = pkgs.haskell.packages.ghcjs810.override {
+  mkPackages = self: super: super.override {
     overrides = lib.composeExtensions (self: super:
       lib.mapAttrs (k: v: self.callCabal2nix k v {}) (extraPackages super)
     ) overrides;
-  };
-in
-  ghcjsPackages // {
+  } // {
     shell = pkgs.mkShell {
-      inputsFrom = [ghcjsPackages.htmlt.env];
+      inputsFrom = [self.htmlt.env];
     };
-  }
+  };
+
+in rec {
+  ghcjs = mkPackages ghcjs pkgs.haskell.packages.ghcjs810;
+  ghc = mkPackages ghc pkgs.haskellPackages;
+}

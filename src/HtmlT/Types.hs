@@ -11,7 +11,6 @@ import GHCJS.Types
 import HtmlT.Event
 
 -- | HtmlT is nothing more than just a newtype over ReaderT HtmlEnv,
--- that's all!
 newtype HtmlT m a = HtmlT {unHtmlT :: ReaderT HtmlEnv m a}
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadReader HtmlEnv
     , MonadFix, MonadCatch, MonadThrow, MonadMask, MonadTrans)
