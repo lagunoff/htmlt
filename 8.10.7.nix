@@ -43,6 +43,7 @@ let
     gauge = cure super.gauge;
     http-api-data = cure super.http-api-data;
     network-uri = cure super.network-uri;
+    gauge = cure super.gauge;
   };
 
   mkPackages = self: super: super.override {

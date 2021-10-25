@@ -2,14 +2,12 @@
 module HtmlT.Main where
 
 import Control.Monad.Catch
-import Control.Monad.Reader
 import Data.IORef
 import GHC.Generics
 
 import HtmlT.DOM
 import HtmlT.Event
 import HtmlT.Types
-import qualified HtmlT.HashMap as H
 
 data StartOpts = StartOpts
   { startopts_reactive_env :: ReactiveEnv
@@ -44,9 +42,8 @@ startWithOptions StartOpts{..} render = mdo
 
 attachTo :: DOMElement -> Html a -> IO (a, RunningApp)
 attachTo rootEl render = do
-  fins <- liftIO $ newIORef []
-  subs <- liftIO $ H.new
-  startWithOptions (StartOpts (ReactiveEnv subs fins) rootEl) render
+  renv <- newReactiveEnv
+  startWithOptions (StartOpts renv rootEl) render
 
 attachToBody :: Html a -> IO (a, RunningApp)
 attachToBody h = getCurrentBody >>= (`attachTo` h)

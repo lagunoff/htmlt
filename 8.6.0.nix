@@ -30,6 +30,7 @@ let
 
   overrides = self: super: {
     htmlt = self.callCabal2nixWithOptions "htmlt" ./. "-fexamples" {};
+    gauge = cure super.gauge;
   } // lib.optionalAttrs (!(super.ghc.isGhcjs or false)) {
     ghcjs-base = cure super.ghcjs-base;
   };

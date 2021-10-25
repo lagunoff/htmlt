@@ -84,8 +84,6 @@ library
     HtmlT.Decode
     HtmlT.Element
     HtmlT.Event
-    HtmlT.HashMap
-    HtmlT.IdSupply
     HtmlT.Internal
     HtmlT.Main
     HtmlT.Property

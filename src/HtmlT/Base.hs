@@ -1,4 +1,4 @@
--- | Most essential definions for public API
+-- | Most essential public definions
 module HtmlT.Base where
 
 import Control.Exception as Exception
@@ -125,8 +125,8 @@ onOptions name opts f = ask >>= \HtmlEnv{..} ->
 onDecoder :: Text -> Decoder a -> (a -> Html ()) -> Html ()
 onDecoder name dec = on name . withDecoder dec
 
--- | Makes easier to take some data from DOMEvent inside some event
--- handler function. If the decoder fails, the callback won't be
+-- | Makes easier to take some data from DOMEvent inside an event
+-- handler callback. If the decoder fails, the callback won't be
 -- executed.
 --
 -- > el "input" do
@@ -159,7 +159,7 @@ onGlobalEvent opts target name f = do
   htmlEnv <- ask
   void $ subscribe (mkEvent htmlEnv) (liftIO . runHtmlT htmlEnv)
   where
-    mkEvent htmlEnv = Event \callback -> liftIO do
+    mkEvent htmlEnv = Event \_ callback -> liftIO do
       unlisten <- addEventListener opts target name $
         void . liftIO . catchExes htmlEnv . sync . callback . f
       return $ liftIO unlisten
@@ -365,7 +365,7 @@ catchInteractive html f =
   local (\e -> e {html_catch_interactive = runHtmlT e . f}) html
 
 -- | Run an action before the current node is detached from the DOM
-addFinalizer :: (MonadIO m, HasReactiveEnv m) => IO () -> m ()
+addFinalizer :: MonadReactive m => IO () -> m ()
 addFinalizer fin = do
   ReactiveEnv{..} <- askReactiveEnv
   finRef <- liftIO $ newIORef fin
@@ -375,7 +375,7 @@ addFinalizer fin = do
 -- 'html_current_root'. Might be useful for implementing modal
 -- dialogs, tooltips etc. Similar to what called portals in React
 -- ecosystem
-portal :: MonadIO m => DOMElement -> HtmlT m a -> HtmlT m a
+portal :: Monad m => DOMElement -> HtmlT m a -> HtmlT m a
 portal rootEl = local (\e -> e
   {html_current_root = rootEl, html_insert_before_anchor = Nothing})
 
