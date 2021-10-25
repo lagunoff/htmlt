@@ -25,18 +25,17 @@ main = do
       h1_ "Simple in-browser routing example"
       p_ do
         "See the source on the "
-        a_ [href_ "https://github.com/lagunoff/htmlt/blob/master/examples/simple-routing/"]
-          "github"
+        a_ [href_ "https://github.com/lagunoff/htmlt/blob/master/examples/\
+          \simple-routing/"] "github"
       nav_ $ ul_ do
         let link t r = li_ $ a_ [href_ (toUrl r)] $ text t
         link "Home" HomeR
         link "List of Countries" $ CountriesListR defaultCountriesListQ
         link "Countries on the Map" $ CountriesMapR defaultCountriesMapQ
-    main_ do
-      dyn $ routeDyn <&> \case
-        HomeR -> homePage
-        CountriesMapR q -> countriesMapPage q
-        CountriesListR q -> countriesListPage q
+    main_ $ dyn $ routeDyn <&> \case
+      HomeR -> homePage
+      CountriesMapR q -> countriesMapPage q
+      CountriesListR q -> countriesListPage q
     footer_ $ p_ $ a_ [href_ "https://github.com/lagunoff"] "Vladislav Lagunov"
 
 customCss :: Text

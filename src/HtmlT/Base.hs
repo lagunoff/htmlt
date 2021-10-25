@@ -125,6 +125,22 @@ onOptions name opts f = ask >>= \HtmlEnv{..} ->
 onDecoder :: Text -> Decoder a -> (a -> Html ()) -> Html ()
 onDecoder name dec = on name . withDecoder dec
 
+-- | Makes easier to take some data from DOMEvent inside some event
+-- handler function. If the decoder fails, the callback won't be
+-- executed.
+--
+-- > el "input" do
+-- >   prop "placeholder" "Enter text..."
+-- >   on "input" $ withDecoder valueDecoder \text -> do
+-- >     liftIO $ Text.putStrLn $ "You entered: " <> text
+withDecoder
+  :: MonadIO m
+  => Decoder a
+  -> (a -> m ()) -> DOMEvent -> m ()
+withDecoder dec f domEvent =
+  liftIO (runDecoder dec (unDOMEvent domEvent))
+    >>= maybe (return ()) f
+
 -- | Attach a listener to arbitrary target, not just the current root
 -- element (usually that would be @window@, @document@ or @body@
 -- objects)
@@ -145,9 +161,9 @@ onGlobalEvent opts target name f = do
   where
     mkEvent htmlEnv = Event \callback -> liftIO do
       unlisten <- addEventListener opts target name $
-        void . liftIO . catchExs htmlEnv . sync . callback . f . coerce
+        void . liftIO . catchExes htmlEnv . sync . callback . f
       return $ liftIO unlisten
-    catchExs HtmlEnv{..} = (`Exception.catch` html_catch_interactive)
+    catchExes HtmlEnv{..} = (`Exception.catch` html_catch_interactive)
 
 -- | Assign CSS classes to the current root element. Compared to @prop
 -- "className"@ can be used multiple times for the same root
@@ -298,14 +314,13 @@ simpleList dynRef h = do
     newEenvs <- liftIO $ setup 0 old new eenvs
     liftIO $ writeIORef elemEnvsRef newEenvs
 
-
 -- | First build a DOM with the widget that is currently held by the
 -- given Dynamic, then rebuild it every time Dynamic's value
 -- changes. Useful for SPA routing, tabbed components etc.
 --
 -- > routeRef <- newRef Home
 -- > el "div"
--- >   dyn_ $ routeRef <&> \case
+-- >   dyn $ routeRef <&> \case
 -- >     Home -> homeWidget
 -- >     Blog -> blogWidget
 -- >     Resume -> resumeWidget

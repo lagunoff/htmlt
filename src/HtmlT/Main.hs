@@ -24,8 +24,8 @@ data RunningApp = RunningApp
 
 startWithOptions :: StartOpts -> Html a -> IO (a, RunningApp)
 startWithOptions StartOpts{..} render = mdo
-  begin <- createComment ">>> begin"
-  end <- createComment "<<< end"
+  begin <- createComment "dynamic content {{"
+  end <- createComment "}}"
   appendChild startopts_root_element begin
   appendChild startopts_root_element end
   let

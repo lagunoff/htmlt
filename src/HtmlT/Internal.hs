@@ -38,8 +38,8 @@ insertNode n = do
 -- content in the finalizer
 insertBoundaries :: MonadIO m => HtmlT m (DOMNode, DOMNode)
 insertBoundaries = do
-  beginAnchor <- liftIO $ createComment ">>> begin"
-  endAnchor <- liftIO $ createComment "<<< end"
+  beginAnchor <- liftIO $ createComment "dynamic content {{"
+  endAnchor <- liftIO $ createComment "}}"
   insertNode beginAnchor
   insertNode endAnchor
   return (beginAnchor, endAnchor)

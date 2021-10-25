@@ -134,7 +134,7 @@ addEventListener
   :: ListenerOpts
   -> DOMNode
   -> Text
-  -> (JSVal -> IO ())
+  -> (DOMEvent -> IO ())
   -> IO (IO ())
 addEventListener ListenerOpts{..} target name f = do
   cb <- mkcallback \event -> do
@@ -142,7 +142,7 @@ addEventListener ListenerOpts{..} target name f = do
       void $ js_callMethod0 event "stopPropagation"
     when lo_prevent_default do
       void $ js_callMethod0 event "preventDefault"
-    f event
+    f (coerce event)
   js_callMethod2 (coerce target) "addEventListener"
     (jsval (textToJSString name)) (jsval cb)
   return do
