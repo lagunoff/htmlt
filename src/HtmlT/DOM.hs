@@ -112,14 +112,14 @@ setTextValue v = js_setTextValue v . textToJSString
 
 -- | Insert raw HTML code, similar to @parent.innerHTML = rawHtml@ but
 -- does not removes siblings
-insertUnsafeHtml :: DOMElement -> Maybe DOMNode -> Text -> IO ()
-insertUnsafeHtml parent manchor rawHtml = js_insertUnsafeHtml parent
+unsafeInsertHtml :: DOMElement -> Maybe DOMNode -> Text -> IO ()
+unsafeInsertHtml parent manchor rawHtml = js_unsafeInsertHtml parent
   (maybeToNullable manchor) (textToJSString rawHtml)
 
--- | Assuming @begin@ and @end@ are chidren nodes of the @parent@ node
--- and @begin@ stands before the @end@, remove all nodes between them
-removeBetween :: DOMElement -> DOMNode -> DOMNode -> IO ()
-removeBetween parent begin end = js_removeBetween parent begin end
+-- | Assuming @begin@ and @end@ are chidrens of the @parent@ element
+-- and @begin@ placed before the @end@, remove all nodes between them
+unsafeRemoveBetween :: DOMElement -> DOMNode -> DOMNode -> IO ()
+unsafeRemoveBetween parent begin end = js_unsafeRemoveBetween parent begin end
 
 -- | Run a given callback on BeforeUnloadEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/BeforeUnloadEvent
@@ -133,7 +133,7 @@ onBeforeUnload cb = do
 addEventListener
   :: ListenerOpts
   -> DOMNode
-  -> Text
+  -> EventName
   -> (DOMEvent -> IO ())
   -> IO (IO ())
 addEventListener ListenerOpts{..} target name f = do
@@ -142,7 +142,7 @@ addEventListener ListenerOpts{..} target name f = do
       void $ js_callMethod0 event "stopPropagation"
     when lo_prevent_default do
       void $ js_callMethod0 event "preventDefault"
-    f (coerce event)
+    f (DOMEvent event)
   js_callMethod2 (coerce target) "addEventListener"
     (jsval (textToJSString name)) (jsval cb)
   return do
@@ -241,16 +241,16 @@ keyboardEventDecoder = KeyboardEvent
 targetDecoder :: Decoder JSVal
 targetDecoder = decodeAt ["target"] decodeJSVal
 
+-- | Event.currentTarget
+-- https://developer.mozilla.org/en-US/docs/Web/API/Event/currentTarget
+currentTargetDecoder :: Decoder JSVal
+currentTargetDecoder = decodeAt ["currentTarget"] decodeJSVal
+
 -- | Event.target.value
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
 -- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-value
 valueDecoder :: Decoder Text
 valueDecoder = decodeAt ["target", "value"] decoder
-
--- | Event.currentTarget
--- https://developer.mozilla.org/en-US/docs/Web/API/Event/currentTarget
-currentTargetDecoder :: Decoder JSVal
-currentTargetDecoder = decodeAt ["currentTarget"] decodeJSVal
 
 -- | Event.target.value
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
@@ -267,7 +267,7 @@ js_onBeforeUnload = errorGhcjsOnly
 
 js_appendChild :: DOMElement -> DOMNode -> IO () = errorGhcjsOnly
 js_insertBefore :: DOMElement -> DOMNode -> DOMNode -> IO () = errorGhcjsOnly
-js_removeBetween :: DOMElement -> DOMNode -> DOMNode -> IO () = errorGhcjsOnly
+js_unsafeRemoveBetween :: DOMElement -> DOMNode -> DOMNode -> IO () = errorGhcjsOnly
 js_setAttribute :: DOMElement -> JSString -> JSString -> IO () = errorGhcjsOnly
 js_removeAttribute :: DOMElement -> JSString -> IO ()  = errorGhcjsOnly
 js_removeChild :: DOMElement -> DOMNode -> IO ()  = errorGhcjsOnly
@@ -282,7 +282,7 @@ js_setTextValue :: DOMNode -> JSString -> IO ()  = errorGhcjsOnly
 js_getCurrentWindow :: IO JSVal  = errorGhcjsOnly
 js_getCurrentDocument :: IO JSVal  = errorGhcjsOnly
 js_getCurrentBody :: IO JSVal = errorGhcjsOnly
-js_insertUnsafeHtml :: DOMElement -> Nullable DOMNode -> JSString -> IO () = errorGhcjsOnly
+js_unsafeInsertHtml :: DOMElement -> Nullable DOMNode -> JSString -> IO () = errorGhcjsOnly
 js_call0 :: JSVal -> IO JSVal = errorGhcjsOnly
 js_call1 :: JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
 js_call2 :: JSVal -> JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
@@ -353,7 +353,7 @@ foreign import javascript unsafe
       parent.removeChild(end.previousSibling);\
     }\
   })($1, $2, $3)"
-  js_removeBetween :: DOMElement -> DOMNode -> DOMNode -> IO ()
+  js_unsafeRemoveBetween :: DOMElement -> DOMNode -> DOMNode -> IO ()
 foreign import javascript unsafe "$1()"
   js_call0 :: JSVal -> IO JSVal
 foreign import javascript unsafe "$1($2)"
@@ -383,7 +383,7 @@ foreign import javascript unsafe
       }\
     }\
   })($1, $2, $3)"
-  js_insertUnsafeHtml :: DOMElement -> Nullable DOMNode -> JSString -> IO ()
+  js_unsafeInsertHtml :: DOMElement -> Nullable DOMNode -> JSString -> IO ()
 #endif
 
 instance (x ~ (), MonadIO m) => IsString (HtmlT m x) where

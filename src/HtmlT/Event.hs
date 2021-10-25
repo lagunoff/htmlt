@@ -1,8 +1,8 @@
 -- | Simple FRP-like functionality. This module implements 'Event's
--- and 'Dynamic's similar to the same concepts from Reflex. Also
--- 'DynRef' new concept also expected to be widely used in a typical
--- application. Some functions bear the same name as their Reflex
--- counterparts to make API easier to learn
+-- and 'Dynamic's similar to the same concepts from Reflex. Also there
+-- is 'DynRef' a new definition also expected to be widely used in a
+-- typical application. Some functions bear the same name as their
+-- Reflex counterparts to make API easier to learn
 module HtmlT.Event where
 
 import Control.Applicative
@@ -58,17 +58,15 @@ newtype Transact a = Transact (StateT TransactState IO a)
     , MonadMask)
 
 -- | The environment required for some operations like creating a new
--- 'Event' or subscribing to an Event. It is likely that dynamic parts
--- of the application will be passed new instance of 'renv_finalizers'
--- to easily remove the subscriptions after the dynamic part is
--- detached, while the other fields typically will remain unchanged
--- everywhere
+-- 'Event' or subscribing to an Event.
 data ReactiveEnv = ReactiveEnv
   { renv_subscriptions :: IORef (M.Map EventId [(SubscriptionId, Callback Any)])
-  -- ^ Keep track of subscriptions for all events
+  -- ^ Keeps track of subscriptions
   , renv_finalizers :: IORef [Canceller]
-  -- ^ List of cancellers, IO actions that detach listeners from
-  -- events allowing them to be garbage collected
+  -- ^ List of cancellers, IO actions to detach listeners from
+  -- events. It is likely that dynamic parts of the application will
+  -- be passed new instance of 'renv_finalizers' to isolate and remove
+  -- the subscriptions after the dynamic part is detached
   , renv_id_generator :: IORef Int
   -- ^ Contains next value for 'EventId' or SubscriptionId
   } deriving Generic
@@ -118,7 +116,7 @@ newReactiveEnv = liftIO do
 --
 -- > (event, push) <- newEvent @String
 -- > push "New Value" -- event fires with given value
-newEvent :: MonadReactive m => m (Event a, Trigger a)
+newEvent :: forall a m. MonadReactive m => m (Event a, Trigger a)
 newEvent = do
   renv <- askReactiveEnv
   eventId <- EventId <$> liftIO (nextIntId renv)
@@ -129,7 +127,7 @@ newEvent = do
 --
 -- > showRef <- newRef False
 -- > writeRef showRef True -- update event fires for showRef
-newRef :: MonadReactive m => a -> m (DynRef a)
+newRef :: forall a m. MonadReactive m => a -> m (DynRef a)
 newRef initial = do
   ref <- liftIO $ newIORef initial
   (ev, push) <- newEvent
@@ -159,6 +157,10 @@ never = Event \_ -> mempty
 writeRef :: MonadIO m => DynRef a -> a -> m ()
 writeRef ref a = modifyRef ref (const a)
 
+-- | Version of 'writeRef' that runs inside @Transact@
+writeSync :: DynRef a -> a -> Transact ()
+writeSync ref a = modifySync ref (const a)
+
 -- | Read the current value held by given 'DynRef'
 --
 -- > ref <- newRef "Hello there!"
@@ -184,10 +186,6 @@ modifyRef (DynRef _ modifier) = liftIO . sync . modifier
 -- | Version of 'modifyRef' that runs inside @Transact@
 modifySync :: DynRef a -> (a -> a) -> Transact ()
 modifySync = dynref_modifier
-
--- | Version of 'writeRef' that runs inside @Transact@
-writeSync :: DynRef a -> a -> Transact ()
-writeSync ref a = modifySync ref (const a)
 
 -- | Extract a 'Dynamic' out of 'DynRef'
 fromRef :: DynRef a -> Dynamic a
@@ -232,7 +230,7 @@ subscribe :: MonadReactive m => Event a -> Callback a -> m Canceller
 subscribe (Event s) k = do
   e@ReactiveEnv{..} <- askReactiveEnv
   cancel <- liftIO $ s e k
-  liftIO $ modifyIORef renv_finalizers (cancel:)
+  liftIO $ modifyIORef' renv_finalizers (cancel:)
   return cancel
 
 -- | Perform an action with current value of the given 'Dynamic' and
@@ -305,6 +303,7 @@ traceDynWith show' tag d = d {dynamic_updates = e} where
 
 -- | Make an 'Event' with a tuple containing previous value as well as
 -- the current value from the original event
+-- FIXME: Doesn't work with multiple subscriptions
 diffEvent :: a -> Event a -> Event (a, a)
 diffEvent initial (Event s) = Event \e k -> do
   oldRef <- liftIO (newIORef initial)

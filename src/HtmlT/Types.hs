@@ -4,6 +4,7 @@ import Control.Applicative
 import Control.Monad.Catch
 import Control.Monad.Reader
 import Data.Coerce
+import Data.Text
 import GHC.Generics
 import GHCJS.Marshal.Pure
 import GHCJS.Prim
@@ -17,8 +18,8 @@ newtype HtmlT m a = HtmlT {unHtmlT :: ReaderT HtmlEnv m a}
 
 data HtmlEnv = HtmlEnv
   { html_current_root :: DOMElement
-  -- ^ A DOMNode that will be used as target to insert new content,
-  -- attributes, properties, listeners etc.
+  -- ^ A DOMElement that will be used as a parent to insert new
+  -- content, attributes, properties, listeners etc.
   , html_insert_before_anchor :: Maybe DOMNode
   -- ^ When this field is @Nothing@ new content will be added to the
   -- end of existing content, when it's @Just anchor@ new content will
@@ -26,8 +27,7 @@ data HtmlEnv = HtmlEnv
   , html_reactive_env :: ReactiveEnv
   -- ^ Needed to implement 'HasReactiveEnv'
   , html_catch_interactive :: SomeException -> IO ()
-  -- ^ Catch haskell exceptions thrown in some some DOM event handler
-  -- code
+  -- ^ Catch haskell exceptions thrown from a DOM event handler
   } deriving Generic
 
 -- | Most applications will only need HtmlT IO, hence this shortcut
@@ -50,6 +50,11 @@ newtype DOMElement = DOMElement {unDOMElement :: JSVal}
 newtype DOMEvent = DOMEvent {unDOMEvent :: JSVal}
   deriving anyclass (IsJSVal)
   deriving newtype (PToJSVal, PFromJSVal)
+
+-- | Untyped for simplicity and because it was annoying to not find
+-- some of the new Events in ghcjs-dom where these names are
+-- representated by data constructors
+type EventName = Text
 
 -- | Each DOMElement is also a valid DOMNode
 nodeFromElement :: DOMElement -> DOMNode

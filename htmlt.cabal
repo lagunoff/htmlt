@@ -20,6 +20,10 @@ Flag examples
   default: False
   description: Build examples
 
+Flag benchmarks
+  default: False
+  description: Build benchmarks
+
 common htmlt-common
   ghc-options:
     -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches
@@ -101,14 +105,13 @@ library
     build-depends:
       ghcjs-prim,
 
-executable htmlt-hello
+executable htmlt-counter
   import: htmlt-common         
-  main-is: hello.hs
-  hs-source-dirs: ./examples/hello
+  main-is: counter.hs
+  hs-source-dirs: ./examples/counter
   build-depends:
     base,
     htmlt,
-    mtl,
     text
   if !flag(examples)
     buildable: False
@@ -165,6 +168,6 @@ executable htmlt-benchmarks
     htmlt,
     text,
     gauge,
-  if !flag(examples)
+  if !flag(benchmarks)
     buildable: False
   

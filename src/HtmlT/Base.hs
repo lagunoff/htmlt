@@ -108,22 +108,46 @@ dynAttr k d = do
 -- >   on "click" \_event -> do
 -- >     liftIO $ putStrLn "Clicked!"
 -- >   text "Click here"
-on :: Text -> (DOMEvent -> Html ()) -> Html ()
+on :: EventName -> (DOMEvent -> Html ()) -> Html ()
 on name f = ask >>= \HtmlEnv{..} ->
   onGlobalEvent defaultListenerOpts (nodeFromElement html_current_root) name f
 
 -- | Same as 'on' but ignores 'DOMEvent' inside the callback
-on_ :: Text -> Html () -> Html ()
+on_ :: EventName -> Html () -> Html ()
 on_ name = on name . const
 
 -- | Same as 'on' but allows to specify 'ListenerOpts'
-onOptions :: Text -> ListenerOpts -> (DOMEvent -> Html ()) -> Html ()
+onOptions :: EventName -> ListenerOpts -> (DOMEvent -> Html ()) -> Html ()
 onOptions name opts f = ask >>= \HtmlEnv{..} ->
   onGlobalEvent opts (nodeFromElement html_current_root) name f
 
 -- | Attach listener, extract data of type @a@ using specified decoder
-onDecoder :: Text -> Decoder a -> (a -> Html ()) -> Html ()
+onDecoder :: EventName -> Decoder a -> (a -> Html ()) -> Html ()
 onDecoder name dec = on name . withDecoder dec
+
+-- | Attach a listener to arbitrary target, not just the current root
+-- element (usually that would be @window@, @document@ or @body@
+-- objects)
+onGlobalEvent
+  :: ListenerOpts
+  -- ^ Specify whether to call @event.stopPropagation()@ and
+  -- @event.preventDefault()@ on the fired event
+  -> DOMNode
+  -- ^ Event target
+  -> EventName
+  -- ^ Event name
+  -> (DOMEvent -> Html ())
+  -- ^ Callback that accepts reference to the DOM event
+  -> Html ()
+onGlobalEvent opts target name f = do
+  htmlEnv <- ask
+  void $ subscribe (mkEvent htmlEnv) (liftIO . runHtmlT htmlEnv)
+  where
+    mkEvent htmlEnv = Event \_ callback -> liftIO do
+      unlisten <- addEventListener opts target name $
+        void . liftIO . catchExes htmlEnv . sync . callback . f
+      return $ liftIO unlisten
+    catchExes HtmlEnv{..} = (`Exception.catch` html_catch_interactive)
 
 -- | Makes easier to take some data from DOMEvent inside an event
 -- handler callback. If the decoder fails, the callback won't be
@@ -140,30 +164,6 @@ withDecoder
 withDecoder dec f domEvent =
   liftIO (runDecoder dec (unDOMEvent domEvent))
     >>= maybe (return ()) f
-
--- | Attach a listener to arbitrary target, not just the current root
--- element (usually that would be @window@, @document@ or @body@
--- objects)
-onGlobalEvent
-  :: ListenerOpts
-  -- ^ Specify whether to call @event.stopPropagation()@ and
-  -- @event.preventDefault()@ on the fired event
-  -> DOMNode
-  -- ^ Event target
-  -> Text
-  -- ^ Event name
-  -> (DOMEvent -> Html ())
-  -- ^ Callback that accepts reference to the DOM event
-  -> Html ()
-onGlobalEvent opts target name f = do
-  htmlEnv <- ask
-  void $ subscribe (mkEvent htmlEnv) (liftIO . runHtmlT htmlEnv)
-  where
-    mkEvent htmlEnv = Event \_ callback -> liftIO do
-      unlisten <- addEventListener opts target name $
-        void . liftIO . catchExes htmlEnv . sync . callback . f
-      return $ liftIO unlisten
-    catchExes HtmlEnv{..} = (`Exception.catch` html_catch_interactive)
 
 -- | Assign CSS classes to the current root element. Compared to @prop
 -- "className"@ can be used multiple times for the same root
@@ -291,7 +291,7 @@ simpleList dynRef h = do
         error "simpleList: Incoherent internal state"
 
     finalizeElems = traverse_ \ElemEnv{..} -> liftIO do
-      removeBetween rootEl ee_begin ee_end
+      unsafeRemoveBetween rootEl ee_begin ee_end
       removeChild rootEl ee_end
       removeChild rootEl ee_begin
       let fins = renv_finalizers $ html_reactive_env ee_html_env
@@ -351,7 +351,7 @@ dyn d = do
           , html_insert_before_anchor = Just end
           }
       finalizeEnv (Just newEnv)
-      removeBetween rootEl begin end
+      unsafeRemoveBetween rootEl begin end
       runHtmlT newEnv html
   addFinalizer (finalizeEnv Nothing)
   forDyn_ d setup
@@ -392,4 +392,4 @@ portal rootEl = local (\e -> e
 unsafeHtml :: MonadIO m => Text -> HtmlT m ()
 unsafeHtml htmlText = do
   HtmlEnv{..} <- ask
-  liftIO $ insertUnsafeHtml html_current_root html_insert_before_anchor htmlText
+  liftIO $ unsafeInsertHtml html_current_root html_insert_before_anchor htmlText

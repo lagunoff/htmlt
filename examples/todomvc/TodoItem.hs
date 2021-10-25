@@ -35,7 +35,7 @@ todoItemWidget TodoItemConfig{..} = li_ do
     onDecoder "dblclick" targetDecoder \targetEl -> do
       title <- readsRef (view (tic_state . #tis_title)) tic_ref
       modifyRef tic_ref $ tic_state . #tis_editing .~ Just title
-      liftIO $ js_focus targetEl
+      liftIO $ js_todoItemInputFocus targetEl
     input_ [class_ "toggle", type_ "checkbox"] do
       dynChecked $ view (tic_state . #tis_completed) <$> fromRef tic_ref
       onDecoder "change" checkedDecoder \isChecked -> do

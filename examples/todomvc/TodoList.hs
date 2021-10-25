@@ -26,14 +26,14 @@ data TodoListState = TodoListState
 data Filter = All | Active | Completed
   deriving (Show, Eq, Generic)
 
-initTodos :: ReactiveEnv -> DynRef Text -> IO (DynRef TodoListState)
-initTodos env urlHashRef = runReactiveT env do
+initTodos :: MonadReactive m => DynRef Text -> m (DynRef TodoListState)
+initTodos urlHashRef = do
   todos <- fromMaybe [] . fmap unLocalStorageTodoItems <$> liftIO localStorageGet
   initFilter <- readsRef (fromMaybe All . firstOf url2Filter) urlHashRef
   todosRef <- newRef $ TodoListState "" todos initFilter
   liftIO $ onBeforeUnload $ readRef todosRef >>= \TodoListState{..} ->
     localStorageSet (LocalStorageTodoItems tls_items)
-  subscribe (dynamic_updates (dynref_dynamic urlHashRef)) \urlHash -> do
+  subscribe (updates (fromRef urlHashRef)) \urlHash -> do
     modifyRef todosRef (#tls_filter .~ fromMaybe All (firstOf url2Filter urlHash))
   return todosRef
 

@@ -1,104 +1,156 @@
-**:fire:API is unstable and incomplete, do not use in production:fire:**
 
-Small experimental GUI library in haskell 
+Lightweight frontend library for GHCJS with focus on minimalism and
+simplicity
 
-## Quick API summary
+## Getting started
 
-### Constructing DOM
-```hs
-el :: Text -> Html x -> Html x
-el' :: Text -> Html x -> Html (x, Node)
-elns :: Text -> Text -> Html x -> Html x
-text :: Text -> Html ()
-dynText :: Dynamic Text -> Html ()
+First you have to have install [nix](https://nixos.org/download.html)
+package manager to download and install the dependecies. By default
+nix-shell gets GHCJS compiler from
+[reflex-platform](https://github.com/reflex-frp/reflex-platform)
+project. You have to add their binary caches to your `nix.conf` to
+avoid building everything from sources
+
+```
+# ~/.config/nix.conf
+substituters = https://nixcache.reflex-frp.org
+trusted-substituters = https://nixcache.reflex-frp.org
+trusted-public-keys = ryantrinkle.com-1:JJiAKaRv9mWgpVAz8dwewnZe0AzzEAzPkagE9SP5NWI=
 ```
 
-`el`, `el'` and `elns` create a new HTML element and attach it to the
-root, which is given by Reader-like enviroment inside `HtmlEnv`. There
-are shortcut versions (`div_`, `h1_`, `span_` etc) for the most common
-HTML5 tags declared in
-[Html.Element](./src/HtmlT/Element.hs)
-
-### Applying attributes and properties
-
-```hs
-prop :: Text -> v -> Html ()
-dynProp :: Text -> Dynamic v -> Html ()
-
-attr :: Text -> Text -> Html ()
-dynAttr :: Text -> Text -> Html ()
+Build the examples:
+```sh
+# Clone the repository
+git clone https://github.com/lagunoff/htmlt.git
+cd htmlt
+# Enter the nix-shell
+nix-shell
+# Build examples with cabal
+cabal build -fexamples --ghcjs --ghcjs-options="-j"
 ```
+Once `cabal build` is successful you can find the js executables in
+`dist-newstyle/build/x86_64-linux/ghcjs-8.6.0.1/htmlt-0.1.0.0/x/` and run them opening `index.html` in browser
 
-`prop` assignes a property (like `value` to HTMLInputElement) to a
-parent element `dynProp` assignes a dynamic property (`Dynamic a`),
-`attr` and `dynAttr` do the same but for html attributes instead of
-properties (there is a suble
-[difference](https://stackoverflow.com/questions/6003819/what-is-the-difference-between-properties-and-attributes-in-html)).
-
-```hs
--- Applying properties to elements
-menuWidget :: Html () 
-menuWidget = 
-  ul_ [class_ "menu"] do
-    li_ $
-      a_ [href_ "#one"] $ "One" -- Html has IsString instance 
-    li_ $
-      a_ [href_ "#two"] $ "Two"
-    li_ $
-      a_ [href_ "#three"] $ "Three"
-```
-
-### Reacting to DOM events
-
-```hs
-on :: Text -> (DOMEvent -> Html ()) -> Html ()
-on_ :: Text -> Html () -> Html ()
-```
-Essentially `on` and `on_` call [`addEventListener`](https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener) on the current root
-and run the given action when DOM event fires
-
-```hs
-counterWidget :: Html ()
-counterWidget = do
+```haskell
+-- Counter widget
+-- examples/counter/counter.hs
+main :: IO ()
+main = void $ attachToBody do
+  -- First create a 'DynRef
   counterRef <- newRef @Int 0
   div_ do
-    span_ $
-      dynText $ T.pack . show <$> fromRef counterRef
+    input_ do
+      -- Show the value inside <input>
+      dynValue $ T.pack . show <$> fromRef counterRef
+      -- Parse and update the value on each InputEvent
+      onDecoder "input" valueDecoder $
+        modifyRef counterRef . maybe id const . readMaybe . T.unpack
+    br_
+    -- Decrease the value on each click
     button_ do
       on_ "click" $ modifyRef counterRef pred
       text "Decrease"
+    -- Increase the value on each click
     button_ do
       on_ "click" $ modifyRef counterRef succ
       text "Increase"
 ```
+[Open the demo](https://lagunoff.github.io/htmlt-counter/)
 
-## Minimal complete app
+## Quick API summary
 
 ```hs
-import Data.Text
-import HtmlT
+-- Constructing DOM
+el :: Text -> Html a -> Html a
+el' :: Text -> Html a -> Html (a, DOMElement)
+elns :: Text -> Text -> Html a -> Html a
+text :: Text -> Html ()
+dynText :: Dynamic Text -> Html ()
 
-main :: IO ()
-main = attachToBody do
-  colorRef <- newRef 0
-  div_ [class_ "root"] do
-    h1_ do
-      dynStyle "color" $ getColor <$> fromRef colorRef
-      on_ "mouseenter" do modifyRef colorRef (+ 1)
-      text "Hello, World!"
-    el "style" do text styles
-  where
-    getColor n =
-      colors !! (n `mod` Prelude.length colors)
+-- Applying attributes and properties
+prop :: Text -> v -> Html ()
+dynProp :: Text -> Dynamic v -> Html ()
+attr :: Text -> Text -> Html ()
+dynAttr :: Text -> Text -> Html ()
+toggleClass :: Text -> Dynamic Bool -> Html ()
+toggleAttr :: Text -> Dynamic Bool -> Html ()
+dynStyle :: Text -> Dynamic Text -> Html ()
+dynStyles :: Dynamic Text -> Html ()
+dynValue :: Dynamic Text -> Html ()
+dynClass :: Dynamic Text -> Html ()
+dynChecked :: Dynamic Bool -> Html ()
+dynDisabled :: Dynamic Bool -> Html ()
 
-colors :: [Text]
-colors =
-  [ "rgb(173,192,84)", "rgb(22,153,190)", "rgb(22,93,24)", "rgb(199,232,42)"
-  , "rgb(235,206,57)", "rgb(225,57,149)", "rgb(255,134,157)", "rgb(231,251,35)"
-  , "rgb(148,122,45)", "rgb(227,10,30)", "rgb(97,22,125)", "rgb(239,243,10)"
-  , "rgb(155,247,3)", "rgb(199,31,74)", "rgb(109,198,34)", "rgb(170,52,228)"
-  , "rgb(61,44,247)", "rgb(118,45,39)", "rgb(248,116,17)", "rgb(27,184,238)"
-  , "rgb(117,23,222)" ]
+-- Handling DOM events
+on :: EventName -> (DOMEvent -> Html ()) -> Html ()
+on_ :: EventName -> Html () -> Html ()
+onOptions :: EventName -> ListenerOpts -> (DOMEvent -> Html ()) -> Html ()
+onDecoder :: EventName -> Decoder a -> (a -> Html ()) -> Html ()
+onGlobalEvent :: ListenerOpts -> DOMNode -> EventName -> (DOMEvent -> Html ()) -> Html ()
+
+-- Decoding data from DOM Events
+mouseDeltaDecoder :: Decoder MouseDelta
+clientXYDecoder :: Decoder Position
+offsetXYDecoder :: Decoder Position
+pageXYDecoder :: Decoder Position
+keyModifiersDecoder :: Decoder KeyModifiers
+keyCodeDecoder :: Decoder Int
+keyboardEventDecoder :: Decoder KeyboardEvent
+targetDecoder :: Decoder JSVal
+currentTargetDecoder :: Decoder JSVal
+valueDecoder :: Decoder Text
+checkedDecoder :: Decoder Bool
+
+-- DOM extras, useful helpers
+unsafeHtml :: MonadIO m => Text -> HtmlT m ()
+portal :: Monad m => DOMElement -> HtmlT m a -> HtmlT m a
+catchInteractive :: Html () -> (SomeException -> Html ()) -> Html ()
+addFinalizer :: MonadReactive m => IO () -> m ()
+
+-- Dynamic collections
+simpleList :: DynRef [a] -> (Int -> DynRef a -> Html ()) -> Html ()
+
+-- Arbitrary dynamic content
+dyn :: Dynamic (Html ()) -> Html ()
+
+-- Contructing Events
+newEvent :: MonadReactive m => m (Event a, Trigger a)
+fmap :: (a -> b) -> Event a -> Event a
+never :: Event a
+updates :: Dynamic a -> Event a
+mapMaybeE :: (a -> Maybe b) -> Event a -> Event b
+
+-- Constructing Dynamics
+constDyn :: a -> Dynamic a
+fromRef :: DynRef a -> Dynamic a
+fmap :: (a -> b) -> Dynamic a -> Dynamic b
+(<*>) :: Dynamic (a -> b) -> Dynamic a -> Dynamic b
+mapDyn :: MonadReactive m => Dynamic a -> (a -> b)-> m (Dynamic b)
+mapDyn2 :: MonadReactive m => Dynamic a -> Dynamic b -> (a -> b -> c) -> m (Dynamic c)
+holdUniqDyn :: Eq a => Dynamic a -> Dynamic a
+holdUniqDynBy :: (a -> a -> Bool) -> Dynamic a -> Dynamic a
+
+-- Constructing DynRefs
+newRef :: MonadReactive m => a -> m (DynRef a)
+lensMap :: Lens' s a -> DynRef s -> DynRef a
+
+-- Read Dynamics
+readDyn :: MonadIO m => Dynamic a -> m a
+readsDyn :: MonadIO m => (a -> b) -> Dynamic a -> m b
+
+-- Read and write DynRefs
+readRef :: MonadIO m => DynRef a -> m a
+readsRef :: MonadIO m => (a -> b) -> DynRef a -> m b
+writeRef :: MonadIO m => DynRef a -> a -> m ()
+writeSync :: DynRef a -> a -> Transact ()
+modifyRef :: MonadIO m => DynRef a -> (a -> a) -> m ()
+modifySync :: DynRef a -> (a -> a) -> Transact ()
+
+-- Starting and shutting down the application
+startWithOptions :: StartOpts -> Html a -> IO (a, RunningApp)
+attachTo :: DOMElement -> Html a -> IO (a, RunningApp)
+attachToBody :: Html a -> IO (a, RunningApp)
+detach :: RunningApp -> IO ()
 ```
 
 ## Other examples
@@ -106,25 +158,19 @@ colors =
 <table>
   <tbody>
     <tr>
-      <td>Hello World</td>
-      <td>
-	    <a href=./examples/hello/hello.hs target=_blank>source</a> |
-		<a href=https://lagunoff.github.io/massaraksh-hello-world/ target=_blank>demo<a>
-	  </td>
+      <td>Counter</td>
+      <td><a href=./examples/counter/counter.hs target=_blank>source</a></td>
+      <td><a href=https://lagunoff.github.io/htmlt-counter/ target=_blank>demo<a></td>
     </tr>
     <tr>
       <td>TodoMVC</td>
-      <td>
-	    <a href=./examples/todo/todo.hs target=_blank>source</a> |
-		<a href=https://lagunoff.github.io/massaraksh-todomvc target=_blank>demo<a>
-	  </td>
+      <td><a href=./examples/todo/todo.hs target=_blank>source</a></td>
+      <td><a href=https://lagunoff.github.io/htmlt-todomvc/ target=_blank>demo<a></td>
     </tr>
     <tr>
       <td>Simple Routing</td>
-      <td>
-	    <a href=./examples/simple-routing/simple-routing.hs target=_blank>source</a> |
-		<a href=https://lagunoff.github.io/htmlt-simple-routing/ target=_blank>demo<a>
-	  </td>
+      <td><a href=./examples/simple-routing/simple-routing.hs target=_blank>source</a></td>
+      <td><a href=https://lagunoff.github.io/htmlt-simple-routing/ target=_blank>demo<a></td>
     </tr>
   </tbody>
 </table>
@@ -133,7 +179,6 @@ colors =
  - [x] API to display sum types
  - [x] Reduce compile time by getting rid of `ghcjs-dom` and
        `jsaddle-dom` from dependency list
- - [ ] Faster updates for large lists, using similar technique to
-       [diffarray](https://hackage.haskell.org/package/diffarray-0.1.1/docs/Data-Array-Diff.html)
- - [ ] Bindings to non-web GUIs (e.g. GTK or ReactNative)
- - [ ] Add benchmarks
+ - [x] Add benchmarks
+ - [ ] More examples and documentation
+ - [ ] Similar library for ReactNative

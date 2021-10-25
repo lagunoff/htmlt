@@ -53,7 +53,7 @@ detach RunningApp{..} = do
   finalizers <- readIORef . renv_finalizers . html_reactive_env $
     runapp_html_env
   sequence_ finalizers
-  removeBetween (html_current_root runapp_html_env) runapp_boundary_begin
+  unsafeRemoveBetween (html_current_root runapp_html_env) runapp_boundary_begin
     runapp_boundary_end
   removeChild (html_current_root runapp_html_env) runapp_boundary_begin
   removeChild (html_current_root runapp_html_env) runapp_boundary_end

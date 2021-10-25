@@ -24,8 +24,9 @@ appendHtmlT newRootEl html = do
     , html_insert_before_anchor = Nothing }) html
   result <$ insertNode (nodeFromElement newRootEl)
 
--- | Insert new node to @html_current_root@ with respect to
--- @html_insert_before_anchor@`
+-- | Insert new node to @html_current_root@. Use either
+-- 'js_insertBefore' or 'appendChild' depending on the value of
+-- 'html_insert_before_anchor'
 insertNode :: MonadIO m => DOMNode -> HtmlT m ()
 insertNode n = do
   HtmlEnv{..} <- ask
@@ -34,7 +35,7 @@ insertNode n = do
     Nothing -> liftIO $ appendChild html_current_root n
 
 -- | Insert two comment nodes intended to be used as a boundary for
--- dynamic content and as arguments to @removeBetween@ to clear the
+-- dynamic content and as arguments to @unsafeRemoveBetween@ to clear the
 -- content in the finalizer
 insertBoundaries :: MonadIO m => HtmlT m (DOMNode, DOMNode)
 insertBoundaries = do

@@ -355,8 +355,8 @@ sup_ :: Term arg result => arg -> result
 sup_ = term "sup"
 {-# INLINE sup_ #-}
 
-br_ :: Term arg result => arg -> result
-br_ = term "br"
+br_ :: Html ()
+br_ = el "br" blank
 {-# INLINE br_ #-}
 
 ol_ :: Term arg result => arg -> result

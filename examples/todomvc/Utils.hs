@@ -29,14 +29,14 @@ import qualified JavaScript.Web.Location as JS
     aMod \_ -> newA
     bMod \_ -> newB)
 
-mkUrlHashRef :: ReactiveEnv -> IO (DynRef Text)
-mkUrlHashRef s = do
-  initial <- readUrlHash
-  routeRef <- runReactiveT s (newRef initial)
+mkUrlHashRef :: MonadReactive m => m (DynRef Text)
+mkUrlHashRef = do
+  initial <- liftIO readUrlHash
+  routeRef <- newRef initial
   win <- getCurrentWindow
-  popStateCb <- asyncCallback $
+  popStateCb <- liftIO $ asyncCallback $
     readUrlHash >>= writeRef routeRef
-  Object.setProp "onpopstate" (jsval popStateCb) (coerce win)
+  liftIO $ Object.setProp "onpopstate" (jsval popStateCb) (coerce win)
   return routeRef
 
 readUrlHash :: IO Text
@@ -55,7 +55,12 @@ localStorageGet = liftIO do
   where
     key = JSS.pack $ show $ typeRepFingerprint $ typeRep (Proxy @a)
 
-foreign import javascript unsafe "$1.focus()" js_focus :: JSVal -> IO ()
+foreign import javascript unsafe
+  "setTimeout(function() {\
+    var inputEl = $1.parentNode.parentNode.querySelector('input.edit');\
+    inputEl.focus();\
+  }, 0)"
+  js_todoItemInputFocus :: JSVal -> IO ()
 
 foreign import javascript unsafe
   "(function(key, val){\

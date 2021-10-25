@@ -29,7 +29,7 @@ let
   };
 
   overrides = self: super: {
-    htmlt = self.callCabal2nixWithOptions "htmlt" ./. "-fexamples" {};
+    htmlt = self.callCabal2nixWithOptions "htmlt" ./. "-fexamples -fbenchmarks" {};
     gauge = cure super.gauge;
   } // lib.optionalAttrs (!(super.ghc.isGhcjs or false)) {
     ghcjs-base = cure super.ghcjs-base;
