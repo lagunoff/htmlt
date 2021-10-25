@@ -27,7 +27,7 @@ data Filter = All | Active | Completed
   deriving (Show, Eq, Generic)
 
 initTodos :: ReactiveEnv -> DynRef Text -> IO (DynRef TodoListState)
-initTodos env urlHashRef = runReactiveEnvT env do
+initTodos env urlHashRef = runReactiveT env do
   todos <- fromMaybe [] . fmap unLocalStorageTodoItems <$> liftIO localStorageGet
   initFilter <- readsRef (fromMaybe All . firstOf url2Filter) urlHashRef
   todosRef <- newRef $ TodoListState "" todos initFilter

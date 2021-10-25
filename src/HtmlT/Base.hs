@@ -249,7 +249,7 @@ simpleList dynRef h = do
       ([], [], x:xs) -> do
         -- New list is longer, append new elements
         finalizers <- newIORef []
-        elemRef <- runReactiveEnvT reactiveEnv $ newRef x
+        elemRef <- runReactiveT reactiveEnv $ newRef x
         let
           controlledRef = elemRef
             {dynref_modifier=elemModifier idx (fromRef elemRef)
@@ -281,7 +281,7 @@ simpleList dynRef h = do
       let fins = renv_finalizers $ html_reactive_env ee_html_env
       readIORef fins >>= sequence_
 
-    elemModifier :: Int -> Dynamic a -> (a -> a) -> Reactive ()
+    elemModifier :: Int -> Dynamic a -> (a -> a) -> Transact ()
     elemModifier i dyn f = do
       oldA <- readDyn dyn
       let

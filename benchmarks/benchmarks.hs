@@ -10,7 +10,7 @@ main = defaultMain
   ]
 
 benchDynamics :: Int -> Int -> Int -> IO ()
-benchDynamics eventsNum subsNum fireNum = startReactive do
+benchDynamics eventsNum subsNum fireNum = reactive do
   -- Create a bunch of 'DynRef's
   refsList <- forM [1..eventsNum] $ const (newRef (0 :: Int))
   outputRef <- newRef Nothing
@@ -23,6 +23,6 @@ benchDynamics eventsNum subsNum fireNum = startReactive do
   forM_ [1..fireNum] $ const $
     forM_ refsList $ liftIO . sync . flip modifyRef succ
   where
-    subscribeAndWrite from to = void $ subscribe (dynamic_updates from) $
+    subscribeAndWrite from to = void $ subscribe (updates from) $
       writeRef to . Just
-    startReactive act = newReactiveEnv >>= flip runReactiveEnvT act
+    reactive act = newReactiveEnv >>= flip runReactiveT act

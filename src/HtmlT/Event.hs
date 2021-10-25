@@ -51,15 +51,15 @@ data DynRef a = DynRef
   -- ^ Funtion to update the value
   } deriving stock Generic
 
--- | State inside 'Reactive'
-newtype ReactiveState = ReactiveState
-  { unReactiveState :: M.Map (Id Event) (Reactive ())
+-- | State inside 'Transact'
+newtype TransactState = TransactState
+  { unTransactState :: M.Map (Id Event) (Transact ())
   } deriving Generic
 
--- | Evaluation of effects triggered by event firing
-newtype Reactive a = Reactive (StateT ReactiveState IO a)
+-- | Evaluation of effects triggered by an event firing
+newtype Transact a = Transact (StateT TransactState IO a)
   deriving newtype (Functor, Applicative, Monad, MonadIO
-    , MonadState ReactiveState, MonadFix, MonadCatch, MonadThrow
+    , MonadState TransactState, MonadFix, MonadCatch, MonadThrow
     , MonadMask)
 
 -- | The environment required for some operations like creating a new
@@ -77,25 +77,28 @@ data ReactiveEnv = ReactiveEnv
   } deriving Generic
 
 -- | Minimal implementation for 'HasReactiveEnv'
-newtype ReactiveEnvT m a = ReactiveEnvT
-  { unReactiveEnvT :: ReaderT ReactiveEnv m a
-  } deriving newtype (MonadIO, Monad, Functor, Applicative)
+newtype ReactiveT m a = ReactiveT
+  { unReactiveT :: ReaderT ReactiveEnv m a
+  } deriving newtype (Functor, Applicative, Monad, MonadIO
+    , MonadFix, MonadCatch, MonadThrow, MonadMask)
 
 class HasReactiveEnv m where
   askReactiveEnv :: m ReactiveEnv
 
-runReactiveEnvT :: ReactiveEnv -> ReactiveEnvT m a -> m a
-runReactiveEnvT s = (`runReaderT` s) . unReactiveEnvT
+runReactiveT :: ReactiveEnv -> ReactiveT m a -> m a
+runReactiveT s = (`runReaderT` s) . unReactiveT
 
 type Lens' s a = forall f. Functor f => (a -> f a) -> s -> f s
 
-type Callback a = a -> Reactive ()
+type Callback a = a -> Transact ()
 
-type Trigger a = a -> Reactive ()
+type Trigger a = a -> Transact ()
 
-type Modifier a = (a -> a) -> Reactive ()
+type Modifier a = (a -> a) -> Transact ()
 
 type Canceller = IO ()
+
+type MonadReactive m = (HasReactiveEnv m, MonadIO m)
 
 -- | Create new empty 'ReactiveEnv'
 newReactiveEnv :: MonadIO m => m ReactiveEnv
@@ -108,7 +111,7 @@ newReactiveEnv = liftIO do
 --
 -- > (event, push) <- newEvent @String
 -- > push "New Value" -- event fires with given value
-newEvent :: forall a m. (HasReactiveEnv m, MonadIO m) => m (Event a, Trigger a)
+newEvent :: forall a m. MonadReactive m => m (Event a, Trigger a)
 newEvent = do
   renv <- askReactiveEnv
   eventId <- liftIO $ nextId @Event
@@ -119,7 +122,7 @@ newEvent = do
 --
 -- > showRef <- newRef False
 -- > writeRef showRef True -- update event fires for showRef
-newRef :: forall a m. (HasReactiveEnv m, MonadIO m) => a -> m (DynRef a)
+newRef :: forall a m. MonadReactive m => a -> m (DynRef a)
 newRef initial = do
   ref <- liftIO $ newIORef initial
   (ev, push) <- newEvent
@@ -171,12 +174,12 @@ readsRef f = readsDyn f . dynref_dynamic
 modifyRef :: MonadIO m => DynRef a -> (a -> a) -> m ()
 modifyRef (DynRef _ modifier) = liftIO . sync . modifier
 
--- | Version of 'modifyRef' that runs inside @Reactive@
-modifySync :: DynRef a -> (a -> a) -> Reactive ()
+-- | Version of 'modifyRef' that runs inside @Transact@
+modifySync :: DynRef a -> (a -> a) -> Transact ()
 modifySync = dynref_modifier
 
--- | Version of 'writeRef' that runs inside @Reactive@
-writeSync :: DynRef a -> a -> Reactive ()
+-- | Version of 'writeRef' that runs inside @Transact@
+writeSync :: DynRef a -> a -> Transact ()
 writeSync ref a = modifySync ref (const a)
 
 -- | Extract a 'Dynamic' out of 'DynRef'
@@ -199,26 +202,26 @@ updates = dynamic_updates
 -- | Defer a computation (usually an event firing) till the end of
 -- current reactive transaction. This makes possible to avoid double
 -- firing of events, constructed from multiple other events
-defer :: Id Event -> Reactive () -> Reactive ()
-defer k act = Reactive (modify f) where
-  f (ReactiveState s) = ReactiveState (M.insert k act s)
+defer :: Id Event -> Transact () -> Transact ()
+defer k act = Transact (modify f) where
+  f (TransactState s) = TransactState (M.insert k act s)
 
 -- | Run a reactive transaction.
-sync :: MonadIO m => Reactive a -> m a
-sync act = liftIO $ loop (ReactiveState M.empty) act where
-  loop :: ReactiveState -> Reactive a -> IO a
-  loop rs (Reactive act) = do
+sync :: MonadIO m => Transact a -> m a
+sync act = liftIO $ loop (TransactState M.empty) act where
+  loop :: TransactState -> Transact a -> IO a
+  loop rs (Transact act) = do
     (r, newRs) <- runStateT act rs
     case popQueue newRs of
       (Just newAct, newerRs) -> r <$ loop newerRs newAct
       (Nothing, newerRs)     -> return r
-  popQueue intact@(ReactiveState m) = case M.minViewWithKey m of
-    Just ((_, act), rest) -> (Just act, ReactiveState rest)
+  popQueue intact@(TransactState m) = case M.minViewWithKey m of
+    Just ((_, act), rest) -> (Just act, TransactState rest)
     Nothing               -> (Nothing, intact)
 
 -- | Attach a listener to the event and return an action to detach the
 -- listener
-subscribe :: (HasReactiveEnv m, MonadIO m) => Event a -> Callback a -> m Canceller
+subscribe :: MonadReactive m => Event a -> Callback a -> m Canceller
 subscribe (Event s) k = do
   ReactiveEnv{..} <- askReactiveEnv
   cancel <- liftIO $ s k
@@ -228,13 +231,13 @@ subscribe (Event s) k = do
 -- | Perform an action with current value of the given 'Dynamic' and
 -- each time the value changes. Return action to detach listener from
 -- receiving new values
-forDyn :: (HasReactiveEnv m, MonadIO m) => Dynamic a -> Callback a -> m Canceller
+forDyn :: MonadReactive m => Dynamic a -> Callback a -> m Canceller
 forDyn d k = do
   liftIO $ dynamic_read d >>= sync . k
   subscribe (dynamic_updates d) k
 
 -- | Same as 'forDyn', ignore the result
-forDyn_ :: (HasReactiveEnv m, MonadIO m) => Dynamic a -> Callback a -> m ()
+forDyn_ :: MonadReactive m => Dynamic a -> Callback a -> m ()
 forDyn_ = (void .) . forDyn
 
 -- | Filter and map occurences
@@ -309,7 +312,7 @@ diffEvent initial (Event s) = Event \k -> do
 -- called once every time 'Dynamic a' value changes, whereas in 'fmap'
 -- it would be called once for each subscription per change event
 mapDyn
-  :: (HasReactiveEnv m, MonadIO m)
+  :: MonadReactive m
   => Dynamic a
   -> (a -> b)
   -> m (Dynamic b)
@@ -333,7 +336,7 @@ mapDyn dynA f = do
 -- | Same as 'mapDyn' but with two Dynamics, @f@ is called each time
 -- any of the two Dynamics changes its value
 mapDyn2
-  :: (HasReactiveEnv m, MonadIO m)
+  :: MonadReactive m
   => Dynamic a
   -> Dynamic b
   -> (a -> b -> c)
@@ -368,13 +371,13 @@ subscribeImpl (ReactiveEnv ht _) eventId k = do
   pure $ H.mutate ht eventId \mss ->
     (mfilter (/=[]) $ Just (delete kref $ fromMaybe [] mss), ())
 
-triggerImpl :: ReactiveEnv -> Id Event -> a -> Reactive ()
+triggerImpl :: ReactiveEnv -> Id Event -> a -> Transact ()
 triggerImpl (ReactiveEnv ht _) eventId a = defer eventId do
   callbacks <- liftIO $ fromMaybe [] <$> H.lookup ht eventId
   for_ callbacks $ liftIO . readIORef >=> ($ unsafeCoerce @_ @Any a)
 
-instance Applicative m => HasReactiveEnv (ReactiveEnvT m) where
-  askReactiveEnv = ReactiveEnvT $ ReaderT pure
+instance Applicative m => HasReactiveEnv (ReactiveT m) where
+  askReactiveEnv = ReactiveT $ ReaderT pure
 
 instance Functor Event where
   fmap f (Event s) = Event \k -> s . (. f) $ k
@@ -410,14 +413,14 @@ instance Applicative Dynamic where
         fire Nothing (Just a)
       pure (c1 *> c2)
 
-instance Semigroup x => Semigroup (Reactive x) where
+instance Semigroup x => Semigroup (Transact x) where
   (<>) = liftA2 (<>)
 
-instance Monoid x => Monoid (Reactive x) where
+instance Monoid x => Monoid (Transact x) where
   mempty = pure mempty
 
-instance Semigroup ReactiveState where
-  (<>) (ReactiveState a) (ReactiveState b) = ReactiveState (a <> b)
+instance Semigroup TransactState where
+  (<>) (TransactState a) (TransactState b) = TransactState (a <> b)
 
-instance Monoid ReactiveState where
-  mempty = ReactiveState mempty
+instance Monoid TransactState where
+  mempty = TransactState mempty

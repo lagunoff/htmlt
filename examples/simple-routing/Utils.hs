@@ -18,7 +18,7 @@ import qualified JavaScript.Web.Location as JS
 mkUrlHashRef :: ReactiveEnv -> IO (DynRef Text)
 mkUrlHashRef s = do
   initial <- readUrlHash
-  routeRef <- runReactiveEnvT s (newRef initial)
+  routeRef <- runReactiveT s (newRef initial)
   win <- getCurrentWindow
   popStateCb <- asyncCallback $
     readUrlHash >>= writeRef routeRef
