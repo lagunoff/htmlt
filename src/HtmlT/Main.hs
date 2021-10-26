@@ -36,8 +36,8 @@ startWithOptions StartOpts{..} render = mdo
     runApp = RunningApp htmlEnv begin end
   result <- runHtmlT htmlEnv render
   onBeforeUnload do
-    fins <- readIORef $ renv_finalizers startopts_reactive_env
-    sequence_ fins
+    readIORef (renv_finalizers startopts_reactive_env)
+      >>= sequence_
   pure (result, runApp)
 
 attachTo :: DOMElement -> Html a -> IO (a, RunningApp)

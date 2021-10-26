@@ -271,7 +271,7 @@ simpleList dynRef h = do
             {dynref_modifier=elemModifier idx (fromRef elemRef)
             }
           newEnv = htmlEnv
-            { html_reactive_env = reactiveEnv { renv_finalizers = finalizers }
+            { html_reactive_env = reactiveEnv {renv_finalizers = finalizers}
             }
         (begin, end) <- runHtmlT newEnv insertBoundaries
         runHtmlT newEnv {html_insert_before_anchor = Just end} $
@@ -289,14 +289,12 @@ simpleList dynRef h = do
         (r:) <$> setup (idx + 1) xs ys rs
       (_, _, _) -> do
         error "simpleList: Incoherent internal state"
-
     finalizeElems = traverse_ \ElemEnv{..} -> liftIO do
       unsafeRemoveBetween rootEl ee_begin ee_end
       removeChild rootEl ee_end
       removeChild rootEl ee_begin
       let fins = renv_finalizers $ html_reactive_env ee_html_env
       readIORef fins >>= sequence_
-
     elemModifier :: Int -> Dynamic a -> (a -> a) -> Transact ()
     elemModifier i dyn f = do
       oldA <- readDyn dyn
@@ -375,9 +373,20 @@ addFinalizer fin = do
 -- 'html_current_root'. Might be useful for implementing modal
 -- dialogs, tooltips etc. Similar to what called portals in React
 -- ecosystem
-portal :: Monad m => DOMElement -> HtmlT m a -> HtmlT m a
-portal rootEl = local (\e -> e
-  {html_current_root = rootEl, html_insert_before_anchor = Nothing})
+-- TODO: use 'insertBoundaries' and add a finalizer that removes the created DOM
+portal :: MonadIO m => DOMElement -> HtmlT m a -> HtmlT m a
+portal newRootEl html = do
+  rootEl <- asks html_current_root
+  (begin, end) <- insertBoundaries
+  result <- local (\e -> e
+    { html_current_root = newRootEl
+    , html_insert_before_anchor = Just end
+    }) html
+  addFinalizer do
+    unsafeRemoveBetween rootEl begin end
+    removeChild rootEl begin
+    removeChild rootEl end
+  return result
 
 -- | Parse given text as HTML and attach the resulting tree to
 -- 'html_current_root'. This way you can create not only HTML but

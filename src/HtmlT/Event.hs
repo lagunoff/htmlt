@@ -266,15 +266,43 @@ holdUniqDyn = holdUniqDynBy (==)
 -- | Same as 'holdUniqDyn' but accepts arbitrary equality test
 -- function
 holdUniqDynBy :: (a -> a -> Bool) -> Dynamic a -> Dynamic a
-holdUniqDynBy equal Dynamic{..} = dynamic where
-  updates = mapMaybeE id $ Event \e k -> do
+holdUniqDynBy equal Dynamic{..} = Dynamic dynamic_read
+  (mapMaybeE id $ Event \e k -> do
     old <- liftIO dynamic_read
     oldRef <- liftIO (newIORef old)
     unEvent dynamic_updates e \new -> do
       old <- liftIO (readIORef oldRef)
       liftIO $ writeIORef oldRef new
       k if old `equal` new then Nothing else Just new
-  dynamic = Dynamic dynamic_read updates
+  )
+
+-- | Contruct a 'DynRef' containing a tuple from two distinct
+-- 'DynRef's
+zipRef :: DynRef a -> DynRef b -> DynRef (a, b)
+zipRef aRef bRef = DynRef
+  (liftA2 (,) (fromRef aRef) (fromRef bRef))
+  (\f -> do
+    oldA <- readRef aRef
+    oldB <- readRef bRef
+    let (newA, newB) = f (oldA, oldB)
+    writeSync aRef newA
+    writeSync bRef newB
+  )
+
+-- | Contruct a 'DynRef' containing a 3-tuple from three distinct
+-- 'DynRef's
+zipRef3 :: DynRef a -> DynRef b -> DynRef c -> DynRef (a, b, c)
+zipRef3 aRef bRef cRef = DynRef
+  (liftA3 (,,) (fromRef aRef) (fromRef bRef) (fromRef cRef))
+  (\f -> do
+    oldA <- readRef aRef
+    oldB <- readRef bRef
+    oldC <- readRef cRef
+    let (newA, newB, newC) = f (oldA, oldB, oldC)
+    writeSync aRef newA
+    writeSync bRef newB
+    writeSync cRef newC
+  )
 
 -- | Print a debug message when given event fires
 traceEvent :: Show a => String -> Event a -> Event a

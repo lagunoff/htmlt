@@ -332,7 +332,6 @@ foreign import javascript unsafe
 foreign import javascript unsafe
   "(function(cb){\
     window.addEventListener('beforeunload', function(e) {\
-      delete e['returnEvent'];\
       cb();\
     })\
    })($1)"

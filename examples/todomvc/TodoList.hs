@@ -66,7 +66,7 @@ todoListWidget TodoListConfig{..} = do
       ul_ [class_ "todo-list"] do
         simpleList itemsRef \idx todoRef ->
           todoItemWidget $ TodoItemConfig
-            { tic_ref = tlc_ref <**> todoRef
+            { tic_ref = tlc_ref `zipRef` todoRef
             , tic_state = _2
             , tic_is_hidden = isTodoItemHidden
             , tic_delete_item = deleteTodoItem idx }

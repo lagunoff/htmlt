@@ -4,7 +4,7 @@ simplicity
 
 ## Getting started
 
-First you have to have install [nix](https://nixos.org/download.html)
+First you have to install [nix](https://nixos.org/download.html)
 package manager to download and install the dependecies. By default
 nix-shell gets GHCJS compiler from
 [reflex-platform](https://github.com/reflex-frp/reflex-platform)
@@ -32,11 +32,12 @@ Once `cabal build` is successful you can find the js executables in
 `dist-newstyle/build/x86_64-linux/ghcjs-8.6.0.1/htmlt-0.1.0.0/x/` and run them opening `index.html` in browser
 
 ```haskell
--- Counter widget
--- examples/counter/counter.hs
+-- Example featuring <input> element and two buttons. The input value
+-- is synchronized with 'DynRef's state and can be modified by either entering a
+-- number into the input or by clicking one of the two buttons
 main :: IO ()
 main = void $ attachToBody do
-  -- First create a 'DynRef
+  -- First create a 'DynRef'
   counterRef <- newRef @Int 0
   div_ do
     input_ do
@@ -133,6 +134,8 @@ holdUniqDynBy :: (a -> a -> Bool) -> Dynamic a -> Dynamic a
 -- Constructing DynRefs
 newRef :: MonadReactive m => a -> m (DynRef a)
 lensMap :: Lens' s a -> DynRef s -> DynRef a
+zipRef :: DynRef a -> DynRef b -> DynRef (a, b)
+zipRef3 :: DynRef a -> DynRef b -> DynRef c -> DynRef (a, b, c)
 
 -- Read Dynamics
 readDyn :: MonadIO m => Dynamic a -> m a
@@ -164,7 +167,7 @@ detach :: RunningApp -> IO ()
     </tr>
     <tr>
       <td>TodoMVC</td>
-      <td><a href=./examples/todo/todo.hs target=_blank>source</a></td>
+      <td><a href=./examples/todomvc/todomvc.hs target=_blank>source</a></td>
       <td><a href=https://lagunoff.github.io/htmlt-todomvc/ target=_blank>demo<a></td>
     </tr>
     <tr>

@@ -4,7 +4,6 @@
 module Utils where
 
 import Control.Monad.Reader
-import Control.Applicative
 import Data.Coerce
 import Data.JSString.Text
 import Data.JSString as JSS
@@ -18,16 +17,6 @@ import HtmlT
 import JavaScript.Object.Internal
 import qualified JavaScript.Object as Object
 import qualified JavaScript.Web.Location as JS
-
-(<**>) :: DynRef a -> DynRef b -> DynRef (a, b)
-(<**>) (DynRef aDyn aMod) (DynRef bDyn bMod) = DynRef
-  (liftA2 (,) aDyn bDyn)
-  (\f -> do
-    oldA <- liftIO $ dynamic_read aDyn
-    oldB <- liftIO $ dynamic_read bDyn
-    let (newA, newB) = f (oldA, oldB)
-    aMod \_ -> newA
-    bMod \_ -> newB)
 
 mkUrlHashRef :: MonadReactive m => m (DynRef Text)
 mkUrlHashRef = do
