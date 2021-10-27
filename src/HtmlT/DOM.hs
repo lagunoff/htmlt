@@ -388,6 +388,6 @@ foreign import javascript unsafe
 instance (x ~ (), MonadIO m) => IsString (HtmlT m x) where
   fromString = f . T.pack where
     f t = do
-      rootEl <- asks html_current_root
+      rootEl <- asks html_current_element
       textNode <- liftIO (createTextNode t)
       liftIO (appendChild rootEl textNode)

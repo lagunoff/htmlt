@@ -1,8 +1,9 @@
 -- | Simple FRP-like functionality. This module implements 'Event's
 -- and 'Dynamic's similar to the same concepts from Reflex. Also there
--- is 'DynRef' a new definition also expected to be widely used in a
--- typical application. Some functions bear the same name as their
--- Reflex counterparts to make API easier to learn
+-- is 'DynRef' a new definition which is expected to be used alongside
+-- Dynamics and Events in a typical application. Some functions bear
+-- the same name as their Reflex counterparts to make API easier to
+-- learn
 module HtmlT.Event where
 
 import Control.Applicative
@@ -66,9 +67,9 @@ data ReactiveEnv = ReactiveEnv
   -- ^ List of cancellers, IO actions to detach listeners from
   -- events. It is likely that dynamic parts of the application will
   -- be passed new instance of 'renv_finalizers' to isolate and remove
-  -- the subscriptions after the dynamic part is detached
+  -- the subscriptions after this part is detached
   , renv_id_generator :: IORef Int
-  -- ^ Contains next value for 'EventId' or SubscriptionId
+  -- ^ Contains next value for 'EventId' or 'SubscriptionId'
   } deriving Generic
 
 -- | Minimal implementation for 'HasReactiveEnv'
@@ -204,26 +205,6 @@ readsDyn f = fmap f . liftIO . dynamic_read
 updates :: Dynamic a -> Event a
 updates = dynamic_updates
 
--- | Defer a computation (usually an event firing) till the end of
--- current reactive transaction. This makes possible to avoid double
--- firing of events, constructed from multiple other events
-defer :: EventId -> Transact () -> Transact ()
-defer k act = Transact (modify f) where
-  f (TransactState s) = TransactState (M.insert k act s)
-
--- | Run a reactive transaction.
-sync :: MonadIO m => Transact a -> m a
-sync act = liftIO $ loop (TransactState M.empty) act where
-  loop :: TransactState -> Transact a -> IO a
-  loop rs (Transact act) = do
-    (r, newRs) <- runStateT act rs
-    case popQueue newRs of
-      (Just newAct, newerRs) -> r <$ loop newerRs newAct
-      (Nothing, newerRs)     -> return r
-  popQueue intact@(TransactState m) = case M.minViewWithKey m of
-    Just ((_, act), rest) -> (Just act, TransactState rest)
-    Nothing               -> (Nothing, intact)
-
 -- | Attach a listener to the event and return an action to detach the
 -- listener
 subscribe :: MonadReactive m => Event a -> Callback a -> m Canceller
@@ -304,7 +285,7 @@ zipRef3 aRef bRef cRef = DynRef
     writeSync cRef newC
   )
 
--- | Print a debug message when given event fires
+-- | Print a debug message each time given event fires
 traceEvent :: Show a => String -> Event a -> Event a
 traceEvent = traceEventWith show
 
@@ -314,11 +295,11 @@ traceEventWith :: (a -> String) -> String -> Event a -> Event a
 traceEventWith show' tag (Event f) = Event \e c ->
   f e (c . (\x -> trace (tag ++ ": " ++ show' x) x))
 
--- | Print a debug message when value inside Dynamic changes
+-- | Print a debug message when value inside the Dynamic changes
 traceDyn :: Show a => String -> Dynamic a -> Dynamic a
 traceDyn = traceDynWith show
 
--- | Print a debug message when value inside Dynamic changes
+-- | Print a debug message when value inside the DynRef changes
 traceRef :: Show a => String -> DynRef a -> DynRef a
 traceRef s DynRef{..} = DynRef
   {dynref_dynamic = traceDynWith show s dynref_dynamic, ..}
@@ -328,19 +309,6 @@ traceRef s DynRef{..} = DynRef
 traceDynWith :: (a -> String) -> String -> Dynamic a -> Dynamic a
 traceDynWith show' tag d = d {dynamic_updates = e} where
   e = traceEventWith show' tag (dynamic_updates d)
-
--- | Make an 'Event' with a tuple containing previous value as well as
--- the current value from the original event
--- FIXME: Doesn't work with multiple subscriptions
-diffEvent :: a -> Event a -> Event (a, a)
-diffEvent initial (Event s) = Event \e k -> do
-  oldRef <- liftIO (newIORef initial)
-  let
-    f a = do
-      old <- liftIO (readIORef oldRef)
-      liftIO $ writeIORef oldRef a
-      k (old, a)
-  s e f
 
 -- | Alternative version if 'fmap' where given function will only be
 -- called once every time 'Dynamic a' value changes, whereas in 'fmap'
@@ -369,6 +337,7 @@ mapDyn dynA f = do
 
 -- | Same as 'mapDyn' but with two Dynamics, @f@ is called each time
 -- any of the two Dynamics changes its value
+-- TODO: More general version of mapDynX
 mapDyn2
   :: MonadReactive m
   => Dynamic a
@@ -399,6 +368,26 @@ mapDyn2 aDyn bDyn f = do
 
 runReactiveT :: ReactiveEnv -> ReactiveT m a -> m a
 runReactiveT s = (`runReaderT` s) . unReactiveT
+
+-- | Defer a computation (usually an event firing) till the end of
+-- current reactive transaction. This makes possible to avoid double
+-- firing of events, constructed from multiple other events
+defer :: EventId -> Transact () -> Transact ()
+defer k act = Transact (modify f) where
+  f (TransactState s) = TransactState (M.insert k act s)
+
+-- | Run a reactive transaction.
+sync :: MonadIO m => Transact a -> m a
+sync act = liftIO $ loop (TransactState M.empty) act where
+  loop :: TransactState -> Transact a -> IO a
+  loop rs (Transact act) = do
+    (r, newRs) <- runStateT act rs
+    case popQueue newRs of
+      (Just newAct, newerRs) -> r <$ loop newerRs newAct
+      (Nothing, newerRs)     -> return r
+  popQueue intact@(TransactState m) = case M.minViewWithKey m of
+    Just ((_, act), rest) -> (Just act, TransactState rest)
+    Nothing               -> (Nothing, intact)
 
 subscribeImpl :: EventId -> ReactiveEnv -> Callback a -> IO Canceller
 subscribeImpl eventId e@ReactiveEnv{..} k = do

@@ -18,9 +18,9 @@ import HtmlT.Event
 import HtmlT.Internal
 import HtmlT.Types
 
--- | Create a DOM element with a given tag name and attach it to the
--- current root. Second argument contains attributes, properties and
--- children nodes for the new element
+-- | Create a DOM element with a given tag name and attach it to
+-- 'html_current_element'. Attributes, properties and children nodes can
+-- be added from inside the second argument
 --
 -- > el "div" do
 -- >   prop "className" "container"
@@ -49,7 +49,7 @@ elns ns tag child = do
   newRootEl <- liftIO (createElementNS ns tag)
   appendHtmlT newRootEl child
 
--- | Create a TextNode and attach it to the root
+-- | Create a TextNode and attach it to 'html_current_element'
 text :: Text -> Html ()
 text txt = do
   textNode <- liftIO (createTextNode txt)
@@ -64,12 +64,12 @@ dynText d = do
     setTextValue textNode new
   insertNode textNode
 
--- | Assign a property to the root element. Don't confuse attributes
--- and properties
+-- | Assign a property to 'html_current_element'. Don't confuse
+-- attributes and properties
 -- https://stackoverflow.com/questions/6003819/what-is-the-difference-between-properties-and-attributes-in-html
 prop :: ToJSVal v => Text -> v -> Html ()
 prop (JSS.textToJSString -> key) val = do
-  rootEl <- asks html_current_root
+  rootEl <- asks html_current_element
   v <- liftIO $ toJSVal val
   liftIO $ Object.setProp key v (coerce rootEl)
 
@@ -80,7 +80,7 @@ dynProp
   -> Dynamic v
   -> Html ()
 dynProp textKey dyn = do
-  rootEl <- asks html_current_root
+  rootEl <- asks html_current_element
   forDyn_ dyn (liftIO . setup rootEl)
   where
     setup el t = toJSVal t
@@ -91,13 +91,13 @@ dynProp textKey dyn = do
 -- and properties
 -- https://stackoverflow.com/questions/6003819/what-is-the-difference-between-properties-and-attributes-in-html
 attr :: Text -> Text -> Html ()
-attr k v = asks html_current_root
+attr k v = asks html_current_element
   >>= \e -> liftIO (setAttribute e k v)
 
 -- | Assign an attribute with dynamic content to the root element
 dynAttr :: Text -> Dynamic Text -> Html ()
 dynAttr k d = do
-  rootEl <- asks html_current_root
+  rootEl <- asks html_current_element
   forDyn_ d $ liftIO . setAttribute rootEl k
 
 -- | Attach listener to the root element. First agument is the name
@@ -110,7 +110,7 @@ dynAttr k d = do
 -- >   text "Click here"
 on :: EventName -> (DOMEvent -> Html ()) -> Html ()
 on name f = ask >>= \HtmlEnv{..} ->
-  onGlobalEvent defaultListenerOpts (nodeFromElement html_current_root) name f
+  onGlobalEvent defaultListenerOpts (nodeFromElement html_current_element) name f
 
 -- | Same as 'on' but ignores 'DOMEvent' inside the callback
 on_ :: EventName -> Html () -> Html ()
@@ -119,7 +119,7 @@ on_ name = on name . const
 -- | Same as 'on' but allows to specify 'ListenerOpts'
 onOptions :: EventName -> ListenerOpts -> (DOMEvent -> Html ()) -> Html ()
 onOptions name opts f = ask >>= \HtmlEnv{..} ->
-  onGlobalEvent opts (nodeFromElement html_current_root) name f
+  onGlobalEvent opts (nodeFromElement html_current_element) name f
 
 -- | Attach listener, extract data of type @a@ using specified decoder
 onDecoder :: EventName -> Decoder a -> (a -> Html ()) -> Html ()
@@ -173,7 +173,7 @@ withDecoder dec f domEvent =
 -- >   classes "mt-1 mb-2"
 classes :: Text -> Html ()
 classes cs = do
-  rootEl <- asks html_current_root
+  rootEl <- asks html_current_element
   for_ (T.splitOn " " cs) $ liftIO . classListAdd rootEl
 
 -- | Assign a single CSS class dynamically based on the value held by
@@ -187,7 +187,7 @@ classes cs = do
 -- >   text "Toggle visibility"
 toggleClass :: Text -> Dynamic Bool -> Html ()
 toggleClass cs dyn = do
-  rootEl <- asks html_current_root
+  rootEl <- asks html_current_element
   forDyn_ dyn (liftIO . setup rootEl cs)
   where
     setup rootEl cs = \case
@@ -205,7 +205,7 @@ toggleClass cs dyn = do
 -- >   text "Toggle visibility"
 toggleAttr :: Text -> Dynamic Bool -> Html ()
 toggleAttr att dyn = do
-  rootEl <- asks html_current_root
+  rootEl <- asks html_current_element
   forDyn_ dyn (liftIO . setup rootEl att)
   where
     setup rootEl name = \case
@@ -222,7 +222,7 @@ toggleAttr att dyn = do
 -- >   text "Toggle background color"
 dynStyle :: Text -> Dynamic Text -> Html ()
 dynStyle cssProp dyn = do
-  rootEl <- asks html_current_root
+  rootEl <- asks html_current_element
   forDyn_ dyn (liftIO . setup rootEl)
   where
     setup el t = do
@@ -255,9 +255,10 @@ simpleList
 simpleList dynRef h = do
   htmlEnv <- ask
   as <- readRef dynRef
+  prevValue <- liftIO $ newIORef []
   elemEnvsRef <- liftIO $ newIORef ([] :: [ElemEnv a])
   let
-    rootEl = html_current_root htmlEnv
+    rootEl = html_current_element htmlEnv
     reactiveEnv = html_reactive_env htmlEnv
     setup :: Int -> [a] -> [a] -> [ElemEnv a] -> IO [ElemEnv a]
     setup idx old new refs = case (refs, old, new) of
@@ -303,14 +304,12 @@ simpleList dynRef h = do
         overIx n (x:xs) = x : overIx (n - 1) xs
         overIx _ [] = []
       dynref_modifier dynRef (overIx i)
-  ees <- liftIO $ setup 0 [] as []
-  liftIO $ writeIORef elemEnvsRef ees
   addFinalizer $ readIORef elemEnvsRef >>= finalizeElems
-  let updatesEv = diffEvent as (dynamic_updates $ fromRef dynRef)
-  void $ subscribe updatesEv \(old, new) -> do
-    eenvs <- liftIO (readIORef elemEnvsRef)
-    newEenvs <- liftIO $ setup 0 old new eenvs
-    liftIO $ writeIORef elemEnvsRef newEenvs
+  forDyn_ (fromRef dynRef) \new -> liftIO do
+    old <- atomicModifyIORef' prevValue (new,)
+    eenvs <- readIORef elemEnvsRef
+    newEenvs <- setup 0 old new eenvs
+    writeIORef elemEnvsRef newEenvs
 
 -- | First build a DOM with the widget that is currently held by the
 -- given Dynamic, then rebuild it every time Dynamic's value
@@ -331,7 +330,7 @@ dyn d = do
   childRef <- liftIO (newIORef Nothing)
   (begin, end) <- insertBoundaries
   let
-    rootEl = html_current_root htmlEnv
+    rootEl = html_current_element htmlEnv
     finalizeEnv newEnv = do
       readIORef childRef >>= \case
         Just HtmlEnv{..} -> do
@@ -370,16 +369,16 @@ addFinalizer fin = do
   liftIO $ modifyIORef renv_finalizers (fin:)
 
 -- | Attach resulting DOM to the given node instead of
--- 'html_current_root'. Might be useful for implementing modal
+-- 'html_current_element'. Might be useful for implementing modal
 -- dialogs, tooltips etc. Similar to what called portals in React
 -- ecosystem
 -- TODO: use 'insertBoundaries' and add a finalizer that removes the created DOM
 portal :: MonadIO m => DOMElement -> HtmlT m a -> HtmlT m a
 portal newRootEl html = do
-  rootEl <- asks html_current_root
+  rootEl <- asks html_current_element
   (begin, end) <- insertBoundaries
   result <- local (\e -> e
-    { html_current_root = newRootEl
+    { html_current_element = newRootEl
     , html_insert_before_anchor = Just end
     }) html
   addFinalizer do
@@ -389,7 +388,7 @@ portal newRootEl html = do
   return result
 
 -- | Parse given text as HTML and attach the resulting tree to
--- 'html_current_root'. This way you can create not only HTML but
+-- 'html_current_element'. This way you can create not only HTML but
 -- anything that @innerHTML@ property can create (e.g. SVG)
 --
 -- > -- Create a div with an SVG image inside that shows a black
@@ -401,4 +400,5 @@ portal newRootEl html = do
 unsafeHtml :: MonadIO m => Text -> HtmlT m ()
 unsafeHtml htmlText = do
   HtmlEnv{..} <- ask
-  liftIO $ unsafeInsertHtml html_current_root html_insert_before_anchor htmlText
+  liftIO $ unsafeInsertHtml html_current_element html_insert_before_anchor
+    htmlText

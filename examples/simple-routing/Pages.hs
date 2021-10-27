@@ -176,7 +176,7 @@ countriesMapPage CountriesMapQ{..} =
     figure_ $ center_ do
       unsafeHtml countriesMap
       figcaption_ "political map of the planet Earth"
-      centerEl <- asks html_current_root
+      centerEl <- asks html_current_element
       liftIO $ js_selectCountry centerEl $ maybeToNullable $
         textToJSString <$> selected
       on "click" \event -> do

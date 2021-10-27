@@ -31,6 +31,8 @@ cabal build -fexamples --ghcjs --ghcjs-options="-j"
 Once `cabal build` is successful you can find the js executables in
 `dist-newstyle/build/x86_64-linux/ghcjs-8.6.0.1/htmlt-0.1.0.0/x/` and run them opening `index.html` in browser
 
+### Simple example
+
 ```haskell
 -- Example featuring <input> element and two buttons. The input value
 -- is synchronized with 'DynRef's state and can be modified by either entering a
@@ -150,7 +152,7 @@ modifyRef :: MonadIO m => DynRef a -> (a -> a) -> m ()
 modifySync :: DynRef a -> (a -> a) -> Transact ()
 
 -- Starting and shutting down the application
-startWithOptions :: StartOpts -> Html a -> IO (a, RunningApp)
+atatchOptions :: StartOpts -> Html a -> IO (a, RunningApp)
 attachTo :: DOMElement -> Html a -> IO (a, RunningApp)
 attachToBody :: Html a -> IO (a, RunningApp)
 detach :: RunningApp -> IO ()

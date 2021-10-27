@@ -11,13 +11,13 @@ import GHCJS.Prim
 import GHCJS.Types
 import HtmlT.Event
 
--- | HtmlT is nothing more than just a newtype over ReaderT HtmlEnv,
+-- | HtmlT is nothing more than just a newtype over ReaderT HtmlEnv
 newtype HtmlT m a = HtmlT {unHtmlT :: ReaderT HtmlEnv m a}
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadReader HtmlEnv
     , MonadFix, MonadCatch, MonadThrow, MonadMask, MonadTrans)
 
 data HtmlEnv = HtmlEnv
-  { html_current_root :: DOMElement
+  { html_current_element :: DOMElement
   -- ^ A DOMElement that will be used as a parent to insert new
   -- content, attributes, properties, listeners etc.
   , html_insert_before_anchor :: Maybe DOMNode

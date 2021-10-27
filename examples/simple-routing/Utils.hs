@@ -15,14 +15,14 @@ import JavaScript.Object.Internal
 import qualified JavaScript.Object as Object
 import qualified JavaScript.Web.Location as JS
 
-mkUrlHashRef :: ReactiveEnv -> IO (DynRef Text)
-mkUrlHashRef s = do
-  initial <- readUrlHash
-  routeRef <- runReactiveT s (newRef initial)
-  win <- getCurrentWindow
-  popStateCb <- asyncCallback $
+mkUrlHashRef :: MonadReactive m => m (DynRef Text)
+mkUrlHashRef = do
+  initial <- liftIO readUrlHash
+  routeRef <- newRef initial
+  win <- liftIO getCurrentWindow
+  popStateCb <- liftIO $ asyncCallback $
     readUrlHash >>= writeRef routeRef
-  Object.setProp "onpopstate" (jsval popStateCb) (coerce win)
+  liftIO $ Object.setProp "onpopstate" (jsval popStateCb) (coerce win)
   return routeRef
 
 readUrlHash :: IO Text
