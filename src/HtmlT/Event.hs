@@ -86,11 +86,6 @@ newtype EventId = EventId {unEventId :: Int}
 newtype SubscriptionId = SubscriptionId {unSubscriptionId :: Int}
   deriving newtype (Eq, Ord, Show)
 
--- | Read and increment 'renv_id_generator'
-nextIntId :: ReactiveEnv -> IO Int
-nextIntId ReactiveEnv{..} = atomicModifyIORef'
-  renv_id_generator \x -> (succ x, x)
-
 class HasReactiveEnv m where askReactiveEnv :: m ReactiveEnv
 
 type Lens' s a = forall f. Functor f => (a -> f a) -> s -> f s
@@ -369,6 +364,11 @@ mapDyn2 aDyn bDyn f = do
 runReactiveT :: ReactiveEnv -> ReactiveT m a -> m a
 runReactiveT s = (`runReaderT` s) . unReactiveT
 
+-- | Read and increment 'renv_id_generator'
+nextIntId :: ReactiveEnv -> IO Int
+nextIntId ReactiveEnv{..} = atomicModifyIORef'
+  renv_id_generator \x -> (succ x, x)
+
 -- | Defer a computation (usually an event firing) till the end of
 -- current reactive transaction. This makes possible to avoid double
 -- firing of events, constructed from multiple other events
@@ -428,19 +428,17 @@ instance Functor Dynamic where
 instance Applicative Dynamic where
   pure = constDyn
   (<*>) df da = Dynamic
-    (liftA2 ($) (dynamic_read df) (dynamic_read da))
+    (liftA2 ($) (readDyn df) (readDyn da))
     (Event \e k -> do
       eventId <- EventId <$> nextIntId e
       let
         fire newF newA = defer eventId do
-          f <- liftIO $ maybe (dynamic_read df) pure newF
-          a <- liftIO $ maybe (dynamic_read da) pure newA
+          f <- liftIO $ maybe (readDyn df) pure newF
+          a <- liftIO $ maybe (readDyn da) pure newA
           k (f a)
-      c1 <- unEvent (dynamic_updates df) e \f ->
-        fire (Just f) Nothing
-      c2 <- unEvent (dynamic_updates da) e \a ->
-        fire Nothing (Just a)
-      pure (c1 *> c2)
+      c1 <- unEvent (updates df) e \f -> fire (Just f) Nothing
+      c2 <- unEvent (updates da) e \a -> fire Nothing (Just a)
+      return (c1 *> c2)
     )
 
 instance Semigroup TransactState where

@@ -51,15 +51,17 @@ attachOptions StartOpts{..} render = mdo
 
 -- | Start the application and attach it to the given HTMLElement
 attachTo :: DOMElement -> Html a -> IO (a, RunningApp)
-attachTo rootEl render = do
+attachTo rootEl html = do
   renv <- newReactiveEnv
-  attachOptions (StartOpts renv rootEl) render
+  attachOptions (StartOpts renv rootEl) html
 
 -- | Start the application and attach it to current <body> element
 attachToBody :: Html a -> IO (a, RunningApp)
-attachToBody h = getCurrentBody >>= (`attachTo` h)
+attachToBody html = do
+  bodyEl <- getCurrentBody
+  attachTo bodyEl html
 
--- | Run finalizers and detach created elements from the parent
+-- | Run finalizers and detach created elements from the DOM
 detach :: RunningApp -> IO ()
 detach RunningApp{..} = do
   finalizers <- readIORef . renv_finalizers . html_reactive_env $

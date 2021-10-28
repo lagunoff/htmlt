@@ -376,15 +376,18 @@ addFinalizer fin = do
 portal :: MonadIO m => DOMElement -> HtmlT m a -> HtmlT m a
 portal newRootEl html = do
   rootEl <- asks html_current_element
-  (begin, end) <- insertBoundaries
+  begin <- liftIO $ createComment "dynamic content {{"
+  end <- liftIO $ createComment "}}"
+  liftIO $ appendChild newRootEl begin
+  liftIO $ appendChild newRootEl end
   result <- local (\e -> e
     { html_current_element = newRootEl
     , html_insert_before_anchor = Just end
     }) html
   addFinalizer do
-    unsafeRemoveBetween rootEl begin end
-    removeChild rootEl begin
-    removeChild rootEl end
+    unsafeRemoveBetween newRootEl begin end
+    removeChild newRootEl begin
+    removeChild newRootEl end
   return result
 
 -- | Parse given text as HTML and attach the resulting tree to
