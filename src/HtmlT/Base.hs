@@ -311,21 +311,28 @@ simpleList dynRef h = do
     newEenvs <- setup 0 old new eenvs
     writeIORef elemEnvsRef newEenvs
 
--- | First build a DOM with the widget that is currently held by the
--- given Dynamic, then rebuild it every time Dynamic's value
--- changes. Useful for SPA routing, tabbed components etc.
+-- | First build the widget that is currently held by the given
+-- Dynamic, then rebuild it every time Dynamic value changes. Useful
+-- for SPA routing, tabbed components etc.
 --
 -- > routeRef <- newRef Home
--- > el "div"
--- >   dyn $ routeRef <&> \case
--- >     Home -> homeWidget
--- >     Blog -> blogWidget
--- >     Resume -> resumeWidget
--- > el "button" do
+-- > dyn $ routeRef <&> \case
+-- >   Home -> homeWidget
+-- >   Blog -> blogWidget
+-- >   Resume -> resumeWidget
+-- > button_ do
 -- >   on_ "click" $ writeRef routeRef Blog
 -- >   text "Show my blog page"
 dyn :: Dynamic (Html ()) -> Html ()
-dyn d = do
+dyn d = withSwitcher $ forDyn_ d . (liftIO .)
+
+-- | More primitive version of 'dyn', allows explicitly to switch to
+-- new widget by calling given IO action
+withSwitcher
+  :: ((Html () -> IO ()) -> Html ())
+  -- ^ Html widget receives action to replace itself
+  -> Html ()
+withSwitcher child = do
   htmlEnv <- ask
   childRef <- liftIO (newIORef Nothing)
   (begin, end) <- insertBoundaries
@@ -339,7 +346,7 @@ dyn d = do
           writeIORef (renv_finalizers html_reactive_env) []
         Nothing -> return ()
       writeIORef childRef newEnv
-    setup html = liftIO do
+    switchTo html = do
       finalizers <- newIORef []
       let
         newEnv = htmlEnv
@@ -351,7 +358,7 @@ dyn d = do
       unsafeRemoveBetween rootEl begin end
       runHtmlT newEnv html
   addFinalizer (finalizeEnv Nothing)
-  forDyn_ d setup
+  liftIO $ switchTo (child switchTo)
 
 -- | Catch exceptions thrown from event handlers
 catchInteractive
@@ -372,7 +379,6 @@ addFinalizer fin = do
 -- 'html_current_element'. Might be useful for implementing modal
 -- dialogs, tooltips etc. Similar to what called portals in React
 -- ecosystem
--- TODO: use 'insertBoundaries' and add a finalizer that removes the created DOM
 portal :: MonadIO m => DOMElement -> HtmlT m a -> HtmlT m a
 portal newRootEl html = do
   rootEl <- asks html_current_element
