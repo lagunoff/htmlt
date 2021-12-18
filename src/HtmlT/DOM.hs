@@ -25,8 +25,8 @@ import HtmlT.Types
 
 data ListenerOpts = ListenerOpts
   { lo_stop_propagation :: Bool
-  -- ^ If true call @event.stopPropagation()@
-  -- FIXME: check if it works with lo_sync_callback = False
+  -- ^ If true call @event.stopPropagation()@. Currently only works
+  -- with 'lo_sync_callback' = True
   , lo_prevent_default :: Bool
   -- ^ If true call @event.preventDefault()@
   , lo_sync_callback :: Bool
