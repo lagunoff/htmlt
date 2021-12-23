@@ -282,28 +282,33 @@ zipRef3 aRef bRef cRef = DynRef
 
 -- | Print a debug message each time given event fires
 traceEvent :: Show a => String -> Event a -> Event a
-traceEvent = traceEventWith show
+traceEvent tag = traceEventWith (((tag <> ": ") <>) . show)
 
 -- | Print a debug message when the event fires using given printing
 -- function
-traceEventWith :: (a -> String) -> String -> Event a -> Event a
-traceEventWith show' tag (Event f) = Event \e c ->
-  f e (c . (\x -> trace (tag ++ ": " ++ show' x) x))
+traceEventWith :: (a -> String) -> Event a -> Event a
+traceEventWith showA (Event f) = Event \e c ->
+  f e (c . (\x -> trace (showA x) x))
 
 -- | Print a debug message when value inside the Dynamic changes
 traceDyn :: Show a => String -> Dynamic a -> Dynamic a
-traceDyn = traceDynWith show
-
--- | Print a debug message when value inside the DynRef changes
-traceRef :: Show a => String -> DynRef a -> DynRef a
-traceRef s DynRef{..} = DynRef
-  {dynref_dynamic = traceDynWith show s dynref_dynamic, ..}
+traceDyn tag = traceDynWith (((tag <> ": ") <>) . show)
 
 -- | Print a debug message when value inside Dynamic changes using
 -- given printing function
-traceDynWith :: (a -> String) -> String -> Dynamic a -> Dynamic a
-traceDynWith show' tag d = d {dynamic_updates = e} where
-  e = traceEventWith show' tag (dynamic_updates d)
+traceDynWith :: (a -> String) -> Dynamic a -> Dynamic a
+traceDynWith showA d = d {dynamic_updates = e} where
+  e = traceEventWith showA (dynamic_updates d)
+
+-- | Print a debug message when value inside the DynRef changes
+traceRef :: Show a => String -> DynRef a -> DynRef a
+traceRef tag DynRef{..} = DynRef
+  {dynref_dynamic = traceDynWith (((tag <> ": ") <>) . show) dynref_dynamic, ..}
+
+-- | Print a debug message when value inside the DynRef changes
+traceRefWith :: (a -> String) -> DynRef a -> DynRef a
+traceRefWith f DynRef{..} = DynRef
+  {dynref_dynamic = traceDynWith f dynref_dynamic, ..}
 
 -- | Alternative version if 'fmap' where given function will only be
 -- called once every time 'Dynamic a' value changes, whereas in 'fmap'
@@ -384,10 +389,10 @@ sync act = liftIO $ loop (TransactState M.empty) act where
     (r, newRs) <- runStateT act rs
     case popQueue newRs of
       (Just newAct, newerRs) -> r <$ loop newerRs newAct
-      (Nothing, newerRs)     -> return r
+      (Nothing, _newerRs) -> return r
   popQueue intact@(TransactState m) = case M.minViewWithKey m of
     Just ((_, act), rest) -> (Just act, TransactState rest)
-    Nothing               -> (Nothing, intact)
+    Nothing -> (Nothing, intact)
 
 subscribeImpl :: EventId -> ReactiveEnv -> Callback a -> IO Canceller
 subscribeImpl eventId e@ReactiveEnv{..} k = do
@@ -398,7 +403,7 @@ subscribeImpl eventId e@ReactiveEnv{..} k = do
     mfilter (not . Prelude.null) . Just . deleteSub subsId . fromMaybe []
   where
     alterSubs = modifyIORef' renv_subscriptions . flip M.alter eventId
-    deleteSub sId [] = []
+    deleteSub _sId [] = []
     deleteSub sId ((xId, c):xs)
       | sId == xId = xs
       | otherwise = (xId, c) : deleteSub sId xs
