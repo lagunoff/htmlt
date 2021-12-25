@@ -26,8 +26,6 @@ data HtmlEnv = HtmlEnv
   -- be inserted before the @anchor@ node
   , html_reactive_env :: ReactiveEnv
   -- ^ Needed to implement 'HasReactiveEnv'
-  , html_catch_interactive :: SomeException -> IO ()
-  -- ^ Catch haskell exceptions thrown from a DOM event handler
   } deriving Generic
 
 -- | Most applications will only need HtmlT IO, hence this shortcut
@@ -60,8 +58,11 @@ type EventName = Text
 nodeFromElement :: DOMElement -> DOMNode
 nodeFromElement = coerce
 
-runHtmlT :: HtmlEnv -> HtmlT m a -> m a
-runHtmlT e = flip runReaderT e . unHtmlT
+runHtmlT :: HtmlT m a -> HtmlEnv -> m a
+runHtmlT h e = flip runReaderT e (unHtmlT h)
+
+execHtmlT :: HtmlEnv -> HtmlT m a -> m a
+execHtmlT = flip runHtmlT
 
 instance (Semigroup a, Applicative m) => Semigroup (HtmlT m a) where
   (<>) = liftA2 (<>)

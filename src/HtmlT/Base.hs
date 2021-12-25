@@ -1,7 +1,6 @@
 -- | Most essential public definions
 module HtmlT.Base where
 
-import Control.Exception as Exception
 import Control.Monad.Reader
 import Data.Coerce
 import Data.Foldable
@@ -29,12 +28,6 @@ el :: Text -> Html a -> Html a
 el tag child = do
   newRootEl <- liftIO (createElement tag)
   appendHtmlT newRootEl child
-
--- | Same as 'el' but also returns the reference to the new element
-el' :: Text -> Html a -> Html (a, DOMElement)
-el' tag child = do
-  newRootEl <- liftIO (createElement tag)
-  (,newRootEl) <$> appendHtmlT newRootEl child
 
 -- | Same as 'el' but allows to specify element's namespace
 -- https://developer.mozilla.org/en-US/docs/Web/API/Document/createElementNS
@@ -108,21 +101,21 @@ dynAttr k d = do
 -- >   on "click" \_event -> do
 -- >     liftIO $ putStrLn "Clicked!"
 -- >   text "Click here"
-on :: EventName -> (DOMEvent -> Html ()) -> Html ()
+on :: EventName -> (DOMEvent -> Transact ()) -> Html ()
 on name f = ask >>= \HtmlEnv{..} ->
   onGlobalEvent defaultListenerOpts (nodeFromElement html_current_element) name f
 
 -- | Same as 'on' but ignores 'DOMEvent' inside the callback
-on_ :: EventName -> Html () -> Html ()
+on_ :: EventName -> Transact () -> Html ()
 on_ name = on name . const
 
 -- | Same as 'on' but allows to specify 'ListenerOpts'
-onOptions :: EventName -> ListenerOpts -> (DOMEvent -> Html ()) -> Html ()
+onOptions :: EventName -> ListenerOpts -> (DOMEvent -> Transact ()) -> Html ()
 onOptions name opts f = ask >>= \HtmlEnv{..} ->
   onGlobalEvent opts (nodeFromElement html_current_element) name f
 
 -- | Attach listener, extract data of type @a@ using specified decoder
-onDecoder :: EventName -> Decoder a -> (a -> Html ()) -> Html ()
+onDecoder :: EventName -> Decoder a -> (a -> Transact ()) -> Html ()
 onDecoder name dec = on name . withDecoder dec
 
 -- | Attach a listener to arbitrary target, not just the current root
@@ -136,18 +129,16 @@ onGlobalEvent
   -- ^ Event target
   -> EventName
   -- ^ Event name
-  -> (DOMEvent -> Html ())
+  -> (DOMEvent -> Transact ())
   -- ^ Callback that accepts reference to the DOM event
   -> Html ()
 onGlobalEvent opts target name f = do
-  htmlEnv <- ask
-  void $ subscribe (mkEvent htmlEnv) (liftIO . runHtmlT htmlEnv)
-  where
-    mkEvent htmlEnv = Event \_ callback -> liftIO do
+  let
+    event = Event \_ callback -> liftIO do
       unlisten <- addEventListener opts target name $
-        void . liftIO . catchExes htmlEnv . sync . callback . f
+        void . liftIO . sync . callback . f
       return $ liftIO unlisten
-    catchExes HtmlEnv{..} = (`Exception.catch` html_catch_interactive)
+  void $ subscribe event id
 
 -- | Makes easier to take some data from DOMEvent inside an event
 -- handler callback. If the decoder fails, the callback won't be
@@ -254,7 +245,6 @@ simpleList
   -> Html ()
 simpleList dynRef h = do
   htmlEnv <- ask
-  as <- readRef dynRef
   prevValue <- liftIO $ newIORef []
   elemEnvsRef <- liftIO $ newIORef ([] :: [ElemEnv a])
   let
@@ -274,17 +264,17 @@ simpleList dynRef h = do
           newEnv = htmlEnv
             { html_reactive_env = reactiveEnv {renv_finalizers = finalizers}
             }
-        (begin, end) <- runHtmlT newEnv insertBoundaries
-        runHtmlT newEnv {html_insert_before_anchor = Just end} $
+        (begin, end) <- execHtmlT newEnv insertBoundaries
+        execHtmlT newEnv {html_insert_before_anchor = Just end} $
           h idx controlledRef
         let itemRef = ElemEnv newEnv (dynref_modifier elemRef) begin end
         (itemRef:) <$> setup (idx + 1) [] xs []
-      (r:rs, x:xs, []) -> do
+      (r:rs, _:_, []) -> do
         -- New list is shorter, delete the elements that no longer
         -- present in the new list
         finalizeElems (r:rs)
         return []
-      (r:rs, x:xs, y:ys) -> do
+      (r:rs, _:xs, y:ys) -> do
         -- Update child elements along the way
         liftIO $ sync $ ee_modifier r \_ -> y
         (r:) <$> setup (idx + 1) xs ys rs
@@ -349,23 +339,14 @@ dyn d = do
           }
       finalizeEnv (Just newEnv)
       unsafeRemoveBetween rootEl begin end
-      runHtmlT newEnv html
+      execHtmlT newEnv html
   addFinalizer (finalizeEnv Nothing)
   forDyn_ d setup
-
--- | Catch exceptions thrown from event handlers
-catchInteractive
-  :: Html ()
-  -> (SomeException -> Html ())
-  -> Html ()
-catchInteractive html f =
-  local (\e -> e {html_catch_interactive = runHtmlT e . f}) html
 
 -- | Run an action before the current node is detached from the DOM
 addFinalizer :: MonadReactive m => IO () -> m ()
 addFinalizer fin = do
   ReactiveEnv{..} <- askReactiveEnv
-  finRef <- liftIO $ newIORef fin
   liftIO $ modifyIORef renv_finalizers (fin:)
 
 -- | Attach resulting DOM to the given node instead of
@@ -375,7 +356,6 @@ addFinalizer fin = do
 -- TODO: use 'insertBoundaries' and add a finalizer that removes the created DOM
 portal :: MonadIO m => DOMElement -> HtmlT m a -> HtmlT m a
 portal newRootEl html = do
-  rootEl <- asks html_current_element
   begin <- liftIO $ createComment "dynamic content {{"
   end <- liftIO $ createComment "}}"
   liftIO $ appendChild newRootEl begin

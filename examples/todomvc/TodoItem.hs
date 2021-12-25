@@ -16,7 +16,7 @@ data TodoItemConfig s = TodoItemConfig
   { tic_ref :: DynRef s
   , tic_state :: Lens' s TodoItemState
   , tic_is_hidden :: s -> Bool
-  , tic_delete_item :: Html ()
+  , tic_delete_item :: Transact ()
   }
 
 data TodoItemState = TodoItemState
@@ -59,13 +59,13 @@ todoItemWidget TodoItemConfig{..} = li_ do
     valueDyn = view (tic_state . #tis_editing . to (fromMaybe "")) <$> fromRef tic_ref
     commitEditing = readEditing >>= \case
       Just "" -> tic_delete_item
-      Just t -> modifyRef tic_ref
+      Just t -> modifySync tic_ref
         $ (tic_state . #tis_editing .~ Nothing)
         . (tic_state . #tis_title .~ t)
       Nothing -> pure ()
       where
         readEditing = readsRef (view (tic_state . #tis_editing)) tic_ref
-    cancelEditing = modifyRef tic_ref $ tic_state . #tis_editing .~ Nothing
+    cancelEditing = modifySync tic_ref $ tic_state . #tis_editing .~ Nothing
 
 defaultItemState :: TodoItemState
 defaultItemState = TodoItemState T.empty False Nothing

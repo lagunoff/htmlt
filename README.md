@@ -65,7 +65,6 @@ main = void $ attachToBody do
 ```hs
 -- Constructing DOM
 el :: Text -> Html a -> Html a
-el' :: Text -> Html a -> Html (a, DOMElement)
 elns :: Text -> Text -> Html a -> Html a
 text :: Text -> Html ()
 dynText :: Dynamic Text -> Html ()
@@ -85,11 +84,11 @@ dynChecked :: Dynamic Bool -> Html ()
 dynDisabled :: Dynamic Bool -> Html ()
 
 -- Handling DOM events
-on :: EventName -> (DOMEvent -> Html ()) -> Html ()
-on_ :: EventName -> Html () -> Html ()
-onOptions :: EventName -> ListenerOpts -> (DOMEvent -> Html ()) -> Html ()
-onDecoder :: EventName -> Decoder a -> (a -> Html ()) -> Html ()
-onGlobalEvent :: ListenerOpts -> DOMNode -> EventName -> (DOMEvent -> Html ()) -> Html ()
+on :: EventName -> (DOMEvent -> Transact ()) -> Html ()
+on_ :: EventName -> Transact () -> Html ()
+onOptions :: EventName -> ListenerOpts -> (DOMEvent -> Transact ()) -> Html ()
+onDecoder :: EventName -> Decoder a -> (a -> Transact ()) -> Html ()
+onGlobalEvent :: ListenerOpts -> DOMNode -> EventName -> (DOMEvent -> Transact ()) -> Html ()
 
 -- Decoding data from DOM Events
 mouseDeltaDecoder :: Decoder MouseDelta
@@ -107,7 +106,6 @@ checkedDecoder :: Decoder Bool
 -- DOM extras, useful helpers
 unsafeHtml :: MonadIO m => Text -> HtmlT m ()
 portal :: Monad m => DOMElement -> HtmlT m a -> HtmlT m a
-catchInteractive :: Html () -> (SomeException -> Html ()) -> Html ()
 addFinalizer :: MonadReactive m => IO () -> m ()
 
 -- Dynamic collections

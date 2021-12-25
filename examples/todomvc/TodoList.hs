@@ -108,7 +108,7 @@ todoListWidget TodoListConfig{..} = do
     clearCompleted = modifyRef tlc_ref (tlc_state . #tls_items %~ Prelude.filter (not . tis_completed))
     countItemsLeft TodoListState{..} = foldl (\acc TodoItemState{..} ->
       if not tis_completed then acc + 1 else acc) 0 tls_items
-    deleteTodoItem idx = modifyRef tlc_ref (tlc_state . #tls_items %~ deleteAt idx)
+    deleteTodoItem idx = modifySync tlc_ref (tlc_state . #tls_items %~ deleteAt idx)
     isTodoItemHidden (s, TodoItemState{..}) =
       case (s ^. tlc_state . #tls_filter, tis_completed) of
         (Active,    True)  -> True
