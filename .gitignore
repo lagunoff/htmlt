@@ -18,6 +18,7 @@
 /.*-env
 result
 dist
+bin
 out
 doc
 locals.nix

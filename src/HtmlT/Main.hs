@@ -1,7 +1,6 @@
 -- | Start and stop browser application
 module HtmlT.Main where
 
-import Control.Monad.Catch
 import Data.IORef
 import GHC.Generics
 
@@ -40,10 +39,9 @@ attachOptions StartOpts{..} render = mdo
       { html_current_element = startopts_root_element
       , html_insert_before_anchor = Just end
       , html_reactive_env = startopts_reactive_env
-      , html_catch_interactive = throwM
       }
     runApp = RunningApp htmlEnv begin end
-  result <- runHtmlT htmlEnv render
+  result <- execHtmlT htmlEnv render
   onBeforeUnload $
     readIORef (renv_finalizers startopts_reactive_env)
       >>= sequence_
