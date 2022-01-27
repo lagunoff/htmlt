@@ -366,8 +366,11 @@ mapDyn2 aDyn bDyn f = do
     defer eventId fire
   return $ Dynamic (readIORef latestC) updates
 
-runReactiveT :: ReactiveEnv -> ReactiveT m a -> m a
-runReactiveT s = (`runReaderT` s) . unReactiveT
+runReactiveT :: ReactiveT m a -> ReactiveEnv -> m a
+runReactiveT r = runReaderT (unReactiveT r)
+
+execReactiveT :: ReactiveEnv -> ReactiveT m a -> m a
+execReactiveT = flip runReactiveT
 
 -- | Read and increment 'renv_id_generator'
 nextIntId :: ReactiveEnv -> IO Int

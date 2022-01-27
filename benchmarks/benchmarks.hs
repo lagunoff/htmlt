@@ -25,4 +25,4 @@ benchDynamics eventsNum subsNum fireNum = reactive do
   where
     subscribeAndWrite from to = void $ subscribe (updates from) $
       writeRef to . Just
-    reactive act = newReactiveEnv >>= flip runReactiveT act
+    reactive act = newReactiveEnv >>= runReactiveT act

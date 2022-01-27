@@ -256,7 +256,7 @@ simpleList dynRef h = do
       ([], [], x:xs) -> do
         -- New list is longer, append new elements
         finalizers <- newIORef []
-        elemRef <- runReactiveT reactiveEnv $ newRef x
+        elemRef <- execReactiveT reactiveEnv $ newRef x
         let
           controlledRef = elemRef
             {dynref_modifier=elemModifier idx (fromRef elemRef)

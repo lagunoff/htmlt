@@ -59,7 +59,7 @@ nodeFromElement :: DOMElement -> DOMNode
 nodeFromElement = coerce
 
 runHtmlT :: HtmlT m a -> HtmlEnv -> m a
-runHtmlT h e = flip runReaderT e (unHtmlT h)
+runHtmlT h = runReaderT (unHtmlT h)
 
 execHtmlT :: HtmlEnv -> HtmlT m a -> m a
 execHtmlT = flip runHtmlT
