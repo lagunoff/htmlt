@@ -330,20 +330,16 @@ foreign import javascript unsafe
   "$1.nodeValue = $2;"
   js_setTextValue :: DOMNode -> JSString -> IO ()
 foreign import javascript unsafe
-  "(function(cb){\
-    window.addEventListener('beforeunload', function(e) {\
-      cb();\
-    })\
-   })($1)"
+  "window.addEventListener('beforeunload', function(e) { $1(); })"
   js_onBeforeUnload :: Callback a -> IO ()
 foreign import javascript unsafe
-  "(function(){ return window; })()"
+  "window"
   js_getCurrentWindow :: IO JSVal
 foreign import javascript unsafe
-  "(function(){ return window.document; })()"
+  "window.document"
   js_getCurrentDocument :: IO JSVal
 foreign import javascript unsafe
-  "(function(){ return window.document.body; })()"
+  "window.document.body"
   js_getCurrentBody :: IO JSVal
 foreign import javascript unsafe
   "(function (parent, begin, end) {\
