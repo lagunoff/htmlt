@@ -353,7 +353,6 @@ addFinalizer fin = do
 -- 'html_current_element'. Might be useful for implementing modal
 -- dialogs, tooltips etc. Similar to what called portals in React
 -- ecosystem
--- TODO: use 'insertBoundaries' and add a finalizer that removes the created DOM
 portal :: MonadIO m => DOMElement -> HtmlT m a -> HtmlT m a
 portal newRootEl html = do
   begin <- liftIO $ createComment "dynamic content {{"

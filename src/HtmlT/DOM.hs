@@ -385,9 +385,10 @@ foreign import javascript unsafe
   js_unsafeInsertHtml :: DOMElement -> Nullable DOMNode -> JSString -> IO ()
 #endif
 
-instance (x ~ (), MonadIO m) => IsString (HtmlT m x) where
-  fromString = f . T.pack where
-    f t = do
-      rootEl <- asks html_current_element
-      textNode <- liftIO (createTextNode t)
-      liftIO (appendChild rootEl textNode)
+instance (a ~ (), MonadIO m) => IsString (HtmlT m a) where
+  fromString s = do
+    HtmlEnv{..} <- ask
+    textNode <- liftIO $ createTextNode (T.pack s)
+    case html_insert_before_anchor of
+      Just anchor -> liftIO $ js_insertBefore html_current_element textNode anchor
+      Nothing -> liftIO $ appendChild html_current_element textNode
