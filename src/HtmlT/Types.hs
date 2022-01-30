@@ -20,10 +20,9 @@ data HtmlEnv = HtmlEnv
   { html_current_element :: DOMElement
   -- ^ A DOMElement that will be used as a parent to insert new
   -- content, attributes, properties, listeners etc.
-  , html_insert_before_anchor :: Maybe DOMNode
-  -- ^ When this field is @Nothing@ new content will be added to the
-  -- end of existing content, when it's @Just anchor@ new content will
-  -- be inserted before the @anchor@ node
+  , html_content_boundary :: Maybe ContentBoundary
+  -- ^ Boundary defined by parent scope where new content should be
+  -- attached, when Nothing whole parent element is available
   , html_reactive_env :: ReactiveEnv
   -- ^ Needed to implement 'HasReactiveEnv'
   } deriving Generic
@@ -53,6 +52,13 @@ newtype DOMEvent = DOMEvent {unDOMEvent :: JSVal}
 -- some of the new Events in ghcjs-dom where these names are
 -- representated by data constructors
 type EventName = Text
+
+-- | Two 'DOMNode's (comments) that define boundaries for another
+-- DOM content
+data ContentBoundary = ContentBoundary
+  { boundary_begin :: DOMNode
+  , boundary_end :: DOMNode
+  } deriving Generic
 
 -- | Each DOMElement is also a valid DOMNode
 nodeFromElement :: DOMElement -> DOMNode

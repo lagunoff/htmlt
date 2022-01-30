@@ -116,10 +116,18 @@ unsafeInsertHtml :: DOMElement -> Maybe DOMNode -> Text -> IO ()
 unsafeInsertHtml parent manchor rawHtml = js_unsafeInsertHtml parent
   (maybeToNullable manchor) (textToJSString rawHtml)
 
--- | Assuming @begin@ and @end@ are chidrens of the @parent@ element
--- and @begin@ placed before the @end@, remove all nodes between them
-unsafeRemoveBetween :: DOMElement -> DOMNode -> DOMNode -> IO ()
-unsafeRemoveBetween parent begin end = js_unsafeRemoveBetween parent begin end
+-- | Assuming given 'ContentBoundary' was inserted into the @parent@
+-- element remove all the content inside the boundary.
+clearBoundary :: ContentBoundary -> IO ()
+clearBoundary ContentBoundary{..} =
+  js_clearBoundary boundary_begin boundary_end
+
+-- | Detach 'ContentBoundary' from the DOM and everything inside the
+-- boundary.
+removeBoundary :: ContentBoundary -> IO ()
+removeBoundary ContentBoundary{..} = do
+  js_clearBoundary boundary_begin boundary_end
+  js_detachBoundary boundary_begin boundary_end
 
 -- | Run a given callback on BeforeUnloadEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/BeforeUnloadEvent
@@ -267,7 +275,8 @@ js_onBeforeUnload = errorGhcjsOnly
 
 js_appendChild :: DOMElement -> DOMNode -> IO () = errorGhcjsOnly
 js_insertBefore :: DOMElement -> DOMNode -> DOMNode -> IO () = errorGhcjsOnly
-js_unsafeRemoveBetween :: DOMElement -> DOMNode -> DOMNode -> IO () = errorGhcjsOnly
+js_clearBoundary :: DOMNode -> DOMNode -> IO () = errorGhcjsOnly
+js_detachBoundary :: DOMNode -> DOMNode -> IO () = errorGhcjsOnly
 js_setAttribute :: DOMElement -> JSString -> JSString -> IO () = errorGhcjsOnly
 js_removeAttribute :: DOMElement -> JSString -> IO ()  = errorGhcjsOnly
 js_removeChild :: DOMElement -> DOMNode -> IO ()  = errorGhcjsOnly
@@ -330,11 +339,7 @@ foreign import javascript unsafe
   "$1.nodeValue = $2;"
   js_setTextValue :: DOMNode -> JSString -> IO ()
 foreign import javascript unsafe
-  "(function(cb){\
-    window.addEventListener('beforeunload', function(e) {\
-      cb();\
-    })\
-   })($1)"
+  "window.addEventListener('beforeunload', function() { $1(); })"
   js_onBeforeUnload :: Callback a -> IO ()
 foreign import javascript unsafe
   "(function(){ return window; })()"
@@ -346,13 +351,22 @@ foreign import javascript unsafe
   "(function(){ return window.document.body; })()"
   js_getCurrentBody :: IO JSVal
 foreign import javascript unsafe
-  "(function (parent, begin, end) {\
+  "(function (begin, end) {\
     for (;;){\
-      if (!end.previousSibling || end.previousSibling === begin) break;\
-      parent.removeChild(end.previousSibling);\
+      if (!end.previousSibling\
+        || !end.previousSibling.parentNode\
+        || end.previousSibling === begin\
+        ) break;\
+      end.previousSibling.parentNode.removeChild(end.previousSibling);\
     }\
-  })($1, $2, $3)"
-  js_unsafeRemoveBetween :: DOMElement -> DOMNode -> DOMNode -> IO ()
+  })($1, $2)"
+  js_clearBoundary :: DOMNode -> DOMNode -> IO ()
+foreign import javascript unsafe
+  "(function (begin, end) {\
+    if (begin.parentNode) begin.parentNode.removeChild(begin);\
+    if (end.parentNode) end.parentNode.removeChild(end);\
+  })($1, $2)"
+  js_detachBoundary :: DOMNode -> DOMNode -> IO ()
 foreign import javascript unsafe "$1()"
   js_call0 :: JSVal -> IO JSVal
 foreign import javascript unsafe "$1($2)"
@@ -389,6 +403,7 @@ instance (a ~ (), MonadIO m) => IsString (HtmlT m a) where
   fromString s = do
     HtmlEnv{..} <- ask
     textNode <- liftIO $ createTextNode (T.pack s)
-    case html_insert_before_anchor of
-      Just anchor -> liftIO $ js_insertBefore html_current_element textNode anchor
+    case html_content_boundary of
+      Just ContentBoundary{..} -> liftIO $
+        js_insertBefore html_current_element textNode boundary_end
       Nothing -> liftIO $ appendChild html_current_element textNode
