@@ -96,7 +96,6 @@ library
   build-depends:
     base,
     ghcjs-base,
-    bytestring,
     containers,
     exceptions,
     mtl,

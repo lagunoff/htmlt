@@ -11,8 +11,7 @@ import HtmlT.DOM
 data ElemEnv a = ElemEnv
   { ee_html_env :: HtmlEnv
   , ee_modifier :: Modifier a
-  , ee_begin :: DOMNode
-  , ee_end :: DOMNode
+  , ee_boundary :: ContentBoundary
   } deriving Generic
 
 -- | Insert given node to @html_current_element@ and run action with
@@ -21,26 +20,24 @@ appendHtmlT :: MonadIO m => DOMElement -> HtmlT m a -> HtmlT m a
 appendHtmlT newRootEl html = do
   result <- local (\env -> env
     { html_current_element = newRootEl
-    , html_insert_before_anchor = Nothing }) html
+    , html_content_boundary = Nothing }) html
   result <$ insertNode (nodeFromElement newRootEl)
 
--- | Insert new node to @html_current_element@. Use either
--- 'js_insertBefore' or 'appendChild' depending on the value of
--- 'html_insert_before_anchor'
+-- | Insert new node to the end of current boundary
 insertNode :: MonadIO m => DOMNode -> HtmlT m ()
 insertNode n = do
   HtmlEnv{..} <- ask
-  case html_insert_before_anchor of
-    Just anchor -> liftIO $ js_insertBefore html_current_element n anchor
+  case html_content_boundary of
+    Just ContentBoundary{..} -> liftIO $
+      js_insertBefore html_current_element n boundary_end
     Nothing -> liftIO $ appendChild html_current_element n
 
--- | Insert two comment nodes intended to be used as a boundary for
--- dynamic content and as arguments to @unsafeRemoveBetween@ to clear the
--- content in the finalizer
-insertBoundaries :: MonadIO m => HtmlT m (DOMNode, DOMNode)
-insertBoundaries = do
-  beginAnchor <- liftIO $ createComment "dynamic content {{"
-  endAnchor <- liftIO $ createComment "}}"
-  insertNode beginAnchor
-  insertNode endAnchor
-  return (beginAnchor, endAnchor)
+-- | Insert two DOM Comment nodes intended to be used as a boundary for
+-- dynamic content.
+insertBoundary :: MonadIO m => HtmlT m ContentBoundary
+insertBoundary = do
+  boundary_begin <- liftIO $ createComment "ContentBoundary {{"
+  boundary_end <- liftIO $ createComment "}}"
+  insertNode boundary_begin
+  insertNode boundary_end
+  return ContentBoundary{..}

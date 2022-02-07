@@ -22,25 +22,25 @@ data StartOpts = StartOpts
 -- | Needed to manually finalize and detach the application
 data RunningApp = RunningApp
   { runapp_html_env :: HtmlEnv
-  , runapp_boundary_begin :: DOMNode
-  , runapp_boundary_end :: DOMNode
+  , runapp_boundary :: ContentBoundary
   } deriving Generic
 
 -- | Most complete version of multiple functions that start the
 -- application
 attachOptions :: StartOpts -> Html a -> IO (a, RunningApp)
 attachOptions StartOpts{..} render = mdo
-  begin <- createComment "dynamic content {{"
+  begin <- createComment "ContentBoundary {{"
   end <- createComment "}}"
   appendChild startopts_root_element begin
   appendChild startopts_root_element end
   let
+    boundary = ContentBoundary begin end
     htmlEnv = HtmlEnv
       { html_current_element = startopts_root_element
-      , html_insert_before_anchor = Just end
+      , html_content_boundary = Just boundary
       , html_reactive_env = startopts_reactive_env
       }
-    runApp = RunningApp htmlEnv begin end
+    runApp = RunningApp htmlEnv boundary
   result <- execHtmlT htmlEnv render
   onBeforeUnload $
     readIORef (renv_finalizers startopts_reactive_env)
@@ -65,7 +65,4 @@ detach RunningApp{..} = do
   finalizers <- readIORef . renv_finalizers . html_reactive_env $
     runapp_html_env
   sequence_ finalizers
-  unsafeRemoveBetween (html_current_element runapp_html_env)
-    runapp_boundary_begin runapp_boundary_end
-  removeChild (html_current_element runapp_html_env) runapp_boundary_begin
-  removeChild (html_current_element runapp_html_env) runapp_boundary_end
+  removeBoundary runapp_boundary

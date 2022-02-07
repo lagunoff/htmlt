@@ -248,7 +248,6 @@ simpleList dynRef h = do
   prevValue <- liftIO $ newIORef []
   elemEnvsRef <- liftIO $ newIORef ([] :: [ElemEnv a])
   let
-    rootEl = html_current_element htmlEnv
     reactiveEnv = html_reactive_env htmlEnv
     setup :: Int -> [a] -> [a] -> [ElemEnv a] -> IO [ElemEnv a]
     setup idx old new refs = case (refs, old, new) of
@@ -264,10 +263,10 @@ simpleList dynRef h = do
           newEnv = htmlEnv
             { html_reactive_env = reactiveEnv {renv_finalizers = finalizers}
             }
-        (begin, end) <- execHtmlT newEnv insertBoundaries
-        execHtmlT newEnv {html_insert_before_anchor = Just end} $
+        boundary <- execHtmlT newEnv insertBoundary
+        execHtmlT newEnv {html_content_boundary = Just boundary} $
           h idx controlledRef
-        let itemRef = ElemEnv newEnv (dynref_modifier elemRef) begin end
+        let itemRef = ElemEnv newEnv (dynref_modifier elemRef) boundary
         (itemRef:) <$> setup (idx + 1) [] xs []
       (r:rs, _:_, []) -> do
         -- New list is shorter, delete the elements that no longer
@@ -281,9 +280,7 @@ simpleList dynRef h = do
       (_, _, _) -> do
         error "simpleList: Incoherent internal state"
     finalizeElems = traverse_ \ElemEnv{..} -> liftIO do
-      unsafeRemoveBetween rootEl ee_begin ee_end
-      removeChild rootEl ee_end
-      removeChild rootEl ee_begin
+      removeBoundary ee_boundary
       let fins = renv_finalizers $ html_reactive_env ee_html_env
       readIORef fins >>= sequence_
     elemModifier :: Int -> Dynamic a -> (a -> a) -> Transact ()
@@ -318,9 +315,8 @@ dyn :: Dynamic (Html ()) -> Html ()
 dyn d = do
   htmlEnv <- ask
   childRef <- liftIO (newIORef Nothing)
-  (begin, end) <- insertBoundaries
+  boundary <- insertBoundary
   let
-    rootEl = html_current_element htmlEnv
     finalizeEnv newEnv = do
       readIORef childRef >>= \case
         Just HtmlEnv{..} -> do
@@ -335,10 +331,10 @@ dyn d = do
         newEnv = htmlEnv
           { html_reactive_env = (html_reactive_env htmlEnv)
             { renv_finalizers = finalizers }
-          , html_insert_before_anchor = Just end
+          , html_content_boundary = Just boundary
           }
       finalizeEnv (Just newEnv)
-      unsafeRemoveBetween rootEl begin end
+      clearBoundary boundary
       execHtmlT newEnv html
   addFinalizer (finalizeEnv Nothing)
   forDyn_ d setup
@@ -353,21 +349,17 @@ addFinalizer fin = do
 -- 'html_current_element'. Might be useful for implementing modal
 -- dialogs, tooltips etc. Similar to what called portals in React
 -- ecosystem
--- TODO: use 'insertBoundaries' and add a finalizer that removes the created DOM
 portal :: MonadIO m => DOMElement -> HtmlT m a -> HtmlT m a
 portal newRootEl html = do
-  begin <- liftIO $ createComment "dynamic content {{"
-  end <- liftIO $ createComment "}}"
-  liftIO $ appendChild newRootEl begin
-  liftIO $ appendChild newRootEl end
+  boundary <- local (\e -> e
+    { html_current_element = newRootEl
+    , html_content_boundary = Nothing
+    }) insertBoundary
   result <- local (\e -> e
     { html_current_element = newRootEl
-    , html_insert_before_anchor = Just end
+    , html_content_boundary = Just boundary
     }) html
-  addFinalizer do
-    unsafeRemoveBetween newRootEl begin end
-    removeChild newRootEl begin
-    removeChild newRootEl end
+  addFinalizer $ removeBoundary boundary
   return result
 
 -- | Parse given text as HTML and attach the resulting tree to
@@ -383,5 +375,6 @@ portal newRootEl html = do
 unsafeHtml :: MonadIO m => Text -> HtmlT m ()
 unsafeHtml htmlText = do
   HtmlEnv{..} <- ask
-  liftIO $ unsafeInsertHtml html_current_element html_insert_before_anchor
+  let anchor = fmap boundary_end html_content_boundary
+  liftIO $ unsafeInsertHtml html_current_element anchor
     htmlText

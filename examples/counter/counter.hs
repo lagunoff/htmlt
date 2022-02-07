@@ -10,7 +10,7 @@ main = void $ attachToBody do
   div_ do
     input_ do
       -- Show the value inside <input>
-      dynValue $ T.pack . show <$> fromRef counterRef
+      dynProp "value" $ T.pack . show <$> fromRef counterRef
       -- Parse and update the value on each InputEvent
       onDecoder "input" valueDecoder $
         modifyRef counterRef . maybe id const . readMaybe . T.unpack
