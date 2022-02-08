@@ -7,7 +7,6 @@
 {-# LANGUAGE JavaScriptFFI #-}
 module HtmlT.DOM where
 
-import Control.Monad
 import Control.Monad.Reader
 import Data.Coerce
 import Data.String
@@ -25,8 +24,7 @@ import HtmlT.Types
 
 data ListenerOpts = ListenerOpts
   { lo_stop_propagation :: Bool
-  -- ^ If true call @event.stopPropagation()@. Currently only works
-  -- with 'lo_sync_callback' = True
+  -- ^ If true call @event.stopPropagation()@
   , lo_prevent_default :: Bool
   -- ^ If true call @event.preventDefault()@
   , lo_sync_callback :: Bool
@@ -145,22 +143,19 @@ addEventListener
   -> (DOMEvent -> IO ())
   -> IO (IO ())
 addEventListener ListenerOpts{..} target name f = do
-  cb <- mkcallback \event -> do
-    when lo_stop_propagation do
-      void $ js_callMethod0 event "stopPropagation"
-    when lo_prevent_default do
-      void $ js_callMethod0 event "preventDefault"
-    f (DOMEvent event)
+  hscb <- mkcallback (f . DOMEvent)
+  jscb <- withopts hscb
   js_callMethod2 (coerce target) "addEventListener"
-    (jsval (textToJSString name)) (jsval cb)
+    (jsval (textToJSString name)) (jsval jscb)
   return do
     js_callMethod2 (coerce target) "removeEventListener"
-      (jsval (textToJSString name)) (jsval cb)
-    releaseCallback cb
+      (jsval (textToJSString name)) (jsval jscb)
+    releaseCallback hscb
   where
     mkcallback = if lo_sync_callback
       then syncCallback1 ThrowWouldBlock
       else asyncCallback1
+    withopts = js_callbackWithOptions lo_stop_propagation lo_prevent_default
 
 -- | Collection of deltaX, deltaY and deltaZ properties from WheelEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/WheelEvent
@@ -298,6 +293,7 @@ js_call2 :: JSVal -> JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
 js_callMethod0 :: JSVal -> JSString -> IO JSVal = errorGhcjsOnly
 js_callMethod1 :: JSVal -> JSString -> JSVal -> IO JSVal = errorGhcjsOnly
 js_callMethod2 :: JSVal -> JSString -> JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
+js_callbackWithOptions :: Bool -> Bool -> Callback (JSVal -> IO ()) -> IO (Callback (JSVal -> IO ())) = errorGhcjsOnly
 #else
 foreign import javascript unsafe
   "$1.appendChild($2)"
@@ -397,6 +393,13 @@ foreign import javascript unsafe
     }\
   })($1, $2, $3)"
   js_unsafeInsertHtml :: DOMElement -> Nullable DOMNode -> JSString -> IO ()
+foreign import javascript unsafe
+  "$r = function(e) {\
+    if ($1) e.stopPropagation();\
+    if ($2) e.preventDefault();\
+    return $3();\
+  }"
+  js_callbackWithOptions :: Bool -> Bool -> Callback (JSVal -> IO ()) -> IO (Callback (JSVal -> IO ()))
 #endif
 
 instance (a ~ (), MonadIO m) => IsString (HtmlT m a) where
