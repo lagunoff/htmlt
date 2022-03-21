@@ -397,7 +397,7 @@ foreign import javascript unsafe
   "$r = function(e) {\
     if ($1) e.stopPropagation();\
     if ($2) e.preventDefault();\
-    return $3();\
+    return $3(e);\
   }"
   js_callbackWithOptions :: Bool -> Bool -> Callback (JSVal -> IO ()) -> IO (Callback (JSVal -> IO ()))
 #endif
