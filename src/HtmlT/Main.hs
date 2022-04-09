@@ -36,8 +36,8 @@ attachOptions StartOpts{..} render = mdo
   let
     boundary = ContentBoundary begin end
     htmlEnv = HtmlEnv
-      { html_current_element = startopts_root_element
-      , html_content_boundary = Just boundary
+      { html_current_element = CurrentDOMElement startopts_root_element
+      , html_content_boundary = MaybeContentBoundary $ Just boundary
       , html_reactive_env = startopts_reactive_env
       }
     runApp = RunningApp htmlEnv boundary

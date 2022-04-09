@@ -3,6 +3,7 @@ module HtmlT.Base where
 
 import Control.Monad.Reader
 import Data.Coerce
+import Data.Function hiding (on)
 import Data.Foldable
 import Data.IORef
 import Data.JSString.Text as JSS
@@ -10,6 +11,8 @@ import Data.Text as T hiding (index)
 import GHCJS.Marshal
 import JavaScript.Object as Object
 import JavaScript.Object.Internal
+import Data.Generics.Product
+import Control.Monad.Trans.Control
 
 import HtmlT.DOM
 import HtmlT.Decode
@@ -24,10 +27,10 @@ import HtmlT.Types
 -- > el "div" do
 -- >   prop "className" "container"
 -- >   el "span" $ text "Lorem Ipsum"
-el :: Text -> Html a -> Html a
+el :: MonadHtml e m => Text -> m a -> m a
 el tag child = do
   newRootEl <- liftIO (createElement tag)
-  appendHtmlT newRootEl child
+  appendHtml newRootEl child
 
 -- | Same as 'el' but allows to specify element's namespace
 -- https://developer.mozilla.org/en-US/docs/Web/API/Document/createElementNS
@@ -37,19 +40,19 @@ el tag child = do
 -- >   prop "width" "400"
 -- >   elns "http://www.w3.org/2000/svg" "path" do
 -- >     prop "d" "M150 0 L75 200 L225 200 Z"
-elns :: Text -> Text -> Html a -> Html a
+elns :: MonadHtml e m => Text -> Text -> m a -> m a
 elns ns tag child = do
   newRootEl <- liftIO (createElementNS ns tag)
-  appendHtmlT newRootEl child
+  appendHtml newRootEl child
 
 -- | Create a TextNode and attach it to 'html_current_element'
-text :: Text -> Html ()
+text :: MonadHtml e m => Text -> m ()
 text txt = do
   textNode <- liftIO (createTextNode txt)
   insertNode textNode
 
 -- | Create a TextNode with dynamic content
-dynText :: Dynamic Text -> Html ()
+dynText :: MonadHtmlDyn e m => Dynamic Text -> m ()
 dynText d = do
   txt <- readDyn d
   textNode <- liftIO (createTextNode txt)
@@ -60,20 +63,20 @@ dynText d = do
 -- | Assign a property to 'html_current_element'. Don't confuse
 -- attributes and properties
 -- https://stackoverflow.com/questions/6003819/what-is-the-difference-between-properties-and-attributes-in-html
-prop :: ToJSVal v => Text -> v -> Html ()
+prop :: (ToJSVal v, MonadHtml e m) => Text -> v -> m ()
 prop (JSS.textToJSString -> key) val = do
-  rootEl <- asks html_current_element
+  rootEl <- asks (unCurrentDOMElement . getTyped)
   v <- liftIO $ toJSVal val
   liftIO $ Object.setProp key v (coerce rootEl)
 
 -- | Assign a property with dynamic content to the root element
 dynProp
-  :: (ToJSVal v, FromJSVal v, Eq v)
+  :: (ToJSVal v, FromJSVal v, Eq v, MonadHtmlDyn e m)
   => Text
   -> Dynamic v
-  -> Html ()
+  -> m ()
 dynProp textKey dyn = do
-  rootEl <- asks html_current_element
+  rootEl <- asks (unCurrentDOMElement . getTyped)
   forDyn_ dyn (liftIO . setup rootEl)
   where
     setup el t = toJSVal t
@@ -83,14 +86,14 @@ dynProp textKey dyn = do
 -- | Assign an attribute to the root element. Don't confuse attributes
 -- and properties
 -- https://stackoverflow.com/questions/6003819/what-is-the-difference-between-properties-and-attributes-in-html
-attr :: Text -> Text -> Html ()
-attr k v = asks html_current_element
+attr :: MonadHtml e m => Text -> Text -> m ()
+attr k v = asks (unCurrentDOMElement . getTyped)
   >>= \e -> liftIO (setAttribute e k v)
 
 -- | Assign an attribute with dynamic content to the root element
-dynAttr :: Text -> Dynamic Text -> Html ()
+dynAttr :: MonadHtmlDyn e m => Text -> Dynamic Text -> m ()
 dynAttr k d = do
-  rootEl <- asks html_current_element
+  rootEl <- asks (unCurrentDOMElement . getTyped)
   forDyn_ d $ liftIO . setAttribute rootEl k
 
 -- | Attach listener to the root element. First agument is the name
@@ -101,28 +104,41 @@ dynAttr k d = do
 -- >   on "click" \_event -> do
 -- >     liftIO $ putStrLn "Clicked!"
 -- >   text "Click here"
-on :: EventName -> (DOMEvent -> Transact ()) -> Html ()
-on name f = ask >>= \HtmlEnv{..} ->
-  onGlobalEvent defaultListenerOpts (nodeFromElement html_current_element) name f
+on :: MonadHtmlDyn e m => EventName -> (DOMEvent -> Transact ()) -> m ()
+on name f = do
+  curElm <- asks (unCurrentDOMElement . getTyped)
+  onGlobalEvent defaultListenerOpts (nodeFromElement curElm) name f
 
 -- | Same as 'on' but ignores 'DOMEvent' inside the callback
-on_ :: EventName -> Transact () -> Html ()
+on_ :: MonadHtmlDyn e m => EventName -> Transact () -> m ()
 on_ name = on name . const
 
 -- | Same as 'on' but allows to specify 'ListenerOpts'
-onOptions :: EventName -> ListenerOpts -> (DOMEvent -> Transact ()) -> Html ()
-onOptions name opts f = ask >>= \HtmlEnv{..} ->
-  onGlobalEvent opts (nodeFromElement html_current_element) name f
+onOptions
+  :: MonadHtmlDyn e m
+  => EventName
+  -> ListenerOpts
+  -> (DOMEvent -> Transact ())
+  -> m ()
+onOptions name opts f = do
+  curElm <- asks (unCurrentDOMElement . getTyped)
+  onGlobalEvent opts (nodeFromElement curElm) name f
 
 -- | Attach listener, extract data of type @a@ using specified decoder
-onDecoder :: EventName -> Decoder a -> (a -> Transact ()) -> Html ()
+onDecoder
+  :: MonadHtmlDyn e m
+  => EventName
+  -> Decoder a
+  -> (a -> Transact ())
+  -> m ()
 onDecoder name dec = on name . withDecoder dec
 
 -- | Attach a listener to arbitrary target, not just the current root
 -- element (usually that would be @window@, @document@ or @body@
 -- objects)
 onGlobalEvent
-  :: ListenerOpts
+  :: MonadHtmlDyn e m
+  => ListenerOpts
   -- ^ Specify whether to call @event.stopPropagation()@ and
   -- @event.preventDefault()@ on the fired event
   -> DOMNode
@@ -131,7 +147,7 @@ onGlobalEvent
   -- ^ Event name
   -> (DOMEvent -> Transact ())
   -- ^ Callback that accepts reference to the DOM event
-  -> Html ()
+  -> m ()
 onGlobalEvent opts target name f = do
   let
     event = Event \_ callback -> liftIO do
@@ -162,9 +178,9 @@ withDecoder dec f domEvent =
 -- > el "div" do
 -- >   classes "container row"
 -- >   classes "mt-1 mb-2"
-classes :: Text -> Html ()
+classes :: MonadHtml e m => Text -> m ()
 classes cs = do
-  rootEl <- asks html_current_element
+  rootEl <- asks (unCurrentDOMElement . getTyped)
   for_ (T.splitOn " " cs) $ liftIO . classListAdd rootEl
 
 -- | Assign a single CSS class dynamically based on the value held by
@@ -176,9 +192,9 @@ classes cs = do
 -- > el "button" do
 -- >   on_ "click" $ modifyRef showRef not
 -- >   text "Toggle visibility"
-toggleClass :: Text -> Dynamic Bool -> Html ()
+toggleClass :: MonadHtmlDyn e m => Text -> Dynamic Bool -> m ()
 toggleClass cs dyn = do
-  rootEl <- asks html_current_element
+  rootEl <- asks (unCurrentDOMElement . getTyped)
   forDyn_ dyn (liftIO . setup rootEl cs)
   where
     setup rootEl cs = \case
@@ -194,9 +210,9 @@ toggleClass cs dyn = do
 -- > el "button" do
 -- >   on_ "click" $ modifyRef hiddenRef not
 -- >   text "Toggle visibility"
-toggleAttr :: Text -> Dynamic Bool -> Html ()
+toggleAttr :: MonadHtmlDyn e m => Text -> Dynamic Bool -> m ()
 toggleAttr att dyn = do
-  rootEl <- asks html_current_element
+  rootEl <- asks (unCurrentDOMElement . getTyped)
   forDyn_ dyn (liftIO . setup rootEl att)
   where
     setup rootEl name = \case
@@ -211,9 +227,9 @@ toggleAttr att dyn = do
 -- >   dynStyle "background" $ bool "initial" "red" <$> fromRef colorRef
 -- >   on_ "click" $ modifyRef colorRef not
 -- >   text "Toggle background color"
-dynStyle :: Text -> Dynamic Text -> Html ()
+dynStyle :: MonadHtmlDyn e m => Text -> Dynamic Text -> m ()
 dynStyle cssProp dyn = do
-  rootEl <- asks html_current_element
+  rootEl <- asks (unCurrentDOMElement . getTyped)
   forDyn_ dyn (liftIO . setup rootEl)
   where
     setup el t = do
@@ -237,20 +253,21 @@ blank = pure ()
 -- >   on_ "click" $ modifyRef listRef ("New Item":)
 -- >   text "Append new item"
 simpleList
-  :: forall a. DynRef [a]
+  :: forall a e m. MonadHtmlDyn e m
+  => DynRef [a]
   -- ^ Some dynamic data from the above scope
-  -> (Int -> DynRef a -> Html ())
+  -> (Int -> DynRef a -> m ())
   -- ^ Function to build children widget. Accepts the index inside the
   -- collection and dynamic data for that particular element
-  -> Html ()
+  -> m ()
 simpleList dynRef h = do
-  htmlEnv <- ask
+  htmlEnv::e <- ask
   prevValue <- liftIO $ newIORef []
-  elemEnvsRef <- liftIO $ newIORef ([] :: [ElemEnv a])
+  elemEnvsRef <- liftIO $ newIORef ([] :: [ElemEnv e a])
   let
-    reactiveEnv = html_reactive_env htmlEnv
-    setup :: Int -> [a] -> [a] -> [ElemEnv a] -> IO [ElemEnv a]
-    setup idx old new refs = case (refs, old, new) of
+    reactiveEnv = getTyped htmlEnv
+    setup :: RunInBase m IO -> Int -> [a] -> [a] -> [ElemEnv e a] -> IO [ElemEnv e a]
+    setup liftBase idx old new refs = case (refs, old, new) of
       (_, [], []) -> return []
       ([], [], x:xs) -> do
         -- New list is longer, append new elements
@@ -260,14 +277,19 @@ simpleList dynRef h = do
           controlledRef = elemRef
             {dynref_modifier=elemModifier idx (fromRef elemRef)
             }
-          newEnv = htmlEnv
-            { html_reactive_env = reactiveEnv {renv_finalizers = finalizers}
+          initEnv = HtmlEnv
+            { html_reactive_env = getTyped htmlEnv
+            , html_current_element = getTyped htmlEnv
+            , html_content_boundary = getTyped htmlEnv
             }
-        boundary <- execHtmlT newEnv insertBoundary
-        execHtmlT newEnv {html_content_boundary = Just boundary} $
-          h idx controlledRef
+        boundary <- execHtmlT initEnv insertBoundary
+        let
+          mkNewEnv = setTyped (reactiveEnv {renv_finalizers = finalizers})
+            . setTyped (MaybeContentBoundary (Just boundary))
+          newEnv = mkNewEnv htmlEnv
+        liftBase $ local (const newEnv) $ h idx controlledRef
         let itemRef = ElemEnv newEnv (dynref_modifier elemRef) boundary
-        (itemRef:) <$> setup (idx + 1) [] xs []
+        (itemRef:) <$> setup liftBase (idx + 1) [] xs []
       (r:rs, _:_, []) -> do
         -- New list is shorter, delete the elements that no longer
         -- present in the new list
@@ -276,12 +298,12 @@ simpleList dynRef h = do
       (r:rs, _:xs, y:ys) -> do
         -- Update child elements along the way
         liftIO $ sync $ ee_modifier r \_ -> y
-        (r:) <$> setup (idx + 1) xs ys rs
+        (r:) <$> setup liftBase (idx + 1) xs ys rs
       (_, _, _) -> do
         error "simpleList: Incoherent internal state"
     finalizeElems = traverse_ \ElemEnv{..} -> liftIO do
       removeBoundary ee_boundary
-      let fins = renv_finalizers $ html_reactive_env ee_html_env
+      let fins = renv_finalizers $ getTyped ee_html_env
       readIORef fins >>= sequence_
     elemModifier :: Int -> Dynamic a -> (a -> a) -> Transact ()
     elemModifier i dyn f = do
@@ -292,11 +314,12 @@ simpleList dynRef h = do
         overIx _ [] = []
       dynref_modifier dynRef (overIx i)
   addFinalizer $ readIORef elemEnvsRef >>= finalizeElems
-  forDyn_ (fromRef dynRef) \new -> liftIO do
-    old <- atomicModifyIORef' prevValue (new,)
-    eenvs <- readIORef elemEnvsRef
-    newEenvs <- setup 0 old new eenvs
-    writeIORef elemEnvsRef newEenvs
+  liftBaseWith \liftBase -> execReactiveT (getTyped htmlEnv) $
+    forDyn_ (fromRef dynRef) \new -> liftIO do
+      old <- atomicModifyIORef' prevValue (new,)
+      eenvs <- readIORef elemEnvsRef
+      newEenvs <- setup liftBase 0 old new eenvs
+      writeIORef elemEnvsRef newEenvs
 
 -- | First build a DOM with the widget that is currently held by the
 -- given Dynamic, then rebuild it every time Dynamic's value
@@ -311,54 +334,54 @@ simpleList dynRef h = do
 -- > el "button" do
 -- >   on_ "click" $ writeRef routeRef Blog
 -- >   text "Show my blog page"
-dyn :: Dynamic (Html ()) -> Html ()
-dyn d = do
+dyn :: forall e m. MonadHtmlDyn e m => Dynamic (m ()) -> m ()
+dyn contentDyn = do
   htmlEnv <- ask
   childRef <- liftIO (newIORef Nothing)
   boundary <- insertBoundary
   let
-    finalizeEnv newEnv = do
+    replaceEnv newEnv = do
       readIORef childRef >>= \case
-        Just HtmlEnv{..} -> do
-          finalizers <- readIORef $ renv_finalizers html_reactive_env
+        Just (oldEnv :: e) -> do
+          let finalizersRef = oldEnv & getTyped @ReactiveEnv & renv_finalizers
+          finalizers <- readIORef finalizersRef
           sequence_ finalizers
-          writeIORef (renv_finalizers html_reactive_env) []
+          writeIORef finalizersRef []
         Nothing -> return ()
       writeIORef childRef newEnv
-    setup html = liftIO do
-      finalizers <- newIORef []
+    setup liftBase html = do
+      finalizers <- liftIO $ newIORef []
       let
-        newEnv = htmlEnv
-          { html_reactive_env = (html_reactive_env htmlEnv)
-            { renv_finalizers = finalizers }
-          , html_content_boundary = Just boundary
-          }
-      finalizeEnv (Just newEnv)
-      clearBoundary boundary
-      execHtmlT newEnv html
-  addFinalizer (finalizeEnv Nothing)
-  forDyn_ d setup
+        newREnv = (getTyped htmlEnv) {renv_finalizers = finalizers}
+        newEnv = htmlEnv & setTyped newREnv
+          & setTyped (MaybeContentBoundary (Just boundary))
+      liftIO $ replaceEnv (Just newEnv)
+      liftIO $ clearBoundary boundary
+      void $ liftBase $ local (const newEnv) html
+  addFinalizer (replaceEnv Nothing)
+  liftBaseWith \liftBase -> execReactiveT (getTyped htmlEnv) $
+    forDyn_ contentDyn (liftIO . setup liftBase)
 
 -- | Run an action before the current node is detached from the DOM
-addFinalizer :: MonadReactive m => IO () -> m ()
+addFinalizer :: MonadReactive e m => IO () -> m ()
 addFinalizer fin = do
-  ReactiveEnv{..} <- askReactiveEnv
+  ReactiveEnv{..} <- asks getTyped
   liftIO $ modifyIORef renv_finalizers (fin:)
 
 -- | Attach resulting DOM to the given node instead of
 -- 'html_current_element'. Might be useful for implementing modal
 -- dialogs, tooltips etc. Similar to what called portals in React
 -- ecosystem
-portal :: MonadIO m => DOMElement -> HtmlT m a -> HtmlT m a
+portal :: MonadHtmlDyn e m => DOMElement -> m a -> m a
 portal newRootEl html = do
-  boundary <- local (\e -> e
-    { html_current_element = newRootEl
-    , html_content_boundary = Nothing
-    }) insertBoundary
-  result <- local (\e -> e
-    { html_current_element = newRootEl
-    , html_content_boundary = Just boundary
-    }) html
+  boundary <- local
+    ( setTyped (CurrentDOMElement newRootEl)
+    . setTyped (MaybeContentBoundary Nothing)
+    ) insertBoundary
+  result <- local
+    ( setTyped (CurrentDOMElement newRootEl)
+    . setTyped (MaybeContentBoundary (Just boundary))
+    ) html
   addFinalizer $ removeBoundary boundary
   return result
 
@@ -372,9 +395,9 @@ portal newRootEl html = do
 -- >   unsafeHtml "<svg viewBox="0 0 100 100">\
 -- >     \<circle cx="50" cy="50" r="50"/>\
 -- >     \</svg>"
-unsafeHtml :: MonadIO m => Text -> HtmlT m ()
+unsafeHtml :: MonadHtml e m => Text -> m ()
 unsafeHtml htmlText = do
-  HtmlEnv{..} <- ask
-  let anchor = fmap boundary_end html_content_boundary
-  liftIO $ unsafeInsertHtml html_current_element anchor
-    htmlText
+  contBoundary <- asks (unMaybeContentBoundary . getTyped)
+  curElm <- asks (unCurrentDOMElement . getTyped)
+  let anchor = fmap boundary_end contBoundary
+  liftIO $ unsafeInsertHtml curElm anchor htmlText
