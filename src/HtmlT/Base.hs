@@ -237,66 +237,55 @@ blank = pure ()
 -- >   on_ "click" $ modifyRef listRef ("New Item":)
 -- >   text "Append new item"
 simpleList
-  :: forall a. DynRef [a]
+  :: forall a. Dynamic [a]
   -- ^ Some dynamic data from the above scope
-  -> (Int -> DynRef a -> Html ())
+  -> (Int -> Dynamic a -> Html ())
   -- ^ Function to build children widget. Accepts the index inside the
   -- collection and dynamic data for that particular element
   -> Html ()
-simpleList dynRef h = do
+simpleList listDyn h = do
   htmlEnv <- ask
   prevValue <- liftIO $ newIORef []
   elemEnvsRef <- liftIO $ newIORef ([] :: [ElemEnv a])
   let
     reactiveEnv = html_reactive_env htmlEnv
-    setup :: Int -> [a] -> [a] -> [ElemEnv a] -> IO [ElemEnv a]
+    setup :: Int -> [a] -> [a] -> [ElemEnv a] -> Transact [ElemEnv a]
     setup idx old new refs = case (refs, old, new) of
       (_, [], []) -> return []
       ([], [], x:xs) -> do
         -- New list is longer, append new elements
-        finalizers <- newIORef []
-        elemRef <- execReactiveT reactiveEnv $ newRef x
+        finalizers <- liftIO $ newIORef []
+        elementRef <- liftIO $ execReactiveT reactiveEnv $ newRef x
+        boundary <- liftIO $ execHtmlT htmlEnv insertBoundary
         let
-          controlledRef = elemRef
-            {dynref_modifier=elemModifier idx (fromRef elemRef)
-            }
-          newEnv = htmlEnv
+          elementEnv = htmlEnv
             { html_reactive_env = reactiveEnv {renv_finalizers = finalizers}
+            , html_content_boundary = Just boundary
             }
-        boundary <- execHtmlT newEnv insertBoundary
-        execHtmlT newEnv {html_content_boundary = Just boundary} $
-          h idx controlledRef
-        let itemRef = ElemEnv newEnv (dynref_modifier elemRef) boundary
+        liftIO $ execHtmlT elementEnv $ h idx (fromRef elementRef)
+        let itemRef = ElemEnv elementEnv elementRef
         (itemRef:) <$> setup (idx + 1) [] xs []
       (r:rs, _:_, []) -> do
         -- New list is shorter, delete the elements that no longer
         -- present in the new list
-        finalizeElems (r:rs)
+        liftIO $ finalizeElems (r:rs)
         return []
       (r:rs, _:xs, y:ys) -> do
         -- Update child elements along the way
-        liftIO $ sync $ ee_modifier r \_ -> y
+        writeSync (ee_dyn_ref r) y
         (r:) <$> setup (idx + 1) xs ys rs
       (_, _, _) -> do
         error "simpleList: Incoherent internal state"
     finalizeElems = traverse_ \ElemEnv{..} -> liftIO do
-      removeBoundary ee_boundary
+      mapM_ removeBoundary $ html_content_boundary ee_html_env
       let fins = renv_finalizers $ html_reactive_env ee_html_env
       readIORef fins >>= sequence_
-    elemModifier :: Int -> Dynamic a -> (a -> a) -> Transact ()
-    elemModifier i dyn f = do
-      oldA <- readDyn dyn
-      let
-        overIx 0 (_:xs) = f oldA : xs
-        overIx n (x:xs) = x : overIx (n - 1) xs
-        overIx _ [] = []
-      dynref_modifier dynRef (overIx i)
   addFinalizer $ readIORef elemEnvsRef >>= finalizeElems
-  forDyn_ (fromRef dynRef) \new -> liftIO do
-    old <- atomicModifyIORef' prevValue (new,)
-    eenvs <- readIORef elemEnvsRef
+  forDyn_ listDyn \new -> do
+    old <- liftIO $ atomicModifyIORef' prevValue (new,)
+    eenvs <- liftIO $ readIORef elemEnvsRef
     newEenvs <- setup 0 old new eenvs
-    writeIORef elemEnvsRef newEenvs
+    liftIO $ writeIORef elemEnvsRef newEenvs
 
 -- | First build a DOM with the widget that is currently held by the
 -- given Dynamic, then rebuild it every time Dynamic's value
