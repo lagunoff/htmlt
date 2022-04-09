@@ -4,31 +4,56 @@ import Control.Applicative
 import Control.Monad.Catch
 import Control.Monad.Reader
 import Data.Coerce
+import Data.Generics.Product
 import Data.Text
 import GHC.Generics
 import GHCJS.Marshal.Pure
 import GHCJS.Prim
 import GHCJS.Types
 import HtmlT.Event
+import Control.Monad.Trans.Control
+import Control.Monad.Base
+
 
 -- | HtmlT is nothing more than just a newtype over ReaderT HtmlEnv
 newtype HtmlT m a = HtmlT {unHtmlT :: ReaderT HtmlEnv m a}
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadReader HtmlEnv
-    , MonadFix, MonadCatch, MonadThrow, MonadMask, MonadTrans)
+    , MonadFix, MonadCatch, MonadThrow, MonadMask, MonadTrans, MonadTransControl)
 
 data HtmlEnv = HtmlEnv
-  { html_current_element :: DOMElement
+  { html_current_element :: CurrentDOMElement
   -- ^ A DOMElement that will be used as a parent to insert new
   -- content, attributes, properties, listeners etc.
-  , html_content_boundary :: Maybe ContentBoundary
+  , html_content_boundary :: MaybeContentBoundary
   -- ^ Boundary defined by parent scope where new content should be
   -- attached, when Nothing whole parent element is available
   , html_reactive_env :: ReactiveEnv
   -- ^ Needed to implement 'HasReactiveEnv'
   } deriving Generic
 
+newtype MaybeContentBoundary = MaybeContentBoundary
+  { unMaybeContentBoundary :: Maybe ContentBoundary
+  }
+
+newtype CurrentDOMElement = CurrentDOMElement
+  { unCurrentDOMElement :: DOMElement
+  }
+
 -- | Most applications will only need HtmlT IO, hence this shortcut
 type Html = HtmlT IO
+
+type MonadHtml e m =
+  ( MonadIO m
+  , MonadReader e m
+  , HasType CurrentDOMElement e
+  , HasType MaybeContentBoundary e
+  )
+
+type MonadHtmlDyn e m =
+  ( MonadHtml e m
+  , MonadBaseControl IO m
+  , HasType ReactiveEnv e
+  )
 
 -- | A newtype over JSVal which is an instance of Node
 -- https://developer.mozilla.org/en-US/docs/Web/API/Node
@@ -76,5 +101,5 @@ instance (Semigroup a, Applicative m) => Semigroup (HtmlT m a) where
 instance (Monoid a, Applicative m) => Monoid (HtmlT m a) where
   mempty = HtmlT $ ReaderT \_ -> pure mempty
 
-instance Monad m => HasReactiveEnv (HtmlT m) where
-  askReactiveEnv = asks html_reactive_env
+deriving newtype instance MonadBase b m => MonadBase b (HtmlT m)
+deriving newtype instance (MonadBase b (HtmlT m), MonadBaseControl b m) => MonadBaseControl b (HtmlT m)

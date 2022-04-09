@@ -9,7 +9,6 @@ module HtmlT.DOM where
 
 import Control.Monad.Reader
 import Data.Coerce
-import Data.String
 import Data.Text as T
 import Data.JSString.Text
 import GHC.Generics
@@ -401,12 +400,3 @@ foreign import javascript unsafe
   }"
   js_callbackWithOptions :: Bool -> Bool -> Callback (JSVal -> IO ()) -> IO (Callback (JSVal -> IO ()))
 #endif
-
-instance (a ~ (), MonadIO m) => IsString (HtmlT m a) where
-  fromString s = do
-    HtmlEnv{..} <- ask
-    textNode <- liftIO $ createTextNode (T.pack s)
-    case html_content_boundary of
-      Just ContentBoundary{..} -> liftIO $
-        js_insertBefore html_current_element textNode boundary_end
-      Nothing -> liftIO $ appendChild html_current_element textNode

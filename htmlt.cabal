@@ -95,11 +95,12 @@ library
   other-modules: Paths_htmlt
   build-depends:
     base,
-    ghcjs-base,
     containers,
     exceptions,
+    ghcjs-base,
+    monad-control,
     mtl,
-    text
+    text,
   if impl(ghcjs)
     build-depends:
       ghcjs-prim,
