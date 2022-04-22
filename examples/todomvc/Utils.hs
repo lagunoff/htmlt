@@ -44,6 +44,7 @@ localStorageGet = liftIO do
   where
     key = JSS.pack $ show $ typeRepFingerprint $ typeRep (Proxy @a)
 
+#ifdef ghcjs_HOST_OS
 foreign import javascript unsafe
   "setTimeout(function() {\
     var inputEl = $1.parentNode.parentNode.querySelector('input.edit');\
@@ -63,3 +64,8 @@ foreign import javascript unsafe
     return itemText ? JSON.parse(itemText) : null;\
   })($1)"
   js_getItem :: JSString -> IO (Nullable JSVal)
+#else
+js_todoItemInputFocus :: JSVal -> IO () = errorGhcjsOnly
+js_setItem :: JSString -> JSVal -> IO () = errorGhcjsOnly
+js_getItem :: JSString -> IO (Nullable JSVal) = errorGhcjsOnly
+#endif

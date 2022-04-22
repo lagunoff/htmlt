@@ -12,9 +12,8 @@ import HtmlT
 import "this" TodoItem
 import "this" Utils
 
-data TodoListConfig s = TodoListConfig
-  { tlc_ref :: DynRef s
-  , tlc_state :: Lens' s TodoListState
+data TodoListConfig = TodoListConfig
+  { tlc_state_ref :: DynRef TodoListState
   }
 
 data TodoListState = TodoListState
@@ -37,7 +36,7 @@ initTodos urlHashRef = do
     modifyRef todosRef (#tls_filter .~ fromMaybe All (firstOf url2Filter urlHash))
   return todosRef
 
-todoListWidget :: TodoListConfig s -> Html ()
+todoListWidget :: TodoListConfig -> Html ()
 todoListWidget TodoListConfig{..} = do
   el "style" $ text styles
   div_ do
@@ -50,9 +49,9 @@ todoListWidget TodoListConfig{..} = do
     headerWidget = header_ [class_ "header"] do
       h1_ (text "todos")
       input_ [class_ "new-todo", placeholder_ "What needs to be done?", autofocus_ True] do
-        dynValue $ view (tlc_state . #tls_title) <$> fromRef tlc_ref
+        dynValue $ view #tls_title <$> fromRef tlc_state_ref
         onDecoder "input" valueDecoder \value ->
-          modifyRef tlc_ref (tlc_state . #tls_title .~ value)
+          modifyRef tlc_state_ref (#tls_title .~ value)
         onDecoder "keydown" keyCodeDecoder \case
           13 -> commitEditing
           _ -> return ()
@@ -64,11 +63,10 @@ todoListWidget TodoListConfig{..} = do
         attr "for" "toggle-all"
         text "Mark all as completed"
       ul_ [class_ "todo-list"] do
-        simpleList itemsRef \idx todoRef ->
+        simpleList itemsDyn \idx todoDyn ->
           todoItemWidget $ TodoItemConfig
-            { tic_ref = tlc_ref `zipRef` todoRef
-            , tic_state = _2
-            , tic_is_hidden = isTodoItemHidden
+            { tic_state_ref = DynRef todoDyn (updateItem idx)
+            , tic_is_hidden = isTodoItemHidden <$> fromRef tlc_state_ref <*> todoDyn
             , tic_delete_item = deleteTodoItem idx }
     footerWidget = footer_ [class_ "footer"] do
       toggleClass "hidden" hiddenDyn
@@ -94,23 +92,24 @@ todoListWidget TodoListConfig{..} = do
         text $ T.pack (show flt)
     commitEditing = readTitle >>= \case
       "" -> return ()
-      title -> modifyRef tlc_ref
-        $ (tlc_state . #tls_items %~ (<> [mkNewItem title]))
-        . (tlc_state . #tls_title .~ "")
+      title -> modifyRef tlc_state_ref
+        $ (#tls_items %~ (<> [mkNewItem title]))
+        . (#tls_title .~ "")
       where
-        readTitle = readsRef (view (tlc_state . #tls_title . to T.strip)) tlc_ref
+        readTitle = readsRef (view (#tls_title . to T.strip)) tlc_state_ref
         mkNewItem title = defaultItemState {tis_title = title}
-    hiddenDyn = view (tlc_state . #tls_items . to Prelude.null) <$> fromRef tlc_ref
-    itemsLeftDyn = view (tlc_state . to countItemsLeft) <$> fromRef tlc_ref
-    toggleAll check = modifyRef tlc_ref (tlc_state . #tls_items %~ fmap (#tis_completed .~ check))
-    filterSelectedDyn flt = view (tlc_state . #tls_filter . to (==flt)) <$> fromRef tlc_ref
-    itemsRef = lensMap (tlc_state . #tls_items) tlc_ref
-    clearCompleted = modifyRef tlc_ref (tlc_state . #tls_items %~ Prelude.filter (not . tis_completed))
+    hiddenDyn = view (#tls_items . to Prelude.null) <$> fromRef tlc_state_ref
+    itemsLeftDyn = countItemsLeft <$> fromRef tlc_state_ref
+    toggleAll check = modifyRef tlc_state_ref (#tls_items %~ fmap (#tis_completed .~ check))
+    filterSelectedDyn flt = view (#tls_filter . to (==flt)) <$> fromRef tlc_state_ref
+    itemsDyn = view #tls_items <$> fromRef tlc_state_ref
+    clearCompleted = modifyRef tlc_state_ref (#tls_items %~ Prelude.filter (not . tis_completed))
     countItemsLeft TodoListState{..} = foldl (\acc TodoItemState{..} ->
       if not tis_completed then acc + 1 else acc) 0 tls_items
-    deleteTodoItem idx = modifySync tlc_ref (tlc_state . #tls_items %~ deleteAt idx)
-    isTodoItemHidden (s, TodoItemState{..}) =
-      case (s ^. tlc_state . #tls_filter, tis_completed) of
+    deleteTodoItem idx = modifySync tlc_state_ref (#tls_items %~ deleteAt idx)
+    updateItem idx f = modifySync tlc_state_ref (#tls_items . ix idx %~ f)
+    isTodoItemHidden TodoListState{..} TodoItemState{..} =
+      case (tls_filter, tis_completed) of
         (Active,    True)  -> True
         (Completed, False) -> True
         _                  -> False

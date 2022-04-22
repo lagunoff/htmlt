@@ -7,11 +7,10 @@ import HtmlT.Event
 import HtmlT.Types
 import HtmlT.DOM
 
--- | Auxiliary type to help implement 'simpleList'
+-- | Auxiliary type helps to implement 'simpleList'
 data ElemEnv a = ElemEnv
   { ee_html_env :: HtmlEnv
-  , ee_modifier :: Modifier a
-  , ee_boundary :: ContentBoundary
+  , ee_dyn_ref :: DynRef a
   } deriving Generic
 
 -- | Insert given node to @html_current_element@ and run action with

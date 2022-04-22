@@ -8,4 +8,4 @@ main :: IO ()
 main = void $ attachToBody do
   urlHashRef <- mkUrlHashRef
   todosRef <- initTodos urlHashRef
-  todoListWidget $ TodoListConfig todosRef id
+  todoListWidget $ TodoListConfig todosRef
