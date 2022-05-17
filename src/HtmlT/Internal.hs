@@ -25,11 +25,12 @@ appendHtmlT newRootEl html = do
 -- | Insert new node to the end of current boundary
 insertNode :: MonadIO m => DOMNode -> HtmlT m ()
 insertNode n = do
-  HtmlEnv{..} <- ask
-  case html_content_boundary of
+  rootEl <- asks html_current_element
+  boundary <- asks html_content_boundary
+  case boundary of
     Just ContentBoundary{..} -> liftIO $
-      js_insertBefore html_current_element n boundary_end
-    Nothing -> liftIO $ appendChild html_current_element n
+      js_insertBefore rootEl n boundary_end
+    Nothing -> liftIO $ appendChild rootEl n
 
 -- | Insert two DOM Comment nodes intended to be used as a boundary for
 -- dynamic content.
