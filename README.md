@@ -109,7 +109,7 @@ portal :: Monad m => DOMElement -> HtmlT m a -> HtmlT m a
 addFinalizer :: MonadReactive m => IO () -> m ()
 
 -- Dynamic collections
-simpleList :: DynRef [a] -> (Int -> DynRef a -> Html ()) -> Html ()
+simpleList :: Dynamic [a] -> (Int -> Dynamic a -> Html ()) -> Html ()
 
 -- Arbitrary dynamic content
 dyn :: Dynamic (Html ()) -> Html ()

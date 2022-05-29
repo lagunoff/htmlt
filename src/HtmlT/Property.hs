@@ -207,10 +207,10 @@ align_ :: Text -> Html ()
 align_ = prop "align"
 
 colspan_ :: Text -> Html ()
-colspan_ = prop "colspan"
+colspan_ = attr "colspan"
 
 rowspan_ :: Text -> Html ()
-rowspan_ = prop "rowspan"
+rowspan_ = attr "rowspan"
 
 headers_ :: Text -> Html ()
 headers_ = prop "headers"

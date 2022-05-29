@@ -244,7 +244,8 @@ simpleList
   -- collection and dynamic data for that particular element
   -> Html ()
 simpleList listDyn h = do
-  htmlEnv <- ask
+  boundary <- insertBoundary
+  htmlEnv <- asks \h -> h {html_content_boundary = Just boundary}
   prevValue <- liftIO $ newIORef []
   elemEnvsRef <- liftIO $ newIORef ([] :: [ElemEnv a])
   let
