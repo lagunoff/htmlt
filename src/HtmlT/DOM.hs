@@ -36,7 +36,7 @@ data ListenerOpts = ListenerOpts
     deriving anyclass (ToJSVal)
 
 defaultListenerOpts :: ListenerOpts
-defaultListenerOpts = ListenerOpts True False False
+defaultListenerOpts = ListenerOpts False False False
 
 -- | Get global Window object @window@
 -- https://developer.mozilla.org/en-US/docs/Web/API/Window
