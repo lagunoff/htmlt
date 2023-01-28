@@ -85,7 +85,6 @@ library
     HtmlT
     HtmlT.Base
     HtmlT.DOM
-    HtmlT.Decode
     HtmlT.Element
     HtmlT.Event
     HtmlT.Internal

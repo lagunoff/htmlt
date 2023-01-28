@@ -2,6 +2,7 @@
 module HtmlT.Base where
 
 import Control.Monad.Reader
+import Control.Monad.Trans.Maybe
 import Data.Coerce
 import Data.Foldable
 import Data.IORef
@@ -12,7 +13,6 @@ import JavaScript.Object as Object
 import JavaScript.Object.Internal
 
 import HtmlT.DOM
-import HtmlT.Decode
 import HtmlT.Event
 import HtmlT.Internal
 import HtmlT.Types
@@ -115,8 +115,9 @@ onOptions name opts f = ask >>= \HtmlEnv{..} ->
   onGlobalEvent opts (nodeFromElement html_current_element) name f
 
 -- | Attach listener, extract data of type @a@ using specified decoder
-onDecoder :: EventName -> Decoder a -> (a -> Transact ()) -> Html ()
-onDecoder name dec = on name . withDecoder dec
+onMaybeT :: EventName -> (DOMEvent -> MaybeT Transact ()) -> Html ()
+onMaybeT ename f =
+  on ename (void . runMaybeT . f)
 
 -- | Attach a listener to arbitrary target, not just the current root
 -- element (usually that would be @window@, @document@ or @body@
@@ -139,22 +140,6 @@ onGlobalEvent opts target name f = do
         void . liftIO . sync . callback . f
       return $ liftIO unlisten
   void $ subscribe event id
-
--- | Makes easier to take some data from DOMEvent inside an event
--- handler callback. If the decoder fails, the callback won't be
--- executed.
---
--- > el "input" do
--- >   prop "placeholder" "Enter text..."
--- >   on "input" $ withDecoder valueDecoder \text -> do
--- >     liftIO $ Text.putStrLn $ "You entered: " <> text
-withDecoder
-  :: MonadIO m
-  => Decoder a
-  -> (a -> m ()) -> DOMEvent -> m ()
-withDecoder dec f domEvent =
-  liftIO (runDecoder dec (unDOMEvent domEvent))
-    >>= maybe (return ()) f
 
 -- | Assign CSS classes to the current root element. Compared to @prop
 -- "className"@ can be used multiple times for the same root

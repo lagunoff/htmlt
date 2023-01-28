@@ -8,6 +8,7 @@
 module HtmlT.DOM where
 
 import Control.Monad.Reader
+import Control.Monad.Trans.Maybe
 import Data.Coerce
 import Data.String
 import Data.Text as T
@@ -18,8 +19,9 @@ import GHCJS.Prim as Prim
 import GHCJS.Marshal
 import GHCJS.Types
 import GHCJS.Nullable
+import JavaScript.Object.Internal (Object(..))
+import qualified JavaScript.Object as Object
 
-import HtmlT.Decode
 import HtmlT.Types
 
 data ListenerOpts = ListenerOpts
@@ -143,19 +145,20 @@ addEventListener
   -> (DOMEvent -> IO ())
   -> IO (IO ())
 addEventListener ListenerOpts{..} target name f = do
-  hscb <- mkcallback (f . DOMEvent)
-  jscb <- withopts hscb
+  hscb <- mkcallback \jsevent -> do
+    when lo_prevent_default $ js_preventDefault jsevent
+    when lo_stop_propagation $ js_stopPropagation jsevent
+    f (DOMEvent jsevent)
   js_callMethod2 (coerce target) "addEventListener"
-    (jsval (textToJSString name)) (jsval jscb)
+    (jsval (textToJSString name)) (jsval hscb)
   return do
     js_callMethod2 (coerce target) "removeEventListener"
-      (jsval (textToJSString name)) (jsval jscb)
+      (jsval (textToJSString name)) (jsval hscb)
     releaseCallback hscb
   where
     mkcallback = if lo_sync_callback
       then syncCallback1 ThrowWouldBlock
       else asyncCallback1
-    withopts = js_callbackWithOptions lo_stop_propagation lo_prevent_default
 
 -- | Collection of deltaX, deltaY and deltaZ properties from WheelEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/WheelEvent
@@ -165,39 +168,42 @@ data MouseDelta = MouseDelta
   , md_delta_z :: Int
   } deriving stock (Eq, Show, Generic)
 
-mouseDeltaDecoder :: Decoder MouseDelta
-mouseDeltaDecoder = MouseDelta
-  <$> decodeAt ["deltaX"] decoder
-  <*> decodeAt ["deltaY"] decoder
-  <*> decodeAt ["deltaZ"] decoder
+mMouseDelta :: MonadIO m => JSVal -> MaybeT m MouseDelta
+mMouseDelta mouseEvent = do
+  md_delta_x <- mGet "deltaX" mouseEvent
+  md_delta_y <- mGet "deltaY" mouseEvent
+  md_delta_z <- mGet "deltaZ" mouseEvent
+  return MouseDelta {..}
 
 -- | Collection of @X@ and @Y@ coordinates, intended to extract
--- position from MouseEvent
-data Position = Position
-  { pos_x :: Int
-  , pos_y :: Int
-  } deriving stock (Eq, Show, Ord, Generic)
+data Vector2 a = Vector2
+  { vector_x :: a
+  , vector_y :: a
+  } deriving stock (Eq, Show, Ord, Functor, Generic)
 
 -- | Read clientX and clientY properties from MouseEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
-clientXYDecoder :: Decoder Position
-clientXYDecoder = Position
-  <$> decodeAt ["clientX"] decoder
-  <*> decodeAt ["clientY"] decoder
+mClientXY :: MonadIO m => JSVal -> MaybeT m (Vector2 Int)
+mClientXY mouseEvent = do
+  vector_x <- mGet "clientX" mouseEvent
+  vector_y <- mGet "clientY" mouseEvent
+  return Vector2 {..}
 
 -- | Read offsetX and offsetY properties from MouseEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
-offsetXYDecoder :: Decoder Position
-offsetXYDecoder = Position
-  <$> decodeAt ["offsetX"] decoder
-  <*> decodeAt ["offsetY"] decoder
+mOffsetXY :: MonadIO m => JSVal -> MaybeT m (Vector2 Int)
+mOffsetXY mouseEvent = do
+  vector_x <- mGet "offsetX" mouseEvent
+  vector_y <- mGet "offsetY" mouseEvent
+  return Vector2 {..}
 
 -- | Read pageX and pageY properties from MouseEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
-pageXYDecoder :: Decoder Position
-pageXYDecoder = Position
-  <$> decodeAt ["pageX"] decoder
-  <*> decodeAt ["pageY"] decoder
+mPageXY :: MonadIO m => JSVal -> MaybeT m (Vector2 Int)
+mPageXY mouseEvent = do
+  vector_x <- mGet "pageX" mouseEvent
+  vector_y <- mGet "pageY" mouseEvent
+  return Vector2 {..}
 
 -- | Collection of altKey, ctrlKey, metaKey and shiftKey properties
 -- from KeyboardEvent
@@ -211,17 +217,18 @@ data KeyModifiers = KeyModifiers
 -- | Read altKey, ctrlKey, metaKey and shiftKey properties from
 -- KeyboardEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent
-keyModifiersDecoder :: Decoder KeyModifiers
-keyModifiersDecoder = KeyModifiers
-  <$> decodeAt ["altKey"] decoder
-  <*> decodeAt ["ctrlKey"] decoder
-  <*> decodeAt ["metaKey"] decoder
-  <*> decodeAt ["shiftKey"] decoder
+mKeyModifiers :: MonadIO m => JSVal -> MaybeT m KeyModifiers
+mKeyModifiers keyEvent = do
+  kmod_alt_key <- mGet "altKey" keyEvent
+  kmod_ctrl_key <- mGet "ctrlKey" keyEvent
+  kmod_meta_key <- mGet "metaKey" keyEvent
+  kmod_shift_key <- mGet "shiftKey" keyEvent
+  return KeyModifiers {..}
 
 -- | Read keyCode properties from KeyboardEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/keyCode
-keyCodeDecoder :: Decoder Int
-keyCodeDecoder = decodeAt ["keyCode"] decoder
+mKeyCode :: MonadIO m => JSVal -> MaybeT m Int
+mKeyCode = mGet "keyCode"
 
 -- | Collection of some useful information from KeyboardEvent
 data KeyboardEvent = KeyboardEvent
@@ -232,34 +239,35 @@ data KeyboardEvent = KeyboardEvent
   } deriving stock (Eq, Show, Generic)
 
 -- | Read information from KeyboardEvent
-keyboardEventDecoder :: Decoder KeyboardEvent
-keyboardEventDecoder = KeyboardEvent
-  <$> keyModifiersDecoder
-  <*> decodeAt ["key"] decoder
-  <*> decodeAt ["keyCode"] decoder
-  <*> decodeAt ["repeat"] decoder
-
--- | Event.target
--- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
-targetDecoder :: Decoder JSVal
-targetDecoder = decodeAt ["target"] decodeJSVal
-
--- | Event.currentTarget
--- https://developer.mozilla.org/en-US/docs/Web/API/Event/currentTarget
-currentTargetDecoder :: Decoder JSVal
-currentTargetDecoder = decodeAt ["currentTarget"] decodeJSVal
+mKeyboardEvent :: MonadIO m => JSVal -> MaybeT m KeyboardEvent
+mKeyboardEvent keyEvent = do
+  ke_modifiers <- mKeyModifiers keyEvent
+  ke_key <- mGet "key" keyEvent
+  ke_key_code <- mGet "keyCode" keyEvent
+  ke_repeat <- mGet "repeat" keyEvent
+  return KeyboardEvent {..}
 
 -- | Event.target.value
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
 -- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-value
-valueDecoder :: Decoder Text
-valueDecoder = decodeAt ["target", "value"] decoder
+mTargetValue :: MonadIO m => JSVal -> MaybeT m Text
+mTargetValue =
+  mGet "target" >=> mGet "checked"
 
--- | Event.target.value
+-- | Event.target.checked
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
 -- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input/checkbox#checked
-checkedDecoder :: Decoder Bool
-checkedDecoder = decodeAt ["target", "checked"] decoder
+mTargetChecked :: MonadIO m => JSVal -> MaybeT m Bool
+mTargetChecked =
+  mGet "target" >=> mGet "checked"
+
+mGet :: (MonadIO m, FromJSVal v) => Text -> JSVal -> MaybeT m v
+mGet k obj = do
+  -- TODO: Make sure it is true that if this guard succeeds,
+  -- Object.getProp will never throw an exception
+  guard $ not (isUndefined obj) && not (isNull obj)
+  MaybeT $ liftIO $ fromJSVal =<<
+    Object.getProp (textToJSString k) (coerce obj)
 
 errorGhcjsOnly :: a
 errorGhcjsOnly = error "Only GHCJS is supported"
@@ -293,7 +301,8 @@ js_call2 :: JSVal -> JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
 js_callMethod0 :: JSVal -> JSString -> IO JSVal = errorGhcjsOnly
 js_callMethod1 :: JSVal -> JSString -> JSVal -> IO JSVal = errorGhcjsOnly
 js_callMethod2 :: JSVal -> JSString -> JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
-js_callbackWithOptions :: Bool -> Bool -> Callback (JSVal -> IO ()) -> IO (Callback (JSVal -> IO ())) = errorGhcjsOnly
+js_preventDefault :: JSVal -> IO () = errorGhcjsOnly
+js_stopPropagation :: JSVal -> IO () = errorGhcjsOnly
 #else
 foreign import javascript unsafe
   "$1.appendChild($2)"
@@ -394,12 +403,11 @@ foreign import javascript unsafe
   })($1, $2, $3)"
   js_unsafeInsertHtml :: DOMElement -> Nullable DOMNode -> JSString -> IO ()
 foreign import javascript unsafe
-  "$r = function(e) {\
-    if ($1) e.stopPropagation();\
-    if ($2) e.preventDefault();\
-    return $3(e);\
-  }"
-  js_callbackWithOptions :: Bool -> Bool -> Callback (JSVal -> IO ()) -> IO (Callback (JSVal -> IO ()))
+  "$1.preventDefault()"
+  js_preventDefault :: JSVal -> IO ()
+foreign import javascript unsafe
+  "$1.stopPropagation()"
+  js_stopPropagation :: JSVal -> IO ()
 #endif
 
 instance (a ~ (), MonadIO m) => IsString (HtmlT m a) where
