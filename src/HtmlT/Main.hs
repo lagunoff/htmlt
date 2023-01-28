@@ -29,6 +29,7 @@ data RunningApp = RunningApp
 -- application
 attachOptions :: StartOpts -> Html a -> IO (a, RunningApp)
 attachOptions StartOpts{..} render = mdo
+  -- TODO: wait for addEventListener("load", (event) => {});
   begin <- createComment "ContentBoundary {{"
   end <- createComment "}}"
   appendChild startopts_root_element begin
