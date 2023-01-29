@@ -168,42 +168,43 @@ data MouseDelta = MouseDelta
   , md_delta_z :: Int
   } deriving stock (Eq, Show, Generic)
 
-mMouseDelta :: MonadIO m => JSVal -> MaybeT m MouseDelta
-mMouseDelta mouseEvent = do
-  md_delta_x <- mGet "deltaX" mouseEvent
-  md_delta_y <- mGet "deltaY" mouseEvent
-  md_delta_z <- mGet "deltaZ" mouseEvent
+mouseDeltaDecoder :: MonadIO m => JSVal -> MaybeT m MouseDelta
+mouseDeltaDecoder mouseEvent = do
+  md_delta_x <- propDecoder "deltaX" mouseEvent
+  md_delta_y <- propDecoder "deltaY" mouseEvent
+  md_delta_z <- propDecoder "deltaZ" mouseEvent
   return MouseDelta {..}
 
--- | Collection of @X@ and @Y@ coordinates, intended to extract
-data Vector2 a = Vector2
-  { vector_x :: a
-  , vector_y :: a
+-- | Pair of two values, might denote either size or coordinates in
+-- different contexts
+data Vec2 a = Vec2
+  { vec_x :: a
+  , vec_y :: a
   } deriving stock (Eq, Show, Ord, Functor, Generic)
 
 -- | Read clientX and clientY properties from MouseEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
-mClientXY :: MonadIO m => JSVal -> MaybeT m (Vector2 Int)
-mClientXY mouseEvent = do
-  vector_x <- mGet "clientX" mouseEvent
-  vector_y <- mGet "clientY" mouseEvent
-  return Vector2 {..}
+clientXYDecoder :: MonadIO m => JSVal -> MaybeT m (Vec2 Int)
+clientXYDecoder mouseEvent = do
+  vec_x <- propDecoder "clientX" mouseEvent
+  vec_y <- propDecoder "clientY" mouseEvent
+  return Vec2 {..}
 
 -- | Read offsetX and offsetY properties from MouseEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
-mOffsetXY :: MonadIO m => JSVal -> MaybeT m (Vector2 Int)
-mOffsetXY mouseEvent = do
-  vector_x <- mGet "offsetX" mouseEvent
-  vector_y <- mGet "offsetY" mouseEvent
-  return Vector2 {..}
+offsetXYDecoder :: MonadIO m => JSVal -> MaybeT m (Vec2 Int)
+offsetXYDecoder mouseEvent = do
+  vec_x <- propDecoder "offsetX" mouseEvent
+  vec_y <- propDecoder "offsetY" mouseEvent
+  return Vec2 {..}
 
 -- | Read pageX and pageY properties from MouseEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
-mPageXY :: MonadIO m => JSVal -> MaybeT m (Vector2 Int)
-mPageXY mouseEvent = do
-  vector_x <- mGet "pageX" mouseEvent
-  vector_y <- mGet "pageY" mouseEvent
-  return Vector2 {..}
+pageXYDecoder :: MonadIO m => JSVal -> MaybeT m (Vec2 Int)
+pageXYDecoder mouseEvent = do
+  vec_x <- propDecoder "pageX" mouseEvent
+  vec_y <- propDecoder "pageY" mouseEvent
+  return Vec2 {..}
 
 -- | Collection of altKey, ctrlKey, metaKey and shiftKey properties
 -- from KeyboardEvent
@@ -217,18 +218,18 @@ data KeyModifiers = KeyModifiers
 -- | Read altKey, ctrlKey, metaKey and shiftKey properties from
 -- KeyboardEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent
-mKeyModifiers :: MonadIO m => JSVal -> MaybeT m KeyModifiers
-mKeyModifiers keyEvent = do
-  kmod_alt_key <- mGet "altKey" keyEvent
-  kmod_ctrl_key <- mGet "ctrlKey" keyEvent
-  kmod_meta_key <- mGet "metaKey" keyEvent
-  kmod_shift_key <- mGet "shiftKey" keyEvent
+keyModifiersDecoder :: MonadIO m => JSVal -> MaybeT m KeyModifiers
+keyModifiersDecoder keyEvent = do
+  kmod_alt_key <- propDecoder "altKey" keyEvent
+  kmod_ctrl_key <- propDecoder "ctrlKey" keyEvent
+  kmod_meta_key <- propDecoder "metaKey" keyEvent
+  kmod_shift_key <- propDecoder "shiftKey" keyEvent
   return KeyModifiers {..}
 
 -- | Read keyCode properties from KeyboardEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/keyCode
-mKeyCode :: MonadIO m => JSVal -> MaybeT m Int
-mKeyCode = mGet "keyCode"
+keyCodeDecoder :: MonadIO m => JSVal -> MaybeT m Int
+keyCodeDecoder = propDecoder "keyCode"
 
 -- | Collection of some useful information from KeyboardEvent
 data KeyboardEvent = KeyboardEvent
@@ -239,32 +240,32 @@ data KeyboardEvent = KeyboardEvent
   } deriving stock (Eq, Show, Generic)
 
 -- | Read information from KeyboardEvent
-mKeyboardEvent :: MonadIO m => JSVal -> MaybeT m KeyboardEvent
-mKeyboardEvent keyEvent = do
-  ke_modifiers <- mKeyModifiers keyEvent
-  ke_key <- mGet "key" keyEvent
-  ke_key_code <- mGet "keyCode" keyEvent
-  ke_repeat <- mGet "repeat" keyEvent
+keyboardEventDecoder :: MonadIO m => JSVal -> MaybeT m KeyboardEvent
+keyboardEventDecoder keyEvent = do
+  ke_modifiers <- keyModifiersDecoder keyEvent
+  ke_key <- propDecoder "key" keyEvent
+  ke_key_code <- propDecoder "keyCode" keyEvent
+  ke_repeat <- propDecoder "repeat" keyEvent
   return KeyboardEvent {..}
 
 -- | Event.target.value
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
 -- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-value
-mTargetValue :: MonadIO m => JSVal -> MaybeT m Text
-mTargetValue =
-  mGet "target" >=> mGet "checked"
+valueDecoder :: MonadIO m => JSVal -> MaybeT m Text
+valueDecoder =
+  propDecoder "target" >=> propDecoder "value"
 
 -- | Event.target.checked
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
 -- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input/checkbox#checked
-mTargetChecked :: MonadIO m => JSVal -> MaybeT m Bool
-mTargetChecked =
-  mGet "target" >=> mGet "checked"
+checkedDecoder :: MonadIO m => JSVal -> MaybeT m Bool
+checkedDecoder =
+  propDecoder "target" >=> propDecoder "checked"
 
-mGet :: (MonadIO m, FromJSVal v) => Text -> JSVal -> MaybeT m v
-mGet k obj = do
+propDecoder :: (MonadIO m, FromJSVal v) => Text -> JSVal -> MaybeT m v
+propDecoder k obj = do
   -- TODO: Make sure it is true that if this guard succeeds,
-  -- Object.getProp will never throw an exception
+  -- Object.getProp will never throw an exception!
   guard $ not (isUndefined obj) && not (isNull obj)
   MaybeT $ liftIO $ fromJSVal =<<
     Object.getProp (textToJSString k) (coerce obj)
@@ -303,6 +304,7 @@ js_callMethod1 :: JSVal -> JSString -> JSVal -> IO JSVal = errorGhcjsOnly
 js_callMethod2 :: JSVal -> JSString -> JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
 js_preventDefault :: JSVal -> IO () = errorGhcjsOnly
 js_stopPropagation :: JSVal -> IO () = errorGhcjsOnly
+js_waitDocumentLoad :: IO () = errorGhcjsOnly
 #else
 foreign import javascript unsafe
   "$1.appendChild($2)"
@@ -344,7 +346,7 @@ foreign import javascript unsafe
   "$1.nodeValue = $2;"
   js_setTextValue :: DOMNode -> JSString -> IO ()
 foreign import javascript unsafe
-  "window.addEventListener('beforeunload', function() { $1(); })"
+  "window.addEventListener('beforeunload', $1)"
   js_onBeforeUnload :: Callback a -> IO ()
 foreign import javascript unsafe
   "(function(){ return window; })()"
@@ -408,6 +410,13 @@ foreign import javascript unsafe
 foreign import javascript unsafe
   "$1.stopPropagation()"
   js_stopPropagation :: JSVal -> IO ()
+foreign import javascript interruptible
+  "if (document.readyState == 'loading') {\
+    addEventListener('DOMContentLoaded', $c);\
+  } else {\
+    $c();\
+  }"
+  js_waitDocumentLoad :: IO ()
 #endif
 
 instance (a ~ (), MonadIO m) => IsString (HtmlT m a) where

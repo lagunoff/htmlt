@@ -1,6 +1,7 @@
 import Control.Monad
+import Control.Monad.Trans.Maybe
 import Data.Text as T
-import Text.Read
+import Text.Read (readMaybe)
 import HtmlT
 
 main :: IO ()
@@ -12,8 +13,7 @@ main = void $ attachToBody do
       -- Show the value inside <input>
       dynProp "value" $ T.pack . show <$> fromRef counterRef
       -- Parse and update the value on each InputEvent
-      onDecoder "input" valueDecoder $
-        modifyRef counterRef . maybe id const . readMaybe . T.unpack
+      on "input" $ decodeEvent intDecoder $ writeRef counterRef
     br_
     -- Decrease the value on each click
     button_ do
@@ -23,3 +23,6 @@ main = void $ attachToBody do
     button_ do
       on_ "click" $ modifyRef counterRef succ
       text "Increase"
+  where
+    intDecoder =
+      valueDecoder >=> MaybeT . pure . readMaybe . T.unpack

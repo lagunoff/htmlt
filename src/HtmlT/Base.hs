@@ -9,6 +9,7 @@ import Data.IORef
 import Data.JSString.Text as JSS
 import Data.Text as T hiding (index)
 import GHCJS.Marshal
+import GHCJS.Types
 import JavaScript.Object as Object
 import JavaScript.Object.Internal
 
@@ -74,7 +75,7 @@ dynProp
   -> Html ()
 dynProp textKey dyn = do
   rootEl <- asks html_current_element
-  forDyn_ dyn (liftIO . setup rootEl)
+  performDyn_ dyn (liftIO . setup rootEl)
   where
     setup el t = toJSVal t
       >>= flip (unsafeSetProp jsKey) (coerce el)
@@ -91,7 +92,7 @@ attr k v = asks html_current_element
 dynAttr :: Text -> Dynamic Text -> Html ()
 dynAttr k d = do
   rootEl <- asks html_current_element
-  forDyn_ d $ liftIO . setAttribute rootEl k
+  performDyn_ d $ liftIO . setAttribute rootEl k
 
 -- | Attach listener to the root element. First agument is the name
 -- of the DOM event to listen. Second is the callback that accepts the fired
@@ -114,10 +115,9 @@ onOptions :: EventName -> ListenerOpts -> (DOMEvent -> Transact ()) -> Html ()
 onOptions name opts f = ask >>= \HtmlEnv{..} ->
   onGlobalEvent opts (nodeFromElement html_current_element) name f
 
--- | Attach listener, extract data of type @a@ using specified decoder
-onMaybeT :: EventName -> (DOMEvent -> MaybeT Transact ()) -> Html ()
-onMaybeT ename f =
-  on ename (void . runMaybeT . f)
+decodeEvent :: (JSVal -> MaybeT Transact a) -> (a -> Transact ()) -> DOMEvent -> Transact ()
+decodeEvent dec act (DOMEvent jsevent) =
+  runMaybeT (dec jsevent) >>= maybe (pure ()) act
 
 -- | Attach a listener to arbitrary target, not just the current root
 -- element (usually that would be @window@, @document@ or @body@
@@ -137,7 +137,7 @@ onGlobalEvent opts target name f = do
   let
     event = Event \_ callback -> liftIO do
       unlisten <- addEventListener opts target name $
-        void . liftIO . sync . callback . f
+        void . liftIO . newTransaction . callback . f
       return $ liftIO unlisten
   void $ subscribe event id
 
@@ -164,7 +164,7 @@ classes cs = do
 toggleClass :: Text -> Dynamic Bool -> Html ()
 toggleClass cs dyn = do
   rootEl <- asks html_current_element
-  forDyn_ dyn (liftIO . setup rootEl cs)
+  performDyn_ dyn (liftIO . setup rootEl cs)
   where
     setup rootEl cs = \case
       True -> classListAdd rootEl cs
@@ -182,7 +182,7 @@ toggleClass cs dyn = do
 toggleAttr :: Text -> Dynamic Bool -> Html ()
 toggleAttr att dyn = do
   rootEl <- asks html_current_element
-  forDyn_ dyn (liftIO . setup rootEl att)
+  performDyn_ dyn (liftIO . setup rootEl att)
   where
     setup rootEl name = \case
       True -> setAttribute rootEl name "on"
@@ -199,7 +199,7 @@ toggleAttr att dyn = do
 dynStyle :: Text -> Dynamic Text -> Html ()
 dynStyle cssProp dyn = do
   rootEl <- asks html_current_element
-  forDyn_ dyn (liftIO . setup rootEl)
+  performDyn_ dyn (liftIO . setup rootEl)
   where
     setup el t = do
       styleVal <- Object.getProp "style" (coerce el)
@@ -224,7 +224,7 @@ blank = pure ()
 simpleList
   :: forall a. Dynamic [a]
   -- ^ Some dynamic data from the above scope
-  -> (Int -> Dynamic a -> Html ())
+  -> (Int -> DynRef a -> Html ())
   -- ^ Function to build children widget. Accepts the index inside the
   -- collection and dynamic data for that particular element
   -> Html ()
@@ -248,7 +248,7 @@ simpleList listDyn h = do
             { html_reactive_env = reactiveEnv {renv_finalizers = finalizers}
             , html_content_boundary = Just boundary
             }
-        liftIO $ execHtmlT elementEnv $ h idx (fromRef elementRef)
+        liftIO $ execHtmlT elementEnv $ h idx elementRef
         let itemRef = ElemEnv elementEnv elementRef
         (itemRef:) <$> setup (idx + 1) [] xs []
       (r:rs, _:_, []) -> do
@@ -258,7 +258,7 @@ simpleList listDyn h = do
         return []
       (r:rs, _:xs, y:ys) -> do
         -- Update child elements along the way
-        writeSync (ee_dyn_ref r) y
+        writeRef (ee_dyn_ref r) y
         (r:) <$> setup (idx + 1) xs ys rs
       (_, _, _) -> do
         error "simpleList: Incoherent internal state"
@@ -267,7 +267,7 @@ simpleList listDyn h = do
       let fins = renv_finalizers $ html_reactive_env ee_html_env
       readIORef fins >>= sequence_
   addFinalizer $ readIORef elemEnvsRef >>= finalizeElems
-  forDyn_ listDyn \new -> do
+  performDyn_ listDyn \new -> do
     old <- liftIO $ atomicModifyIORef' prevValue (new,)
     eenvs <- liftIO $ readIORef elemEnvsRef
     newEenvs <- setup 0 old new eenvs
@@ -312,12 +312,12 @@ dyn d = do
       clearBoundary boundary
       execHtmlT newEnv html
   addFinalizer (finalizeEnv Nothing)
-  forDyn_ d setup
+  performDyn_ d setup
 
 -- | Run an action before the current node is detached from the DOM
 addFinalizer :: MonadReactive m => IO () -> m ()
 addFinalizer fin = do
-  ReactiveEnv{..} <- askReactiveEnv
+  ReactiveEnv{renv_finalizers} <- askReactiveEnv
   liftIO $ modifyIORef renv_finalizers (fin:)
 
 -- | Attach resulting DOM to the given node instead of
@@ -349,7 +349,7 @@ portal newRootEl html = do
 -- >     \</svg>"
 unsafeHtml :: MonadIO m => Text -> HtmlT m ()
 unsafeHtml htmlText = do
-  HtmlEnv{..} <- ask
+  HtmlEnv{html_content_boundary, html_current_element} <- ask
   let anchor = fmap boundary_end html_content_boundary
   liftIO $ unsafeInsertHtml html_current_element anchor
     htmlText
