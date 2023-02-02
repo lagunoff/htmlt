@@ -15,7 +15,7 @@ import "this" Utils
 data TodoItemConfig = TodoItemConfig
   { tic_state_ref :: DynRef TodoItemState
   , tic_is_hidden :: Dynamic Bool
-  , tic_delete_item :: Transact ()
+  , tic_delete_item :: Step ()
   }
 
 data TodoItemState = TodoItemState
@@ -62,14 +62,14 @@ todoItemWidget TodoItemConfig{..} = li_ do
       Just "" ->
         tic_delete_item
       Just t ->
-        transactionModify tic_state_ref $
+        newStep $ modifyRef tic_state_ref $
           set #tis_editing Nothing . set #tis_title t
       Nothing ->
         pure ()
       where
         readEditing = view #tis_editing <$> readRef tic_state_ref
     cancelEditing =
-      transactionModify tic_state_ref $ set #tis_editing Nothing
+      newStep $ modifyRef tic_state_ref $ set #tis_editing Nothing
 
 defaultItemState :: TodoItemState
 defaultItemState = TodoItemState T.empty False Nothing

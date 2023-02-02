@@ -145,20 +145,19 @@ addEventListener
   -> (DOMEvent -> IO ())
   -> IO (IO ())
 addEventListener ListenerOpts{..} target name f = do
-  hscb <- mkcallback \jsevent -> do
-    when lo_prevent_default $ js_preventDefault jsevent
-    when lo_stop_propagation $ js_stopPropagation jsevent
-    f (DOMEvent jsevent)
+  hscb <- mkcallback (f . DOMEvent)
+  jscb <- withopts hscb
   js_callMethod2 (coerce target) "addEventListener"
-    (jsval (textToJSString name)) (jsval hscb)
+    (jsval (textToJSString name)) (jsval jscb)
   return do
     js_callMethod2 (coerce target) "removeEventListener"
-      (jsval (textToJSString name)) (jsval hscb)
+      (jsval (textToJSString name)) (jsval jscb)
     releaseCallback hscb
   where
     mkcallback = if lo_sync_callback
       then syncCallback1 ThrowWouldBlock
       else asyncCallback1
+    withopts = js_callbackWithOptions lo_stop_propagation lo_prevent_default
 
 -- | Collection of deltaX, deltaY and deltaZ properties from WheelEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/WheelEvent
@@ -302,9 +301,8 @@ js_call2 :: JSVal -> JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
 js_callMethod0 :: JSVal -> JSString -> IO JSVal = errorGhcjsOnly
 js_callMethod1 :: JSVal -> JSString -> JSVal -> IO JSVal = errorGhcjsOnly
 js_callMethod2 :: JSVal -> JSString -> JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
-js_preventDefault :: JSVal -> IO () = errorGhcjsOnly
-js_stopPropagation :: JSVal -> IO () = errorGhcjsOnly
 js_waitDocumentLoad :: IO () = errorGhcjsOnly
+js_callbackWithOptions :: Bool -> Bool -> Callback (JSVal -> IO ()) -> IO (Callback (JSVal -> IO ())) = errorGhcjsOnly
 #else
 foreign import javascript unsafe
   "$1.appendChild($2)"
@@ -405,11 +403,12 @@ foreign import javascript unsafe
   })($1, $2, $3)"
   js_unsafeInsertHtml :: DOMElement -> Nullable DOMNode -> JSString -> IO ()
 foreign import javascript unsafe
-  "$1.preventDefault()"
-  js_preventDefault :: JSVal -> IO ()
-foreign import javascript unsafe
-  "$1.stopPropagation()"
-  js_stopPropagation :: JSVal -> IO ()
+  "$r = function(e) {\
+    if ($1) e.stopPropagation();\
+    if ($2) e.preventDefault();\
+    return $3(e);\
+  }"
+  js_callbackWithOptions :: Bool -> Bool -> Callback (JSVal -> IO ()) -> IO (Callback (JSVal -> IO ()))
 foreign import javascript interruptible
   "if (document.readyState == 'loading') {\
     addEventListener('DOMContentLoaded', $c);\
@@ -421,9 +420,10 @@ foreign import javascript interruptible
 
 instance (a ~ (), MonadIO m) => IsString (HtmlT m a) where
   fromString s = do
-    HtmlEnv{..} <- ask
+    HtmlEnv{html_current_element, html_content_boundary} <- ask
     textNode <- liftIO $ createTextNode (T.pack s)
     case html_content_boundary of
-      Just ContentBoundary{..} -> liftIO $
+      Just ContentBoundary{boundary_end} -> liftIO $
         js_insertBefore html_current_element textNode boundary_end
       Nothing -> liftIO $ appendChild html_current_element textNode
+  {-# INLINE fromString #-}

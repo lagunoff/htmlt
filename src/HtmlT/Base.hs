@@ -102,20 +102,20 @@ dynAttr k d = do
 -- >   on "click" \_event -> do
 -- >     liftIO $ putStrLn "Clicked!"
 -- >   text "Click here"
-on :: EventName -> (DOMEvent -> Transact ()) -> Html ()
+on :: EventName -> (DOMEvent -> Step ()) -> Html ()
 on name f = ask >>= \HtmlEnv{..} ->
   onGlobalEvent defaultListenerOpts (nodeFromElement html_current_element) name f
 
 -- | Same as 'on' but ignores 'DOMEvent' inside the callback
-on_ :: EventName -> Transact () -> Html ()
+on_ :: EventName -> Step () -> Html ()
 on_ name = on name . const
 
 -- | Same as 'on' but allows to specify 'ListenerOpts'
-onOptions :: EventName -> ListenerOpts -> (DOMEvent -> Transact ()) -> Html ()
+onOptions :: EventName -> ListenerOpts -> (DOMEvent -> Step ()) -> Html ()
 onOptions name opts f = ask >>= \HtmlEnv{..} ->
   onGlobalEvent opts (nodeFromElement html_current_element) name f
 
-decodeEvent :: (JSVal -> MaybeT Transact a) -> (a -> Transact ()) -> DOMEvent -> Transact ()
+decodeEvent :: (JSVal -> MaybeT Step a) -> (a -> Step ()) -> DOMEvent -> Step ()
 decodeEvent dec act (DOMEvent jsevent) =
   runMaybeT (dec jsevent) >>= maybe (pure ()) act
 
@@ -130,14 +130,14 @@ onGlobalEvent
   -- ^ Event target
   -> EventName
   -- ^ Event name
-  -> (DOMEvent -> Transact ())
+  -> (DOMEvent -> Step ())
   -- ^ Callback that accepts reference to the DOM event
   -> Html ()
 onGlobalEvent opts target name f = do
   let
     event = Event \_ callback -> liftIO do
       unlisten <- addEventListener opts target name $
-        void . liftIO . newTransaction . callback . f
+        void . liftIO . newStep . callback . f
       return $ liftIO unlisten
   void $ subscribe event id
 
@@ -235,7 +235,7 @@ simpleList listDyn h = do
   elemEnvsRef <- liftIO $ newIORef ([] :: [ElemEnv a])
   let
     reactiveEnv = html_reactive_env htmlEnv
-    setup :: Int -> [a] -> [a] -> [ElemEnv a] -> Transact [ElemEnv a]
+    setup :: Int -> [a] -> [a] -> [ElemEnv a] -> Step [ElemEnv a]
     setup idx old new refs = case (refs, old, new) of
       (_, [], []) -> return []
       ([], [], x:xs) -> do

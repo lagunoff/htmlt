@@ -48,13 +48,13 @@ data DynRef a = DynRef
   -- ^ Funtion to update the value
   } deriving stock Generic
 
--- | State inside 'Transact'
+-- | State inside 'Step'
 newtype TransactState = TransactState
-  { unTransactState :: M.Map EventId (Transact ())
-  } deriving Generic
+  { unTransactState :: M.Map EventId (Step ())
+  } deriving newtype (Semigroup, Monoid)
 
 -- | Evaluation of effects triggered by an event firing
-newtype Transact a = Transact { unTransact :: StateT TransactState IO a }
+newtype Step a = Step { unStep :: StateT TransactState IO a }
   deriving newtype
     ( Functor, Applicative, Monad, MonadIO, MonadState TransactState, MonadFix
     , MonadCatch, MonadThrow, MonadMask
@@ -91,7 +91,7 @@ newtype SubscriptionId = SubscriptionId {unSubscriptionId :: Int}
   deriving newtype (Eq, Ord, Show)
 
 newtype Modifier a = Modifier
-  { unModifier :: forall r. Bool -> (a -> (a, r)) -> Transact r
+  { unModifier :: forall r. Bool -> (a -> (a, r)) -> Step r
   }
 
 class HasReactiveEnv m where askReactiveEnv :: m ReactiveEnv
@@ -100,9 +100,9 @@ type MonadReactive m = (HasReactiveEnv m, MonadIO m)
 
 type Lens' s a = forall f. Functor f => (a -> f a) -> s -> f s
 
-type Callback a = a -> Transact ()
+type Callback a = a -> Step ()
 
-type Trigger a = a -> Transact ()
+type Trigger a = a -> Step ()
 
 type Canceller = IO ()
 
@@ -157,12 +157,8 @@ never = Event \_ -> mempty
 -- > transactionWrite ref "New value"
 -- > readRef ref
 -- "New value"
-writeRef :: DynRef a -> a -> Transact ()
+writeRef :: DynRef a -> a -> Step ()
 writeRef ref a = modifyRef ref (const a)
-
--- | Same as 'writeRef' but initiates a new transaction under the hood
-transactionWrite :: MonadIO m => DynRef a -> a -> m ()
-transactionWrite ref a = transactionModify ref (const a)
 
 -- | Read the current value held by given 'DynRef'
 --
@@ -177,25 +173,13 @@ readRef = readDyn . dynref_dynamic
 -- > ref <- newRef [1..3]
 -- > modifyRef ref $ fmap (*2)
 -- [2, 4, 6]
-modifyRef :: DynRef a -> (a -> a) -> Transact ()
+modifyRef :: DynRef a -> (a -> a) -> Step ()
 modifyRef (DynRef _ (Modifier mod)) f = mod True $ (,()) . f
-
--- | Same as 'modifyRef' but initiates a new transaction under the
--- hood
-transactionModify :: MonadIO m => DynRef a -> (a -> a) -> m ()
-transactionModify (DynRef _ (Modifier mod)) f =
-  liftIO $ newTransaction $ mod True $ (,()) . f
 
 -- | Update a 'DynRef' with first field of the tuple and return back
 -- the second field
-atomicModifyRef :: DynRef a -> (a -> (a, r)) -> Transact r
+atomicModifyRef :: DynRef a -> (a -> (a, r)) -> Step r
 atomicModifyRef (DynRef _ (Modifier mod)) f = mod True f
-
--- | Same as 'atomicModifyRef' but initiates a new transaction under
--- the hood
-transactionAtomicModify :: MonadIO m => DynRef a -> (a -> (a, r)) -> m r
-transactionAtomicModify (DynRef _ (Modifier mod)) f =
-  liftIO $ newTransaction $ mod True f
 
 -- | Extract a 'Dynamic' out of 'DynRef'
 fromRef :: DynRef a -> Dynamic a
@@ -228,7 +212,7 @@ subscribe (Event s) k = do
 -- receiving new values
 performDyn :: MonadReactive m => Dynamic a -> Callback a -> m Canceller
 performDyn d k = do
-  liftIO $ dynamic_read d >>= newTransaction . k
+  liftIO $ dynamic_read d >>= newStep . k
   subscribe (dynamic_updates d) k
 
 -- | Same as 'performDyn', but ignores the canceller
@@ -248,7 +232,7 @@ lensMap l (DynRef sdyn (Modifier smod)) =
       adyn = Dynamic
         (fmap (getConst . l Const) $ dynamic_read sdyn)
         (fmap (getConst . l Const) $ dynamic_updates sdyn)
-      amod :: forall r. Bool -> (a -> (a, r)) -> Transact r
+      amod :: forall r. Bool -> (a -> (a, r)) -> Step r
       amod u f = smod u $ swap . l (swap . f)
 
 -- | Return a 'Dynamic' for which updates only fire when the value
@@ -363,7 +347,7 @@ unsafeMapDynN
   :: MonadReactive m
   => ([Any] -> IO a)
   -- ^ Construct the output value, from list of input values from
-  -- corresponding positions of fiven Dynamics
+  -- corresponding positions of given Dynamics
   -> [Dynamic Any]
   -- ^ List of input Dynamics
   -> m (Dynamic a)
@@ -404,15 +388,15 @@ nextIntId ReactiveEnv{..} = atomicModifyIORef'
 -- | Defer a computation (usually an event firing) till the end of
 -- current reactive transaction. This makes possible to avoid double
 -- firing of events, constructed from multiple other events
-defer :: EventId -> Transact () -> Transact ()
-defer k act = Transact (modify f) where
+defer :: EventId -> Step () -> Step ()
+defer k act = Step (modify f) where
   f (TransactState s) = TransactState (M.insert k act s)
 
 -- | Run a reactive transaction.
-newTransaction :: MonadIO m => Transact a -> m a
-newTransaction act = liftIO $ loop (TransactState M.empty) act where
-  loop :: TransactState -> Transact a -> IO a
-  loop rs (Transact act) = do
+newStep :: MonadIO m => Step a -> m a
+newStep act = liftIO $ loop (TransactState M.empty) act where
+  loop :: TransactState -> Step a -> IO a
+  loop rs (Step act) = do
     (r, newRs) <- runStateT act rs
     case popQueue newRs of
       (Just newAct, newerRs) -> r <$ loop newerRs newAct
@@ -435,7 +419,7 @@ subscribeImpl eventId e@ReactiveEnv{..} k = do
       | sId == xId = xs
       | otherwise = (xId, c) : deleteSub sId xs
 
-triggerImpl :: EventId -> ReactiveEnv -> a -> Transact ()
+triggerImpl :: EventId -> ReactiveEnv -> a -> Step ()
 triggerImpl eventId ReactiveEnv{..} a = defer eventId do
   subscriptions <- liftIO $ readIORef renv_subscriptions
   let callbacks = fromMaybe [] $ M.lookup eventId subscriptions
@@ -472,12 +456,6 @@ instance Applicative Dynamic where
       c2 <- unEvent (updates da) e \a -> fire Nothing (Just a)
       return (c1 *> c2)
     )
-
-instance Semigroup TransactState where
-  (<>) (TransactState a) (TransactState b) = TransactState (a <> b)
-
-instance Monoid TransactState where
-  mempty = TransactState mempty
 
 instance Applicative m => HasReactiveEnv (ReactiveT m) where
   askReactiveEnv = ReactiveT $ ReaderT pure
