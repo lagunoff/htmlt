@@ -74,8 +74,8 @@ dynProp
   -> Dynamic v
   -> Html ()
 dynProp textKey dyn = do
-  rootEl <- asks html_current_element
-  performDyn_ dyn (liftIO . setup rootEl)
+  el <- asks html_current_element
+  performDyn_ dyn (liftIO . setup el)
   where
     setup el t = toJSVal t
       >>= flip (unsafeSetProp jsKey) (coerce el)
@@ -85,14 +85,15 @@ dynProp textKey dyn = do
 -- and properties
 -- https://stackoverflow.com/questions/6003819/what-is-the-difference-between-properties-and-attributes-in-html
 attr :: Text -> Text -> Html ()
-attr k v = asks html_current_element
-  >>= \e -> liftIO (setAttribute e k v)
+attr k v = do
+  el <- asks html_current_element
+  liftIO $ setAttribute el k v
 
 -- | Assign an attribute with dynamic content to the root element
 dynAttr :: Text -> Dynamic Text -> Html ()
 dynAttr k d = do
-  rootEl <- asks html_current_element
-  performDyn_ d $ liftIO . setAttribute rootEl k
+  el <- asks html_current_element
+  performDyn_ d $ liftIO . setAttribute el k
 
 -- | Attach listener to the root element. First agument is the name
 -- of the DOM event to listen. Second is the callback that accepts the fired
@@ -103,8 +104,9 @@ dynAttr k d = do
 -- >     liftIO $ putStrLn "Clicked!"
 -- >   text "Click here"
 on :: EventName -> (DOMEvent -> Step ()) -> Html ()
-on name f = ask >>= \HtmlEnv{..} ->
-  onGlobalEvent defaultListenerOpts (nodeFromElement html_current_element) name f
+on name k = do
+  el <- asks html_current_element
+  onGlobalEvent defaultListenerOpts (nodeFromElement el) name k
 
 -- | Same as 'on' but ignores 'DOMEvent' inside the callback
 on_ :: EventName -> Step () -> Html ()
@@ -112,8 +114,9 @@ on_ name = on name . const
 
 -- | Same as 'on' but allows to specify 'ListenerOpts'
 onOptions :: EventName -> ListenerOpts -> (DOMEvent -> Step ()) -> Html ()
-onOptions name opts f = ask >>= \HtmlEnv{..} ->
-  onGlobalEvent opts (nodeFromElement html_current_element) name f
+onOptions name opts k = do
+  el <- asks html_current_element
+  onGlobalEvent opts (nodeFromElement el) name k
 
 decodeEvent :: (JSVal -> MaybeT Step a) -> (a -> Step ()) -> DOMEvent -> Step ()
 decodeEvent dec act (DOMEvent jsevent) =
@@ -234,44 +237,43 @@ simpleList listDyn h = do
   prevValue <- liftIO $ newIORef []
   elemEnvsRef <- liftIO $ newIORef ([] :: [ElemEnv a])
   let
-    reactiveEnv = html_reactive_env htmlEnv
-    setup :: Int -> [a] -> [a] -> [ElemEnv a] -> Step [ElemEnv a]
-    setup idx old new refs = case (refs, old, new) of
-      (_, [], []) -> return []
-      ([], [], x:xs) -> do
-        -- New list is longer, append new elements
+    setup :: Int -> [a] -> [ElemEnv a] -> Step [ElemEnv a]
+    setup idx new existing = case (existing, new) of
+      ([], []) -> return []
+      -- New list is longer, append new elements
+      ([], x:xs) -> do
         finalizers <- liftIO $ newIORef []
-        elementRef <- liftIO $ execReactiveT reactiveEnv $ newRef x
+        elementRef <- liftIO $ execReactiveT (html_reactive_env htmlEnv) $ newRef x
         boundary <- liftIO $ execHtmlT htmlEnv insertBoundary
         let
           elementEnv = htmlEnv
-            { html_reactive_env = reactiveEnv {renv_finalizers = finalizers}
+            { html_reactive_env = (html_reactive_env htmlEnv)
+              { renv_finalizers = finalizers }
             , html_content_boundary = Just boundary
             }
         liftIO $ execHtmlT elementEnv $ h idx elementRef
-        let itemRef = ElemEnv elementEnv elementRef
-        (itemRef:) <$> setup (idx + 1) [] xs []
-      (r:rs, _:_, []) -> do
-        -- New list is shorter, delete the elements that no longer
-        -- present in the new list
-        liftIO $ finalizeElems (r:rs)
+        let newElem = ElemEnv elementEnv elementRef
+        fmap (newElem:) $ setup (idx + 1) xs []
+      -- New list is shorter, delete the elements that no longer
+      -- present in the new list
+      (r:rs, []) -> do
+        liftIO $ finalizeElems True (r:rs)
         return []
-      (r:rs, _:xs, y:ys) -> do
-        -- Update child elements along the way
+      -- Update child elements along the way
+      (r:rs, y:ys) -> do
         writeRef (ee_dyn_ref r) y
-        (r:) <$> setup (idx + 1) xs ys rs
-      (_, _, _) -> do
-        error "simpleList: Incoherent internal state"
-    finalizeElems = traverse_ \ElemEnv{..} -> liftIO do
-      mapM_ removeBoundary $ html_content_boundary ee_html_env
-      let fins = renv_finalizers $ html_reactive_env ee_html_env
-      readIORef fins >>= sequence_
-  addFinalizer $ readIORef elemEnvsRef >>= finalizeElems
+        fmap (r:) $ setup (idx + 1) ys rs
+    finalizeElems remove = traverse_ \ElemEnv{ee_html_env} -> do
+      when remove $
+        mapM_ removeBoundary $ html_content_boundary ee_html_env
+      finalizers <- readIORef $ renv_finalizers $ html_reactive_env ee_html_env
+      sequence_ finalizers
   performDyn_ listDyn \new -> do
     old <- liftIO $ atomicModifyIORef' prevValue (new,)
     eenvs <- liftIO $ readIORef elemEnvsRef
-    newEenvs <- setup 0 old new eenvs
+    newEenvs <- setup 0 new eenvs
     liftIO $ writeIORef elemEnvsRef newEenvs
+  addFinalizer $ readIORef elemEnvsRef >>= finalizeElems False
 
 -- | First build a DOM with the widget that is currently held by the
 -- given Dynamic, then rebuild it every time Dynamic's value
@@ -294,7 +296,7 @@ dyn d = do
   let
     finalizeEnv newEnv = do
       readIORef childRef >>= \case
-        Just HtmlEnv{..} -> do
+        Just HtmlEnv{html_reactive_env} -> do
           finalizers <- readIORef $ renv_finalizers html_reactive_env
           sequence_ finalizers
           writeIORef (renv_finalizers html_reactive_env) []
