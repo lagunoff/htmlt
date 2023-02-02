@@ -8,6 +8,11 @@ import HtmlT.Base
 import HtmlT.Event
 
 
+-- TODO: Time showed in real apps dynStyles isn't sufficiently
+-- composable. For instance, suppose 'dynStyles' was applied for an
+-- element to set CSS color, then essentially no other CSS property
+-- can be set to this element, because they will be overwritten by
+-- 'dynStyles'
 dynStyles :: Dynamic Text -> Html ()
 dynStyles = dynProp "style"
 

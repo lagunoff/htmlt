@@ -174,36 +174,36 @@ mouseDeltaDecoder mouseEvent = do
   md_delta_z <- propDecoder "deltaZ" mouseEvent
   return MouseDelta {..}
 
--- | Pair of two values, might denote either size or coordinates in
+-- | Pair of two values, might denote either a size or coordinates in
 -- different contexts
-data Vec2 a = Vec2
-  { vec_x :: a
-  , vec_y :: a
+data Point a = Point
+  { pt_x :: a
+  , pt_y :: a
   } deriving stock (Eq, Show, Ord, Functor, Generic)
 
 -- | Read clientX and clientY properties from MouseEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
-clientXYDecoder :: MonadIO m => JSVal -> MaybeT m (Vec2 Int)
+clientXYDecoder :: MonadIO m => JSVal -> MaybeT m (Point Int)
 clientXYDecoder mouseEvent = do
-  vec_x <- propDecoder "clientX" mouseEvent
-  vec_y <- propDecoder "clientY" mouseEvent
-  return Vec2 {..}
+  pt_x <- propDecoder "clientX" mouseEvent
+  pt_y <- propDecoder "clientY" mouseEvent
+  return Point {..}
 
 -- | Read offsetX and offsetY properties from MouseEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
-offsetXYDecoder :: MonadIO m => JSVal -> MaybeT m (Vec2 Int)
+offsetXYDecoder :: MonadIO m => JSVal -> MaybeT m (Point Int)
 offsetXYDecoder mouseEvent = do
-  vec_x <- propDecoder "offsetX" mouseEvent
-  vec_y <- propDecoder "offsetY" mouseEvent
-  return Vec2 {..}
+  pt_x <- propDecoder "offsetX" mouseEvent
+  pt_y <- propDecoder "offsetY" mouseEvent
+  return Point {..}
 
 -- | Read pageX and pageY properties from MouseEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
-pageXYDecoder :: MonadIO m => JSVal -> MaybeT m (Vec2 Int)
+pageXYDecoder :: MonadIO m => JSVal -> MaybeT m (Point Int)
 pageXYDecoder mouseEvent = do
-  vec_x <- propDecoder "pageX" mouseEvent
-  vec_y <- propDecoder "pageY" mouseEvent
-  return Vec2 {..}
+  pt_x <- propDecoder "pageX" mouseEvent
+  pt_y <- propDecoder "pageY" mouseEvent
+  return Point {..}
 
 -- | Collection of altKey, ctrlKey, metaKey and shiftKey properties
 -- from KeyboardEvent
