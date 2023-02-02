@@ -212,7 +212,7 @@ subscribe (Event s) k = do
 -- receiving new values
 performDyn :: MonadReactive m => Dynamic a -> Callback a -> m Canceller
 performDyn d k = do
-  liftIO $ dynamic_read d >>= newStep . k
+  liftIO $ dynamic_read d >>= dynStep . k
   subscribe (dynamic_updates d) k
 
 -- | Same as 'performDyn', but ignores the canceller
@@ -393,8 +393,8 @@ defer k act = Step (modify f) where
   f (TransactState s) = TransactState (M.insert k act s)
 
 -- | Run a reactive transaction.
-newStep :: MonadIO m => Step a -> m a
-newStep act = liftIO $ loop (TransactState M.empty) act where
+dynStep :: MonadIO m => Step a -> m a
+dynStep act = liftIO $ loop (TransactState M.empty) act where
   loop :: TransactState -> Step a -> IO a
   loop rs (Step act) = do
     (r, newRs) <- runStateT act rs

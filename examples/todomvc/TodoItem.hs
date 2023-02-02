@@ -62,14 +62,14 @@ todoItemWidget TodoItemConfig{..} = li_ do
       Just "" ->
         tic_delete_item
       Just t ->
-        newStep $ modifyRef tic_state_ref $
+        dynStep $ modifyRef tic_state_ref $
           set #tis_editing Nothing . set #tis_title t
       Nothing ->
         pure ()
       where
         readEditing = view #tis_editing <$> readRef tic_state_ref
     cancelEditing =
-      newStep $ modifyRef tic_state_ref $ set #tis_editing Nothing
+      dynStep $ modifyRef tic_state_ref $ set #tis_editing Nothing
 
 defaultItemState :: TodoItemState
 defaultItemState = TodoItemState T.empty False Nothing

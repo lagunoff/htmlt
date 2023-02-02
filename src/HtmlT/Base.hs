@@ -140,7 +140,7 @@ onGlobalEvent opts target name f = do
   let
     event = Event \_ callback -> liftIO do
       unlisten <- addEventListener opts target name $
-        void . liftIO . newStep . callback . f
+        void . liftIO . dynStep . callback . f
       return $ liftIO unlisten
   void $ subscribe event id
 
