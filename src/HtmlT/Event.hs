@@ -212,11 +212,6 @@ fromRef = dynref_dynamic
 readDyn :: MonadIO m => Dynamic a -> m a
 readDyn = liftIO . dynamic_read
 
--- | Same as 'readDyn' but also applies given function to the value
--- held by 'Dynamic'
-readsDyn :: MonadIO m => (a -> b) -> Dynamic a -> m b
-readsDyn f = fmap f . liftIO . dynamic_read
-
 -- | Extract the updates Event from a 'Dynamic'
 updates :: Dynamic a -> Event a
 updates = dynamic_updates
@@ -267,8 +262,7 @@ holdUniqDynBy equalFn Dynamic{..} = Dynamic dynamic_read
     old <- liftIO dynamic_read
     oldRef <- liftIO (newIORef old)
     unEvent dynamic_updates e \new -> do
-      old <- liftIO (readIORef oldRef)
-      liftIO $ writeIORef oldRef new
+      old <- liftIO $ atomicModifyIORef' oldRef (new,)
       unless (old `equalFn` new) $ k new
   )
 
@@ -369,8 +363,8 @@ nextEventId ReactiveEnv{renv_id_generator} =
   where
     succId = \case
       QueueId eid -> QueueId (succ eid)
-      QueueBinopLeft origin eid -> QueueBinopLeft origin eid
-      QueueBinopRight origin eid -> QueueBinopRight origin eid
+      QueueBinopLeft origin eid -> QueueBinopLeft origin (succ eid)
+      QueueBinopRight origin eid -> QueueBinopRight origin (succ eid)
 
 -- | Defer a computation (usually an event firing) till the end of
 -- current reactive transaction. This makes possible to avoid double
@@ -490,8 +484,8 @@ instance Applicative Dynamic where
         return (c1 *> c2)
       succId = \case
         QueueId eid -> QueueId (succ eid)
-        QueueBinopLeft origin eid -> QueueBinopLeft origin eid
-        QueueBinopRight origin eid -> QueueBinopRight origin eid
+        QueueBinopLeft origin eid -> QueueBinopLeft origin (succ eid)
+        QueueBinopRight origin eid -> QueueBinopRight origin (succ eid)
 
 instance Applicative m => HasReactiveEnv (ReactiveT m) where
   askReactiveEnv = ReactiveT $ ReaderT pure
