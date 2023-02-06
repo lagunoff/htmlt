@@ -242,11 +242,6 @@ performDyn d k = do
 performDyn_ :: MonadReactive m => Dynamic a -> Callback a -> m ()
 performDyn_ = (void .) . performDyn
 
--- | Filter and map occurences
-mapMaybeE :: (a -> Maybe b) -> Event a -> Event b
-mapMaybeE f e = Event \r k -> unEvent e r (maybe (pure ()) k . f)
-{-# INLINE mapMaybeE #-}
-
 -- | Apply a lens to the value inside 'DynRef'
 lensMap :: forall s a. Lens' s a -> DynRef s -> DynRef a
 lensMap l (DynRef sdyn (Modifier smod)) =
@@ -267,14 +262,14 @@ holdUniqDyn = holdUniqDynBy (==)
 -- | Same as 'holdUniqDyn' but accepts arbitrary equality test
 -- function
 holdUniqDynBy :: (a -> a -> Bool) -> Dynamic a -> Dynamic a
-holdUniqDynBy equal Dynamic{..} = Dynamic dynamic_read
-  (mapMaybeE id $ Event \e k -> do
+holdUniqDynBy equalFn Dynamic{..} = Dynamic dynamic_read
+  (Event \e k -> do
     old <- liftIO dynamic_read
     oldRef <- liftIO (newIORef old)
     unEvent dynamic_updates e \new -> do
       old <- liftIO (readIORef oldRef)
       liftIO $ writeIORef oldRef new
-      k if old `equal` new then Nothing else Just new
+      unless (old `equalFn` new) $ k new
   )
 
 -- | Print a debug message each time given event fires
