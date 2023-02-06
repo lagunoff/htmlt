@@ -50,7 +50,7 @@ data DynRef a = DynRef
 
 -- | State inside 'Step'
 newtype TransactState = TransactState
-  { unTransactState :: M.Map EventId (Step ())
+  { unTransactState :: M.Map QueueId (Step ())
   } deriving newtype (Semigroup, Monoid)
 
 -- | Evaluation of effects triggered by an event firing
@@ -63,15 +63,15 @@ newtype Step a = Step { unStep :: StateT TransactState IO a }
 -- | The environment required for some operations like creating a new
 -- 'Event' or subscribing to an Event.
 data ReactiveEnv = ReactiveEnv
-  { renv_subscriptions :: IORef (M.Map EventId [(SubscriptionId, Callback Any)])
+  { renv_subscriptions :: IORef (M.Map QueueId [(QueueId, Callback Any)])
   -- ^ Keeps track of subscriptions
   , renv_finalizers :: IORef [Canceller]
   -- ^ List of cancellers, IO actions to detach listeners from
   -- events. It is likely that dynamic parts of the application will
   -- be passed new instance of 'renv_finalizers' to isolate and remove
   -- the subscriptions after this part is detached
-  , renv_id_generator :: IORef Int
-  -- ^ Contains next value for 'EventId' or 'SubscriptionId'
+  , renv_id_generator :: IORef QueueId
+  -- ^ Contains next value for 'QueueId' or 'SubscriptionId'
   } deriving Generic
 
 -- | Minimal implementation for 'HasReactiveEnv'
@@ -82,13 +82,36 @@ newtype ReactiveT m a = ReactiveT
     , MonadMask
     )
 
--- | Identify events inside 'TransactState' and 'ReactiveEnv'
-newtype EventId = EventId {unEventId :: Int}
-  deriving newtype (Eq, Ord, Show)
+-- | Identify computation inside 'TransactState' the idea is that
+-- bigger value of 'QueueId' gets executed later. And Events
+-- constructed from other events have to push their values after all
+-- their inputs, this is in essense the mechanism how double-firings
+-- are prevented
+data QueueId
+  = QueueId Int
+  | QueueBinopLeft QueueId Int
+  | QueueBinopRight QueueId Int
+  deriving (Eq, Show)
 
--- | Identify subscriptions inside 'renv_subscriptions'
-newtype SubscriptionId = SubscriptionId {unSubscriptionId :: Int}
-  deriving newtype (Eq, Ord, Show)
+instance Ord QueueId where
+  compare (QueueId eid1) (QueueId eid2) =
+    compare eid1 eid2
+  compare (QueueId eid) (QueueBinopLeft root _) =
+    compare (QueueId eid) root
+  compare (QueueId eid) (QueueBinopRight root _) =
+    compare (QueueId eid) root
+  compare (QueueBinopRight root _) (QueueId eid) =
+    compare root (QueueId eid)
+  compare (QueueBinopLeft root _) (QueueId eid) =
+    compare root (QueueId eid)
+  compare (QueueBinopLeft root1 eid1) (QueueBinopLeft root2 eid2) =
+    compare (root1, eid1) (root2, eid2)
+  compare (QueueBinopRight root1 eid1) (QueueBinopRight root2 eid2) =
+    compare (root1, eid1) (root2, eid2)
+  compare (QueueBinopRight root1 eid1) (QueueBinopLeft root2 eid2) =
+    compare (root1, eid1) (root2, negate eid2)
+  compare (QueueBinopLeft root1 eid1) (QueueBinopRight root2 eid2) =
+    compare (root1, negate eid1) (root2, eid2)
 
 newtype Modifier a = Modifier
   { unModifier :: forall r. Bool -> (a -> (a, r)) -> Step r
@@ -111,8 +134,8 @@ newReactiveEnv :: MonadIO m => m ReactiveEnv
 newReactiveEnv = liftIO do
   renv_finalizers <- newIORef []
   renv_subscriptions <- newIORef M.empty
-  renv_id_generator <- newIORef 0
-  return ReactiveEnv{..}
+  renv_id_generator <- newIORef $ QueueId 0
+  return ReactiveEnv {..}
 
 -- | Create new event and a function to supply values to that event
 --
@@ -121,14 +144,14 @@ newReactiveEnv = liftIO do
 newEvent :: forall a m. MonadReactive m => m (Event a, Trigger a)
 newEvent = do
   renv <- askReactiveEnv
-  eventId <- EventId <$> liftIO (nextIntId renv)
-  let event = Event $ subscribeImpl eventId
-  return (event, triggerImpl eventId renv)
+  eventId <- liftIO (nextEventId renv)
+  let event = Event $ unsafeSubscribe eventId
+  return (event, unsafeTrigger eventId renv)
 
 -- | Create new 'DynRef' using given initial value
 --
 -- > showRef <- newRef False
--- > transactionWrite showRef True -- this triggers update event for showRef
+-- > dynStep $ writeRef showRef True -- this triggers update event for showRef
 newRef :: forall a m. MonadReactive m => a -> m (DynRef a)
 newRef initial = do
   ref <- liftIO $ newIORef initial
@@ -297,13 +320,13 @@ mapDyn fun adyn = do
   latestA <- liftIO $ newIORef initialA
   latestB <- liftIO $ newIORef (fun initialA)
   renv <- askReactiveEnv
-  eventId <- EventId <$> liftIO (nextIntId renv)
+  eventId <- liftIO (nextEventId renv)
   let
-    updates = Event $ subscribeImpl eventId
+    updates = Event $ unsafeSubscribe eventId
     fire = defer eventId do
       newB <- liftIO $ fun <$> readIORef latestA
       liftIO $ writeIORef latestB newB
-      triggerImpl eventId renv newB
+      unsafeTrigger eventId renv newB
   dynamic_updates adyn `subscribe` \newA -> do
     liftIO $ writeIORef latestA newA
     defer eventId fire
@@ -358,13 +381,13 @@ unsafeMapDynN fun dyns = do
   initialOutput <- liftIO $ fun initialInputs
   latestInputsRef <- liftIO $ newIORef initialInputs
   latestOutputRef <- liftIO $ newIORef initialOutput
-  eventId <- EventId <$> liftIO (nextIntId renv)
+  eventId <- liftIO (nextEventId renv)
   let
     fire = defer eventId do
       newOutput <- liftIO $ fun =<< readIORef latestInputsRef
       liftIO $ writeIORef latestOutputRef newOutput
-      triggerImpl eventId renv newOutput
-    updates = Event $ subscribeImpl eventId
+      unsafeTrigger eventId renv newOutput
+    updates = Event $ unsafeSubscribe eventId
     updateList _ _ [] = []
     updateList 0 a (_:xs) = a:xs
     updateList n a (x:xs) = x : updateList (pred n) a xs
@@ -381,16 +404,21 @@ execReactiveT :: ReactiveEnv -> ReactiveT m a -> m a
 execReactiveT = flip runReactiveT
 
 -- | Read and increment 'renv_id_generator'
-nextIntId :: ReactiveEnv -> IO Int
-nextIntId ReactiveEnv{..} = atomicModifyIORef'
-  renv_id_generator \x -> (succ x, x)
+nextEventId :: ReactiveEnv -> IO QueueId
+nextEventId ReactiveEnv{renv_id_generator} =
+  atomicModifyIORef' renv_id_generator \eid -> (succId eid, eid)
+  where
+    succId = \case
+      QueueId eid -> QueueId (succ eid)
+      QueueBinopLeft origin eid -> QueueBinopLeft origin eid
+      QueueBinopRight origin eid -> QueueBinopRight origin eid
 
 -- | Defer a computation (usually an event firing) till the end of
 -- current reactive transaction. This makes possible to avoid double
 -- firing of events, constructed from multiple other events
-defer :: EventId -> Step () -> Step ()
-defer k act = Step (modify f) where
-  f (TransactState s) = TransactState (M.insert k act s)
+defer :: QueueId -> Step () -> Step ()
+defer k act =
+  Step $ modify \(TransactState s) -> TransactState (M.insert k act s)
 
 -- | Run a reactive transaction.
 dynStep :: MonadIO m => Step a -> m a
@@ -405,22 +433,23 @@ dynStep act = liftIO $ loop (TransactState M.empty) act where
     Just ((_, act), rest) -> (Just act, TransactState rest)
     Nothing -> (Nothing, intact)
 
-subscribeImpl :: EventId -> ReactiveEnv -> Callback a -> IO Canceller
-subscribeImpl eventId e@ReactiveEnv{..} k = do
-  subsId <- SubscriptionId <$> nextIntId e
+unsafeSubscribe :: QueueId -> ReactiveEnv -> Callback a -> IO Canceller
+unsafeSubscribe eventId e@ReactiveEnv{renv_subscriptions} k = do
+  subsId <- nextEventId e
   let newCancel = (subsId, k . unsafeCoerce)
   alterSubs $ Just . (newCancel :) . fromMaybe []
   return $ alterSubs $
     mfilter (not . Prelude.null) . Just . deleteSub subsId . fromMaybe []
   where
-    alterSubs = modifyIORef' renv_subscriptions . flip M.alter eventId
+    alterSubs =
+      modifyIORef' renv_subscriptions . flip M.alter eventId
     deleteSub _sId [] = []
     deleteSub sId ((xId, c):xs)
       | sId == xId = xs
       | otherwise = (xId, c) : deleteSub sId xs
 
-triggerImpl :: EventId -> ReactiveEnv -> a -> Step ()
-triggerImpl eventId ReactiveEnv{..} a = defer eventId do
+unsafeTrigger :: QueueId -> ReactiveEnv -> a -> Step ()
+unsafeTrigger eventId ReactiveEnv{..} a = defer eventId do
   subscriptions <- liftIO $ readIORef renv_subscriptions
   let callbacks = fromMaybe [] $ M.lookup eventId subscriptions
   for_ callbacks $ ($ unsafeCoerce @_ @Any a) . snd
@@ -430,7 +459,10 @@ instance Functor Event where
 
 instance Semigroup a => Semigroup (Event a) where
   (<>) (Event e1) (Event e2) = Event \e k -> do
-    eventId <- EventId <$> nextIntId e
+    eventId <- nextEventId e
+    -- TODO: this behaviour is unreliable and hard to predicts
+    -- (basically in situation when both events fire during same
+    -- 'Step' win the one with bigger 'EventId'
     c1 <- e1 e (defer eventId . k)
     c2 <- e2 e (defer eventId . k)
     return (c1 *> c2)
@@ -444,18 +476,27 @@ instance Functor Dynamic where
 instance Applicative Dynamic where
   pure = constDyn
   (<*>) df da = Dynamic
-    (liftA2 ($) (readDyn df) (readDyn da))
-    (Event \e k -> do
-      eventId <- EventId <$> nextIntId e
-      let
-        fire newF newA = defer eventId do
-          f <- liftIO $ maybe (readDyn df) pure newF
-          a <- liftIO $ maybe (readDyn da) pure newA
-          k (f a)
-      c1 <- unEvent (updates df) e \f -> fire (Just f) Nothing
-      c2 <- unEvent (updates da) e \a -> fire Nothing (Just a)
-      return (c1 *> c2)
-    )
+    { dynamic_read = liftA2 ($) (dynamic_read df) (dynamic_read da)
+    , dynamic_updates = upds
+    }
+    where
+      upds = Event \e k -> do
+        eventId <- nextEventId e
+        let
+          fire newF newA = defer eventId do
+            f <- liftIO $ maybe (readDyn df) pure newF
+            a <- liftIO $ maybe (readDyn da) pure newA
+            k (f a)
+        writeIORef (renv_id_generator e) (QueueBinopLeft eventId 0)
+        c1 <- unEvent (updates df) e \f -> fire (Just f) Nothing
+        writeIORef (renv_id_generator e) (QueueBinopRight eventId 0)
+        c2 <- unEvent (updates da) e \a -> fire Nothing (Just a)
+        writeIORef (renv_id_generator e) (succId eventId)
+        return (c1 *> c2)
+      succId = \case
+        QueueId eid -> QueueId (succ eid)
+        QueueBinopLeft origin eid -> QueueBinopLeft origin eid
+        QueueBinopRight origin eid -> QueueBinopRight origin eid
 
 instance Applicative m => HasReactiveEnv (ReactiveT m) where
   askReactiveEnv = ReactiveT $ ReaderT pure
