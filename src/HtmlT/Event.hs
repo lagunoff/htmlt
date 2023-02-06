@@ -93,6 +93,10 @@ data QueueId
   | QueueBinopRight QueueId Int
   deriving (Eq, Show)
 
+newtype Modifier a = Modifier
+  { unModifier :: forall r. Bool -> (a -> (a, r)) -> Step r
+  }
+
 instance Ord QueueId where
   compare (QueueId eid1) (QueueId eid2) =
     compare eid1 eid2
@@ -112,10 +116,6 @@ instance Ord QueueId where
     compare (root1, eid1) (root2, negate eid2)
   compare (QueueBinopLeft root1 eid1) (QueueBinopRight root2 eid2) =
     compare (root1, negate eid1) (root2, eid2)
-
-newtype Modifier a = Modifier
-  { unModifier :: forall r. Bool -> (a -> (a, r)) -> Step r
-  }
 
 class HasReactiveEnv m where askReactiveEnv :: m ReactiveEnv
 
@@ -272,36 +272,6 @@ holdUniqDynBy equalFn Dynamic{..} = Dynamic dynamic_read
       unless (old `equalFn` new) $ k new
   )
 
--- | Print a debug message each time given event fires
-traceEvent :: Show a => String -> Event a -> Event a
-traceEvent tag = traceEventWith (((tag <> ": ") <>) . show)
-
--- | Print a debug message when the event fires using given printing
--- function
-traceEventWith :: (a -> String) -> Event a -> Event a
-traceEventWith showA (Event f) = Event \e c ->
-  f e (c . (\x -> trace (showA x) x))
-
--- | Print a debug message when value inside the Dynamic changes
-traceDyn :: Show a => String -> Dynamic a -> Dynamic a
-traceDyn tag = traceDynWith (((tag <> ": ") <>) . show)
-
--- | Print a debug message when value inside Dynamic changes using
--- given printing function
-traceDynWith :: (a -> String) -> Dynamic a -> Dynamic a
-traceDynWith showA d = d {dynamic_updates = e} where
-  e = traceEventWith showA (dynamic_updates d)
-
--- | Print a debug message when value inside the DynRef changes
-traceRef :: Show a => String -> DynRef a -> DynRef a
-traceRef tag DynRef{..} = DynRef
-  {dynref_dynamic = traceDynWith (((tag <> ": ") <>) . show) dynref_dynamic, ..}
-
--- | Print a debug message when value inside the DynRef changes
-traceRefWith :: (a -> String) -> DynRef a -> DynRef a
-traceRefWith f DynRef{..} = DynRef
-  {dynref_dynamic = traceDynWith f dynref_dynamic, ..}
-
 -- | Alternative version if 'fmap' where given function will only be
 -- called once every time 'Dynamic a' value changes, whereas in 'fmap'
 -- it would be called once for each subscription per change event
@@ -392,12 +362,6 @@ unsafeMapDynN fun dyns = do
       defer eventId fire
   return $ Dynamic (readIORef latestOutputRef) updates
 
-runReactiveT :: ReactiveT m a -> ReactiveEnv -> m a
-runReactiveT r = runReaderT (unReactiveT r)
-
-execReactiveT :: ReactiveEnv -> ReactiveT m a -> m a
-execReactiveT = flip runReactiveT
-
 -- | Read and increment 'renv_id_generator'
 nextEventId :: ReactiveEnv -> IO QueueId
 nextEventId ReactiveEnv{renv_id_generator} =
@@ -427,6 +391,42 @@ dynStep act = liftIO $ loop (TransactState M.empty) act where
   popQueue intact@(TransactState m) = case M.minViewWithKey m of
     Just ((_, act), rest) -> (Just act, TransactState rest)
     Nothing -> (Nothing, intact)
+
+-- | Print a debug message each time given event fires
+traceEvent :: Show a => String -> Event a -> Event a
+traceEvent tag = traceEventWith (((tag <> ": ") <>) . show)
+
+-- | Print a debug message when the event fires using given printing
+-- function
+traceEventWith :: (a -> String) -> Event a -> Event a
+traceEventWith showA (Event f) = Event \e c ->
+  f e (c . (\x -> trace (showA x) x))
+
+-- | Print a debug message when value inside the Dynamic changes
+traceDyn :: Show a => String -> Dynamic a -> Dynamic a
+traceDyn tag = traceDynWith (((tag <> ": ") <>) . show)
+
+-- | Print a debug message when value inside Dynamic changes using
+-- given printing function
+traceDynWith :: (a -> String) -> Dynamic a -> Dynamic a
+traceDynWith showA d = d {dynamic_updates = e} where
+  e = traceEventWith showA (dynamic_updates d)
+
+-- | Print a debug message when value inside the DynRef changes
+traceRef :: Show a => String -> DynRef a -> DynRef a
+traceRef tag DynRef{..} = DynRef
+  {dynref_dynamic = traceDynWith (((tag <> ": ") <>) . show) dynref_dynamic, ..}
+
+-- | Print a debug message when value inside the DynRef changes
+traceRefWith :: (a -> String) -> DynRef a -> DynRef a
+traceRefWith f DynRef{..} = DynRef
+  {dynref_dynamic = traceDynWith f dynref_dynamic, ..}
+
+runReactiveT :: ReactiveT m a -> ReactiveEnv -> m a
+runReactiveT r = runReaderT (unReactiveT r)
+
+execReactiveT :: ReactiveEnv -> ReactiveT m a -> m a
+execReactiveT = flip runReactiveT
 
 unsafeSubscribe :: QueueId -> ReactiveEnv -> Callback a -> IO Canceller
 unsafeSubscribe eventId e@ReactiveEnv{renv_subscriptions} k = do
