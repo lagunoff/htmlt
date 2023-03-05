@@ -297,9 +297,8 @@ dyn d = do
     finalizeEnv newEnv = do
       readIORef childRef >>= \case
         Just HtmlEnv{html_reactive_env} -> do
-          finalizers <- readIORef $ renv_finalizers html_reactive_env
+          finalizers <- atomicModifyIORef' (renv_finalizers html_reactive_env) ([],)
           sequence_ finalizers
-          writeIORef (renv_finalizers html_reactive_env) []
         Nothing -> return ()
       writeIORef childRef newEnv
     setup html = liftIO do
