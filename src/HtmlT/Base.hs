@@ -75,7 +75,7 @@ dynProp
   -> Html ()
 dynProp textKey dyn = do
   el <- asks html_current_element
-  performDyn_ dyn (liftIO . setup el)
+  performDyn_ $ liftIO . setup el <$> dyn
   where
     setup el t = toJSVal t
       >>= flip (unsafeSetProp jsKey) (coerce el)
@@ -93,7 +93,7 @@ attr k v = do
 dynAttr :: Text -> Dynamic Text -> Html ()
 dynAttr k d = do
   el <- asks html_current_element
-  performDyn_ d $ liftIO . setAttribute el k
+  performDyn_ $ liftIO . setAttribute el k <$> d
 
 -- | Attach listener to the root element. First agument is the name
 -- of the DOM event to listen. Second is the callback that accepts the fired
@@ -167,7 +167,7 @@ classes cs = do
 toggleClass :: Text -> Dynamic Bool -> Html ()
 toggleClass cs dyn = do
   rootEl <- asks html_current_element
-  performDyn_ dyn (liftIO . setup rootEl cs)
+  performDyn_ $ liftIO . setup rootEl cs <$> dyn
   where
     setup rootEl cs = \case
       True -> classListAdd rootEl cs
@@ -185,7 +185,7 @@ toggleClass cs dyn = do
 toggleAttr :: Text -> Dynamic Bool -> Html ()
 toggleAttr att dyn = do
   rootEl <- asks html_current_element
-  performDyn_ dyn (liftIO . setup rootEl att)
+  performDyn_ $ liftIO . setup rootEl att <$> dyn
   where
     setup rootEl name = \case
       True -> setAttribute rootEl name "on"
@@ -202,7 +202,7 @@ toggleAttr att dyn = do
 dynStyle :: Text -> Dynamic Text -> Html ()
 dynStyle cssProp dyn = do
   rootEl <- asks html_current_element
-  performDyn_ dyn (liftIO . setup rootEl)
+  performDyn_ $ liftIO . setup rootEl <$> dyn
   where
     setup el t = do
       styleVal <- Object.getProp "style" (coerce el)
@@ -268,11 +268,12 @@ simpleList listDyn h = do
         mapM_ removeBoundary $ html_content_boundary ee_html_env
       finalizers <- readIORef $ renv_finalizers $ html_reactive_env ee_html_env
       sequence_ finalizers
-  performDyn_ listDyn \new -> do
-    old <- liftIO $ atomicModifyIORef' prevValue (new,)
-    eenvs <- liftIO $ readIORef elemEnvsRef
-    newEenvs <- setup 0 new eenvs
-    liftIO $ writeIORef elemEnvsRef newEenvs
+    updateList new = do
+      old <- liftIO $ atomicModifyIORef' prevValue (new,)
+      eenvs <- liftIO $ readIORef elemEnvsRef
+      newEenvs <- setup 0 new eenvs
+      liftIO $ writeIORef elemEnvsRef newEenvs
+  performDyn_ $ updateList <$> listDyn
   addFinalizer $ readIORef elemEnvsRef >>= finalizeElems False
 
 -- | First build a DOM with the widget that is currently held by the
@@ -313,7 +314,7 @@ dyn d = do
       clearBoundary boundary
       execHtmlT newEnv html
   addFinalizer (finalizeEnv Nothing)
-  performDyn_ d setup
+  performDyn_ $ setup <$> d
 
 -- | Run an action before the current node is detached from the DOM
 addFinalizer :: MonadReactive m => IO () -> m ()

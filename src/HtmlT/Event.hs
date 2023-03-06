@@ -228,14 +228,14 @@ subscribe (Event s) k = do
 -- | Perform an action with current value of the given 'Dynamic' and
 -- each time the value changes. Return action to detach listener from
 -- receiving new values
-performDyn :: MonadReactive m => Dynamic a -> Callback a -> m Canceller
-performDyn d k = do
-  liftIO $ dynamic_read d >>= dynStep . k
-  subscribe (dynamic_updates d) k
+performDyn :: MonadReactive m => Dynamic (Step ()) -> m Canceller
+performDyn d = do
+  liftIO $ dynamic_read d >>= dynStep
+  subscribe (dynamic_updates d) id
 
 -- | Same as 'performDyn', but ignores the canceller
-performDyn_ :: MonadReactive m => Dynamic a -> Callback a -> m ()
-performDyn_ = (void .) . performDyn
+performDyn_ :: MonadReactive m => Dynamic (Step ()) -> m ()
+performDyn_ = void . performDyn
 
 -- | Apply a lens to the value inside 'DynRef'
 lensMap :: forall s a. Lens' s a -> DynRef s -> DynRef a
