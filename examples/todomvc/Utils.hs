@@ -24,7 +24,7 @@ mkUrlHashRef = do
   routeRef <- newRef initial
   win <- getCurrentWindow
   popStateCb <- liftIO $ asyncCallback $
-    readUrlHash >>= writeRef routeRef
+    readUrlHash >>= dynStep . writeRef routeRef
   liftIO $ Object.setProp "onpopstate" (jsval popStateCb) (coerce win)
   return routeRef
 

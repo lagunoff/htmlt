@@ -1,5 +1,4 @@
 import Control.Monad
-import Control.Monad.IO.Class
 import Gauge
 import HtmlT
 
@@ -21,7 +20,7 @@ benchDynamics eventsNum subsNum fireNum = reactive do
   sequence_ $ take subsNum $ repeat $ subscribeAndWrite sumDyn outputRef
   -- And fire modification event for each 'DynRef' fireNum times
   forM_ [1..fireNum] $ const $
-    forM_ refsList $ liftIO . sync . flip modifyRef succ
+    forM_ refsList $ dynStep . flip modifyRef succ
   where
     subscribeAndWrite from to = void $ subscribe (updates from) $
       writeRef to . Just

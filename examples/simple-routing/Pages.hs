@@ -85,15 +85,16 @@ countriesListPage :: CountriesListQ -> Html ()
 countriesListPage q@CountriesListQ{..} = div_ [class_ "CountriesList"] do
   queryRef <- newRef q
   form_ do
-    onOptions "submit" (ListenerOpts True True True) $ const do
-      pushUrl =<< readsRef (toUrl . CountriesListR . (set #page 1)) queryRef
+    onOptions "submit" (ListenerOpts True True True) \_event -> do
+      newRoute <- toUrl . CountriesListR . set #page 1 <$> readRef queryRef
+      pushUrl newRoute
     div_ [style_ "display:flex;"] do
       input_ [type_ "text", placeholder_ "Search countries by title"
         , autofocus_ True
         ] do
           dynValue $ view (#search . to (fromMaybe "")) <$> fromRef queryRef
-          onDecoder "input" valueDecoder \value -> modifyRef queryRef
-            (set #search (Just value))
+          on "input" $ decodeEvent valueDecoder $
+            modifyRef queryRef . set #search . Just
       button_ [type_ "submit"] "Search"
   table_ do
     thead_ $ tr_ do
@@ -115,7 +116,8 @@ countriesListPage q@CountriesListQ{..} = div_ [class_ "CountriesList"] do
         td_ do text (T.pack (show population))
   center_ do
     for_ (paginate total page itemsPerPage) \case
-      Nothing -> button_ [disabled_ True] "..."
+      Nothing ->
+        button_ [disabled_ True] "..."
       Just p -> a_
         [ href_ (toUrl (CountriesListR q {page = p}))] $
         button_ [disabled_ (page == p)] $ text $ T.pack $ show p

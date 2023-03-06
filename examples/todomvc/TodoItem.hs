@@ -15,7 +15,7 @@ import "this" Utils
 data TodoItemConfig = TodoItemConfig
   { tic_state_ref :: DynRef TodoItemState
   , tic_is_hidden :: Dynamic Bool
-  , tic_delete_item :: Transact ()
+  , tic_delete_item :: Step ()
   }
 
 data TodoItemState = TodoItemState
@@ -29,42 +29,47 @@ todoItemWidget :: TodoItemConfig -> Html ()
 todoItemWidget TodoItemConfig{..} = li_ do
   toggleClass "completed" completedDyn
   toggleClass "editing" editingDyn
-  toggleClass "hidden" hiddenDyn
+  toggleClass "hidden" tic_is_hidden
   div_ [class_ "view"] do
-    onDecoder "dblclick" targetDecoder \targetEl -> do
-      title <- readsRef (view #tis_title) tic_state_ref
-      modifySync tic_state_ref $ #tis_editing .~ Just title
+    on "dblclick" $ decodeEvent (propDecoder "target") \targetEl -> do
+      title <- view #tis_title <$> readRef tic_state_ref
+      modifyRef tic_state_ref $ set #tis_editing (Just title)
       liftIO $ js_todoItemInputFocus targetEl
     input_ [class_ "toggle", type_ "checkbox"] do
       dynChecked $ view #tis_completed <$> fromRef tic_state_ref
-      onDecoder "change" checkedDecoder \isChecked -> do
-        modifyRef tic_state_ref $ #tis_completed .~ isChecked
+      on "change" $ decodeEvent checkedDecoder $
+        modifyRef tic_state_ref . set #tis_completed
     label_ $ dynText $ view #tis_title <$> fromRef tic_state_ref
     button_ [class_ "destroy"] do
       on_ "click" $ tic_delete_item
   input_ [class_ "edit", type_ "text"] do
     dynValue valueDyn
-    onDecoder "input" valueDecoder \value -> do
-      modifyRef tic_state_ref $ #tis_editing .~ Just value
-    on_ "blur" commitEditing
-    onDecoder "keydown" keyCodeDecoder \case
+    on "input" $ decodeEvent valueDecoder $
+      modifyRef tic_state_ref . set #tis_editing . Just
+    on "keydown" $ decodeEvent keyCodeDecoder \case
       13 -> commitEditing -- Enter
       27 -> cancelEditing -- Escape
-      _  -> return ()
+      _ -> return ()
+    on_ "blur" commitEditing
   where
-    completedDyn = view #tis_completed <$> fromRef tic_state_ref
-    editingDyn = view (#tis_editing . to isJust) <$> fromRef tic_state_ref
-    hiddenDyn = tic_is_hidden
-    valueDyn = view (#tis_editing . to (fromMaybe "")) <$> fromRef tic_state_ref
+    completedDyn =
+      view #tis_completed <$> fromRef tic_state_ref
+    editingDyn =
+      view (#tis_editing . to isJust) <$> fromRef tic_state_ref
+    valueDyn =
+      view (#tis_editing . to (fromMaybe "")) <$> fromRef tic_state_ref
     commitEditing = readEditing >>= \case
-      Just "" -> tic_delete_item
-      Just t -> modifySync tic_state_ref
-        $ (#tis_editing .~ Nothing)
-        . (#tis_title .~ t)
-      Nothing -> pure ()
+      Just "" ->
+        tic_delete_item
+      Just t ->
+        dynStep $ modifyRef tic_state_ref $
+          set #tis_editing Nothing . set #tis_title t
+      Nothing ->
+        pure ()
       where
-        readEditing = readsRef (view #tis_editing) tic_state_ref
-    cancelEditing = modifySync tic_state_ref $ #tis_editing .~ Nothing
+        readEditing = view #tis_editing <$> readRef tic_state_ref
+    cancelEditing =
+      dynStep $ modifyRef tic_state_ref $ set #tis_editing Nothing
 
 defaultItemState :: TodoItemState
 defaultItemState = TodoItemState T.empty False Nothing

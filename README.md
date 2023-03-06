@@ -84,24 +84,22 @@ dynChecked :: Dynamic Bool -> Html ()
 dynDisabled :: Dynamic Bool -> Html ()
 
 -- Handling DOM events
-on :: EventName -> (DOMEvent -> Transact ()) -> Html ()
-on_ :: EventName -> Transact () -> Html ()
-onOptions :: EventName -> ListenerOpts -> (DOMEvent -> Transact ()) -> Html ()
-onDecoder :: EventName -> Decoder a -> (a -> Transact ()) -> Html ()
-onGlobalEvent :: ListenerOpts -> DOMNode -> EventName -> (DOMEvent -> Transact ()) -> Html ()
+on :: EventName -> (DOMEvent -> Step ()) -> Html ()
+on_ :: EventName -> Step () -> Html ()
+onOptions :: EventName -> ListenerOpts -> (DOMEvent -> Step ()) -> Html ()
+onDecoder :: EventName -> Decoder a -> (a -> Step ()) -> Html ()
+onGlobalEvent :: ListenerOpts -> DOMNode -> EventName -> (DOMEvent -> Step ()) -> Html ()
 
 -- Decoding data from DOM Events
-mouseDeltaDecoder :: Decoder MouseDelta
-clientXYDecoder :: Decoder Position
-offsetXYDecoder :: Decoder Position
-pageXYDecoder :: Decoder Position
-keyModifiersDecoder :: Decoder KeyModifiers
-keyCodeDecoder :: Decoder Int
-keyboardEventDecoder :: Decoder KeyboardEvent
-targetDecoder :: Decoder JSVal
-currentTargetDecoder :: Decoder JSVal
-valueDecoder :: Decoder Text
-checkedDecoder :: Decoder Bool
+mouseDeltaDecoder :: JSVal -> MaybeT m MouseDelta
+clientXYDecoder :: JSVal -> MaybeT m (Point Int)
+offsetXYDecoder :: JSVal -> MaybeT m (Point Int)
+pageXYDecoder :: JSVal -> MaybeT m (Point Int)
+keyModifiersDecoder :: JSVal -> MaybeT m KeyModifiers
+keyCodeDecoder :: JSVal -> MaybeT m Int
+keyboardEventDecoder :: JSVal -> MaybeT m KeyboardEvent
+valueDecoder :: JSVal -> MaybeT m Text
+checkedDecoder :: JSVal -> MaybeT m Bool
 
 -- DOM extras, useful helpers
 unsafeHtml :: MonadIO m => Text -> HtmlT m ()
@@ -109,7 +107,7 @@ portal :: Monad m => DOMElement -> HtmlT m a -> HtmlT m a
 addFinalizer :: MonadReactive m => IO () -> m ()
 
 -- Dynamic collections
-simpleList :: Dynamic [a] -> (Int -> Dynamic a -> Html ()) -> Html ()
+simpleList :: Dynamic [a] -> (Int -> DynRef a -> Html ()) -> Html ()
 
 -- Arbitrary dynamic content
 dyn :: Dynamic (Html ()) -> Html ()
@@ -134,20 +132,12 @@ holdUniqDynBy :: (a -> a -> Bool) -> Dynamic a -> Dynamic a
 -- Constructing DynRefs
 newRef :: MonadReactive m => a -> m (DynRef a)
 lensMap :: Lens' s a -> DynRef s -> DynRef a
-zipRef :: DynRef a -> DynRef b -> DynRef (a, b)
-zipRef3 :: DynRef a -> DynRef b -> DynRef c -> DynRef (a, b, c)
 
--- Read Dynamics
+-- Read and write DynRefs, Dynamics
 readDyn :: MonadIO m => Dynamic a -> m a
-readsDyn :: MonadIO m => (a -> b) -> Dynamic a -> m b
-
--- Read and write DynRefs
 readRef :: MonadIO m => DynRef a -> m a
-readsRef :: MonadIO m => (a -> b) -> DynRef a -> m b
-writeRef :: MonadIO m => DynRef a -> a -> m ()
-writeSync :: DynRef a -> a -> Transact ()
-modifyRef :: MonadIO m => DynRef a -> (a -> a) -> m ()
-modifySync :: DynRef a -> (a -> a) -> Transact ()
+writeRef :: DynRef a -> a -> Step ()
+modifyRef :: DynRef a -> (a -> a) -> Step ()
 
 -- Starting and shutting down the application
 atatchOptions :: StartOpts -> Html a -> IO (a, RunningApp)

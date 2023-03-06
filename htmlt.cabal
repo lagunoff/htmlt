@@ -85,7 +85,6 @@ library
     HtmlT
     HtmlT.Base
     HtmlT.DOM
-    HtmlT.Decode
     HtmlT.Element
     HtmlT.Event
     HtmlT.Internal
@@ -99,7 +98,8 @@ library
     containers,
     exceptions,
     mtl,
-    text
+    text,
+    transformers
   if impl(ghcjs)
     build-depends:
       ghcjs-prim,
@@ -111,7 +111,8 @@ executable htmlt-counter
   build-depends:
     base,
     htmlt,
-    text
+    text,
+    transformers,
   if !flag(examples)
     buildable: False
 

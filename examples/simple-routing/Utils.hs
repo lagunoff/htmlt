@@ -21,7 +21,7 @@ mkUrlHashRef = do
   routeRef <- newRef initial
   win <- liftIO getCurrentWindow
   popStateCb <- liftIO $ asyncCallback $
-    readUrlHash >>= writeRef routeRef
+    readUrlHash >>= dynStep . writeRef routeRef
   liftIO $ Object.setProp "onpopstate" (jsval popStateCb) (coerce win)
   return routeRef
 
@@ -41,6 +41,7 @@ highlightHaskell = textFromJSString . js_highlightHaskell . textToJSString
 insertScript :: Text -> IO ()
 insertScript = js_insertScript . textToJSString
 
+#ifdef ghcjs_HOST_OS
 foreign import javascript unsafe
   "(function(el, code){\
     if (!code) return;\
@@ -66,7 +67,6 @@ foreign import javascript unsafe
   })($1)"
   js_svgClickGetCountryCode :: DOMEvent -> IO (Nullable JSString)
 
-
 foreign import javascript unsafe
   "Prism.highlight($1, Prism.languages.haskell, 'haskell')"
   js_highlightHaskell :: JSString -> JSString
@@ -78,3 +78,9 @@ foreign import javascript unsafe
     document.head.appendChild(scriptEl);\
   })($1)"
   js_insertScript :: JSString -> IO ()
+#else
+js_selectCountry :: DOMElement -> Nullable JSString -> IO () = errorGhcjsOnly
+js_svgClickGetCountryCode :: DOMEvent -> IO (Nullable JSString) = errorGhcjsOnly
+js_highlightHaskell :: JSString -> JSString = errorGhcjsOnly
+js_insertScript :: JSString -> IO () = errorGhcjsOnly
+#endif

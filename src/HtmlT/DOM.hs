@@ -8,6 +8,7 @@
 module HtmlT.DOM where
 
 import Control.Monad.Reader
+import Control.Monad.Trans.Maybe
 import Data.Coerce
 import Data.String
 import Data.Text as T
@@ -18,8 +19,9 @@ import GHCJS.Prim as Prim
 import GHCJS.Marshal
 import GHCJS.Types
 import GHCJS.Nullable
+import JavaScript.Object.Internal (Object(..))
+import qualified JavaScript.Object as Object
 
-import HtmlT.Decode
 import HtmlT.Types
 
 data ListenerOpts = ListenerOpts
@@ -36,7 +38,7 @@ data ListenerOpts = ListenerOpts
     deriving anyclass (ToJSVal)
 
 defaultListenerOpts :: ListenerOpts
-defaultListenerOpts = ListenerOpts True False False
+defaultListenerOpts = ListenerOpts False False False
 
 -- | Get global Window object @window@
 -- https://developer.mozilla.org/en-US/docs/Web/API/Window
@@ -165,39 +167,43 @@ data MouseDelta = MouseDelta
   , md_delta_z :: Int
   } deriving stock (Eq, Show, Generic)
 
-mouseDeltaDecoder :: Decoder MouseDelta
-mouseDeltaDecoder = MouseDelta
-  <$> decodeAt ["deltaX"] decoder
-  <*> decodeAt ["deltaY"] decoder
-  <*> decodeAt ["deltaZ"] decoder
+mouseDeltaDecoder :: MonadIO m => JSVal -> MaybeT m MouseDelta
+mouseDeltaDecoder mouseEvent = do
+  md_delta_x <- propDecoder "deltaX" mouseEvent
+  md_delta_y <- propDecoder "deltaY" mouseEvent
+  md_delta_z <- propDecoder "deltaZ" mouseEvent
+  return MouseDelta {..}
 
--- | Collection of @X@ and @Y@ coordinates, intended to extract
--- position from MouseEvent
-data Position = Position
-  { pos_x :: Int
-  , pos_y :: Int
-  } deriving stock (Eq, Show, Ord, Generic)
+-- | Pair of two values, might denote either a size or coordinates in
+-- different contexts
+data Point a = Point
+  { pt_x :: a
+  , pt_y :: a
+  } deriving stock (Eq, Show, Ord, Functor, Generic)
 
 -- | Read clientX and clientY properties from MouseEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
-clientXYDecoder :: Decoder Position
-clientXYDecoder = Position
-  <$> decodeAt ["clientX"] decoder
-  <*> decodeAt ["clientY"] decoder
+clientXYDecoder :: MonadIO m => JSVal -> MaybeT m (Point Int)
+clientXYDecoder mouseEvent = do
+  pt_x <- propDecoder "clientX" mouseEvent
+  pt_y <- propDecoder "clientY" mouseEvent
+  return Point {..}
 
 -- | Read offsetX and offsetY properties from MouseEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
-offsetXYDecoder :: Decoder Position
-offsetXYDecoder = Position
-  <$> decodeAt ["offsetX"] decoder
-  <*> decodeAt ["offsetY"] decoder
+offsetXYDecoder :: MonadIO m => JSVal -> MaybeT m (Point Int)
+offsetXYDecoder mouseEvent = do
+  pt_x <- propDecoder "offsetX" mouseEvent
+  pt_y <- propDecoder "offsetY" mouseEvent
+  return Point {..}
 
 -- | Read pageX and pageY properties from MouseEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
-pageXYDecoder :: Decoder Position
-pageXYDecoder = Position
-  <$> decodeAt ["pageX"] decoder
-  <*> decodeAt ["pageY"] decoder
+pageXYDecoder :: MonadIO m => JSVal -> MaybeT m (Point Int)
+pageXYDecoder mouseEvent = do
+  pt_x <- propDecoder "pageX" mouseEvent
+  pt_y <- propDecoder "pageY" mouseEvent
+  return Point {..}
 
 -- | Collection of altKey, ctrlKey, metaKey and shiftKey properties
 -- from KeyboardEvent
@@ -211,17 +217,18 @@ data KeyModifiers = KeyModifiers
 -- | Read altKey, ctrlKey, metaKey and shiftKey properties from
 -- KeyboardEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent
-keyModifiersDecoder :: Decoder KeyModifiers
-keyModifiersDecoder = KeyModifiers
-  <$> decodeAt ["altKey"] decoder
-  <*> decodeAt ["ctrlKey"] decoder
-  <*> decodeAt ["metaKey"] decoder
-  <*> decodeAt ["shiftKey"] decoder
+keyModifiersDecoder :: MonadIO m => JSVal -> MaybeT m KeyModifiers
+keyModifiersDecoder keyEvent = do
+  kmod_alt_key <- propDecoder "altKey" keyEvent
+  kmod_ctrl_key <- propDecoder "ctrlKey" keyEvent
+  kmod_meta_key <- propDecoder "metaKey" keyEvent
+  kmod_shift_key <- propDecoder "shiftKey" keyEvent
+  return KeyModifiers {..}
 
 -- | Read keyCode properties from KeyboardEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/keyCode
-keyCodeDecoder :: Decoder Int
-keyCodeDecoder = decodeAt ["keyCode"] decoder
+keyCodeDecoder :: MonadIO m => JSVal -> MaybeT m Int
+keyCodeDecoder = propDecoder "keyCode"
 
 -- | Collection of some useful information from KeyboardEvent
 data KeyboardEvent = KeyboardEvent
@@ -232,34 +239,35 @@ data KeyboardEvent = KeyboardEvent
   } deriving stock (Eq, Show, Generic)
 
 -- | Read information from KeyboardEvent
-keyboardEventDecoder :: Decoder KeyboardEvent
-keyboardEventDecoder = KeyboardEvent
-  <$> keyModifiersDecoder
-  <*> decodeAt ["key"] decoder
-  <*> decodeAt ["keyCode"] decoder
-  <*> decodeAt ["repeat"] decoder
-
--- | Event.target
--- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
-targetDecoder :: Decoder JSVal
-targetDecoder = decodeAt ["target"] decodeJSVal
-
--- | Event.currentTarget
--- https://developer.mozilla.org/en-US/docs/Web/API/Event/currentTarget
-currentTargetDecoder :: Decoder JSVal
-currentTargetDecoder = decodeAt ["currentTarget"] decodeJSVal
+keyboardEventDecoder :: MonadIO m => JSVal -> MaybeT m KeyboardEvent
+keyboardEventDecoder keyEvent = do
+  ke_modifiers <- keyModifiersDecoder keyEvent
+  ke_key <- propDecoder "key" keyEvent
+  ke_key_code <- propDecoder "keyCode" keyEvent
+  ke_repeat <- propDecoder "repeat" keyEvent
+  return KeyboardEvent {..}
 
 -- | Event.target.value
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
 -- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-value
-valueDecoder :: Decoder Text
-valueDecoder = decodeAt ["target", "value"] decoder
+valueDecoder :: MonadIO m => JSVal -> MaybeT m Text
+valueDecoder =
+  propDecoder "target" >=> propDecoder "value"
 
--- | Event.target.value
+-- | Event.target.checked
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
 -- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input/checkbox#checked
-checkedDecoder :: Decoder Bool
-checkedDecoder = decodeAt ["target", "checked"] decoder
+checkedDecoder :: MonadIO m => JSVal -> MaybeT m Bool
+checkedDecoder =
+  propDecoder "target" >=> propDecoder "checked"
+
+propDecoder :: (MonadIO m, FromJSVal v) => Text -> JSVal -> MaybeT m v
+propDecoder k obj = do
+  -- TODO: Make sure it is true that if this guard succeeds,
+  -- Object.getProp will never throw an exception!
+  guard $ not (isUndefined obj) && not (isNull obj)
+  MaybeT $ liftIO $ fromJSVal =<<
+    Object.getProp (textToJSString k) (coerce obj)
 
 errorGhcjsOnly :: a
 errorGhcjsOnly = error "Only GHCJS is supported"
@@ -293,6 +301,7 @@ js_call2 :: JSVal -> JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
 js_callMethod0 :: JSVal -> JSString -> IO JSVal = errorGhcjsOnly
 js_callMethod1 :: JSVal -> JSString -> JSVal -> IO JSVal = errorGhcjsOnly
 js_callMethod2 :: JSVal -> JSString -> JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
+js_waitDocumentLoad :: IO () = errorGhcjsOnly
 js_callbackWithOptions :: Bool -> Bool -> Callback (JSVal -> IO ()) -> IO (Callback (JSVal -> IO ())) = errorGhcjsOnly
 #else
 foreign import javascript unsafe
@@ -335,7 +344,7 @@ foreign import javascript unsafe
   "$1.nodeValue = $2;"
   js_setTextValue :: DOMNode -> JSString -> IO ()
 foreign import javascript unsafe
-  "window.addEventListener('beforeunload', function() { $1(); })"
+  "window.addEventListener('beforeunload', $1)"
   js_onBeforeUnload :: Callback a -> IO ()
 foreign import javascript unsafe
   "(function(){ return window; })()"
@@ -400,13 +409,21 @@ foreign import javascript unsafe
     return $3(e);\
   }"
   js_callbackWithOptions :: Bool -> Bool -> Callback (JSVal -> IO ()) -> IO (Callback (JSVal -> IO ()))
+foreign import javascript interruptible
+  "if (document.readyState == 'loading') {\
+    addEventListener('DOMContentLoaded', $c);\
+  } else {\
+    $c();\
+  }"
+  js_waitDocumentLoad :: IO ()
 #endif
 
 instance (a ~ (), MonadIO m) => IsString (HtmlT m a) where
   fromString s = do
-    HtmlEnv{..} <- ask
+    HtmlEnv{html_current_element, html_content_boundary} <- ask
     textNode <- liftIO $ createTextNode (T.pack s)
     case html_content_boundary of
-      Just ContentBoundary{..} -> liftIO $
+      Just ContentBoundary{boundary_end} -> liftIO $
         js_insertBefore html_current_element textNode boundary_end
       Nothing -> liftIO $ appendChild html_current_element textNode
+  {-# INLINE fromString #-}
