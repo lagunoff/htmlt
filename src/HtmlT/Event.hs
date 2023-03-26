@@ -48,6 +48,10 @@ data DynRef a = DynRef
   -- ^ Funtion to update the value
   } deriving stock Generic
 
+newtype Modifier a = Modifier
+  { unModifier :: forall r. Bool -> (a -> (a, r)) -> Step r
+  }
+
 -- | State inside 'Step'
 newtype TransactState = TransactState
   { unTransactState :: M.Map QueueId (Step ())
@@ -82,40 +86,14 @@ newtype ReactiveT m a = ReactiveT
     , MonadMask
     )
 
--- | Identify computation inside 'TransactState' the idea is that
--- bigger value of 'QueueId' gets executed later. And Events
--- constructed from other events have to push their values after all
--- their inputs, this is in essense the mechanism how double-firings
--- are prevented
-data QueueId
-  = QueueId Int
-  | QueueBinopLeft QueueId Int
-  | QueueBinopRight QueueId Int
-  deriving (Eq, Show)
-
-newtype Modifier a = Modifier
-  { unModifier :: forall r. Bool -> (a -> (a, r)) -> Step r
-  }
-
-instance Ord QueueId where
-  compare (QueueId eid1) (QueueId eid2) =
-    compare eid1 eid2
-  compare (QueueId eid) (QueueBinopLeft root _) =
-    compare (QueueId eid) root
-  compare (QueueId eid) (QueueBinopRight root _) =
-    compare (QueueId eid) root
-  compare (QueueBinopRight root _) (QueueId eid) =
-    compare root (QueueId eid)
-  compare (QueueBinopLeft root _) (QueueId eid) =
-    compare root (QueueId eid)
-  compare (QueueBinopLeft root1 eid1) (QueueBinopLeft root2 eid2) =
-    compare (root1, eid1) (root2, eid2)
-  compare (QueueBinopRight root1 eid1) (QueueBinopRight root2 eid2) =
-    compare (root1, eid1) (root2, eid2)
-  compare (QueueBinopRight root1 eid1) (QueueBinopLeft root2 eid2) =
-    compare (root1, eid1) (root2, negate eid2)
-  compare (QueueBinopLeft root1 eid1) (QueueBinopRight root2 eid2) =
-    compare (root1, negate eid1) (root2, eid2)
+-- | Identifies a computation inside 'TransactState'. It determines
+-- the execution order during reactive transaction (higher values
+-- executed later) and it used to defer firing of an event until all
+-- the values current event is derived from are done updating their
+-- values. This is basically the mechanism that prevents double-firing
+-- of Dynamics constructed using Applicative instance for example.
+newtype QueueId = QueueId {unQueueId :: Int}
+  deriving newtype (Eq, Show, Ord, Num, Enum, Bounded)
 
 class HasReactiveEnv m where askReactiveEnv :: m ReactiveEnv
 
@@ -144,7 +122,7 @@ newReactiveEnv = liftIO do
 newEvent :: forall a m. MonadReactive m => m (Event a, Trigger a)
 newEvent = do
   renv <- askReactiveEnv
-  eventId <- liftIO (nextEventId renv)
+  eventId <- liftIO (nextQueueId renv)
   let event = Event $ unsafeSubscribe eventId
   return (event, unsafeTrigger eventId renv)
 
@@ -279,7 +257,7 @@ mapDyn fun adyn = do
   latestA <- liftIO $ newIORef initialA
   latestB <- liftIO $ newIORef (fun initialA)
   renv <- askReactiveEnv
-  eventId <- liftIO (nextEventId renv)
+  eventId <- liftIO (nextQueueId renv)
   let
     updates = Event $ unsafeSubscribe eventId
     fire = defer eventId do
@@ -340,7 +318,7 @@ unsafeMapDynN fun dyns = do
   initialOutput <- liftIO $ fun initialInputs
   latestInputsRef <- liftIO $ newIORef initialInputs
   latestOutputRef <- liftIO $ newIORef initialOutput
-  eventId <- liftIO (nextEventId renv)
+  eventId <- liftIO (nextQueueId renv)
   let
     fire = defer eventId do
       newOutput <- liftIO $ fun =<< readIORef latestInputsRef
@@ -357,14 +335,9 @@ unsafeMapDynN fun dyns = do
   return $ Dynamic (readIORef latestOutputRef) updates
 
 -- | Read and increment 'renv_id_generator'
-nextEventId :: ReactiveEnv -> IO QueueId
-nextEventId ReactiveEnv{renv_id_generator} =
-  atomicModifyIORef' renv_id_generator \eid -> (succId eid, eid)
-  where
-    succId = \case
-      QueueId eid -> QueueId (succ eid)
-      QueueBinopLeft origin eid -> QueueBinopLeft origin (succ eid)
-      QueueBinopRight origin eid -> QueueBinopRight origin (succ eid)
+nextQueueId :: ReactiveEnv -> IO QueueId
+nextQueueId ReactiveEnv{renv_id_generator} =
+  atomicModifyIORef' renv_id_generator \eid -> (succ eid, eid)
 
 -- | Defer a computation (usually an event firing) till the end of
 -- current reactive transaction. This makes possible to avoid double
@@ -424,7 +397,7 @@ execReactiveT = flip runReactiveT
 
 unsafeSubscribe :: QueueId -> ReactiveEnv -> Callback a -> IO Canceller
 unsafeSubscribe eventId e@ReactiveEnv{renv_subscriptions} k = do
-  subsId <- nextEventId e
+  subsId <- nextQueueId e
   let newCancel = (subsId, k . unsafeCoerce)
   alterSubs $ Just . (newCancel :) . fromMaybe []
   return $ alterSubs $
@@ -447,13 +420,13 @@ instance Functor Event where
   fmap f (Event s) = Event \e k -> s e . (. f) $ k
 
 instance Semigroup a => Semigroup (Event a) where
-  (<>) (Event e1) (Event e2) = Event \e k -> do
-    eventId <- nextEventId e
+  (<>) (Event e1) (Event e2) = Event \e k -> mdo
     -- TODO: this behaviour is unreliable and hard to predicts
     -- (basically in situation when both events fire during same
     -- 'Step' win the one with bigger 'EventId'
     c1 <- e1 e (defer eventId . k)
     c2 <- e2 e (defer eventId . k)
+    eventId <- nextQueueId e
     return (c1 *> c2)
 
 instance Semigroup a => Monoid (Event a) where
@@ -469,23 +442,16 @@ instance Applicative Dynamic where
     , dynamic_updates = upds
     }
     where
-      upds = Event \e k -> do
-        eventId <- nextEventId e
+      upds = Event \e k -> mdo
         let
           fire newF newA = defer eventId do
             f <- liftIO $ maybe (readDyn df) pure newF
             a <- liftIO $ maybe (readDyn da) pure newA
             k (f a)
-        writeIORef (renv_id_generator e) (QueueBinopLeft eventId 0)
         c1 <- unEvent (updates df) e \f -> fire (Just f) Nothing
-        writeIORef (renv_id_generator e) (QueueBinopRight eventId 0)
         c2 <- unEvent (updates da) e \a -> fire Nothing (Just a)
-        writeIORef (renv_id_generator e) (succId eventId)
+        eventId <- nextQueueId e
         return (c1 *> c2)
-      succId = \case
-        QueueId eid -> QueueId (succ eid)
-        QueueBinopLeft origin eid -> QueueBinopLeft origin (succ eid)
-        QueueBinopRight origin eid -> QueueBinopRight origin (succ eid)
 
 instance Applicative m => HasReactiveEnv (ReactiveT m) where
   askReactiveEnv = ReactiveT $ ReaderT pure
