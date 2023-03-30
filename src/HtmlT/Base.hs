@@ -316,6 +316,34 @@ dyn d = do
   addFinalizer (finalizeEnv Nothing)
   performDyn_ $ setup <$> d
 
+dyn1 :: Dynamic (Html a) -> Html (Dynamic a)
+dyn1 d = do
+  htmlEnv <- ask
+  childRef <- liftIO (newIORef Nothing)
+  boundary <- insertBoundary
+  let
+    finalizeEnv newEnv = do
+      readIORef childRef >>= \case
+        Just HtmlEnv{html_reactive_env} -> do
+          finalizers <- atomicModifyIORef' (renv_finalizers html_reactive_env) ([],)
+          sequence_ finalizers
+        Nothing -> return ()
+      writeIORef childRef newEnv
+    setup html = liftIO do
+      finalizers <- newIORef []
+      let
+        newEnv = htmlEnv
+          { html_reactive_env = (html_reactive_env htmlEnv)
+            { renv_finalizers = finalizers }
+          , html_content_boundary = Just boundary
+          }
+      finalizeEnv (Just newEnv)
+      clearBoundary boundary
+      execHtmlT newEnv html
+  addFinalizer (finalizeEnv Nothing)
+  (resultDyn, _cancel) <- performDyn1 $ fmap setup d
+  return resultDyn
+
 -- | Run an action before the current node is detached from the DOM
 addFinalizer :: MonadReactive m => IO () -> m ()
 addFinalizer fin = do

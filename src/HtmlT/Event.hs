@@ -215,6 +215,18 @@ performDyn d = do
 performDyn_ :: MonadReactive m => Dynamic (Step ()) -> m ()
 performDyn_ = void . performDyn
 
+-- | Perform an action with current value of the given 'Dynamic' and
+-- each time the value changes. Return action to detach listener from
+-- receiving new values
+performDyn1 :: MonadReactive m => Dynamic (Step a) -> m (Dynamic a, Canceller)
+performDyn1 d = do
+  initVal <- liftIO $ dynamic_read d >>= dynStep
+  ref <- newRef initVal
+  cancel <- subscribe (dynamic_updates d) \step -> do
+    newVal <- step
+    writeRef ref newVal
+  return (fromRef ref, cancel)
+
 -- | Apply a lens to the value inside 'DynRef'
 lensMap :: forall s a. Lens' s a -> DynRef s -> DynRef a
 lensMap l (DynRef sdyn (Modifier smod)) =
