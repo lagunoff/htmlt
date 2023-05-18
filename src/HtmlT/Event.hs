@@ -1,9 +1,16 @@
--- | Simple FRP-like functionality. This module implements 'Event's
--- and 'Dynamic's similar to the same concepts from Reflex. Also there
--- is 'DynRef' a new definition which is expected to be used alongside
--- Dynamics and Events in a typical application. Some functions bear
--- the same name as their Reflex counterparts to make API easier to
--- learn
+-- | Module provides a simple and straightforward implementation of
+-- FRP concepts such as 'Event's and 'Dynamic's, inspired by
+-- Reflex. Additionally, it introduces a new type called 'DynRef',
+-- which is designed to be used in conjunction with Dynamics and
+-- Events in typical applications.
+--
+--  * NOTE: Currently, the module does not provide the ability to
+--    revoke an already installed finalizer. Furthermore, there are
+--    scenarios where it would be advantageous to list all the
+--    subscriptions made by the code down the call stack. These
+--    considerations make me think of refactoring the data types
+--    associated with the aforementioned functionality
+--    (renv_subscriptions and renv_finalizers fields from ReactiveEnv).
 module HtmlT.Event where
 
 import Control.Applicative
@@ -26,7 +33,7 @@ import qualified Data.Map as M
 -- to cancel the subscription.
 newtype Event a = Event
   { unEvent :: ReactiveEnv -> Callback a -> IO Canceller
-  } deriving stock Generic
+  }
 
 -- | Holds a value that changes over the time. Allows to read the
 -- current value and subscribe to its future changes.
@@ -50,6 +57,11 @@ data DynRef a = DynRef
 
 newtype Modifier a = Modifier
   { unModifier :: forall r. Bool -> (a -> (a, r)) -> Step r
+  -- ^ First argument controls whether the 'DynRef' should fire an
+  -- update event after modification. Should be set to 'True' in most
+  -- cases, however, in rare situations where it is known that the new
+  -- state is already synchronized with the DOM, setting it to 'False'
+  -- can serve as an optimization to skip unnecessary update events.
   }
 
 -- | State inside 'Step'
@@ -70,12 +82,13 @@ data ReactiveEnv = ReactiveEnv
   { renv_subscriptions :: IORef (M.Map QueueId [(QueueId, Callback Any)])
   -- ^ Keeps track of subscriptions
   , renv_finalizers :: IORef [Canceller]
-  -- ^ List of cancellers, IO actions to detach listeners from
-  -- events. It is likely that dynamic parts of the application will
-  -- be passed new instance of 'renv_finalizers' to isolate and remove
-  -- the subscriptions after this part is detached
+  -- ^ List of cancellers (usually IO actions that remove event
+  -- listeners). This field is meant to be overridden with a new
+  -- instance for each dynamic part of the application. This way it is
+  -- possible to isolate finalizers and run them before this part is
+  -- going to be terminated
   , renv_id_generator :: IORef QueueId
-  -- ^ Contains next value for 'QueueId' or 'SubscriptionId'
+  -- ^ Next value for 'QueueId' or 'SubscriptionId'
   } deriving Generic
 
 -- | Minimal implementation for 'HasReactiveEnv'
@@ -86,12 +99,13 @@ newtype ReactiveT m a = ReactiveT
     , MonadMask
     )
 
--- | Identifies a computation inside 'TransactState'. It determines
--- the execution order during reactive transaction (higher values
--- executed later) and it used to defer firing of an event until all
--- the values current event is derived from are done updating their
--- values. This is basically the mechanism that prevents double-firing
--- of Dynamics constructed using Applicative instance for example.
+-- | Identifies a computation inside 'TransactState'. The integer
+-- value inside 'QueueId' determines the execution order during
+-- reactive transaction (higher values executed later) and it used to
+-- prioritize events derived from other events ensuring they are
+-- processed after the source events.  This is basically the mechanism
+-- that prevents double-firing of Dynamics constructed using
+-- Applicative instance for example.
 newtype QueueId = QueueId {unQueueId :: Int}
   deriving newtype (Eq, Show, Ord, Num, Enum, Bounded)
 
@@ -178,7 +192,9 @@ modifyRef :: DynRef a -> (a -> a) -> Step ()
 modifyRef (DynRef _ (Modifier mod)) f = mod True $ (,()) . f
 
 -- | Update a 'DynRef' with first field of the tuple and return back
--- the second field
+-- the second field. The name is intended to be similar to
+-- 'atomicModifyIORef' but there are no atomicity guarantees
+-- whatsoever
 atomicModifyRef :: DynRef a -> (a -> (a, r)) -> Step r
 atomicModifyRef (DynRef _ (Modifier mod)) f = mod True f
 
@@ -435,7 +451,7 @@ instance Semigroup a => Semigroup (Event a) where
   (<>) (Event e1) (Event e2) = Event \e k -> mdo
     -- TODO: this behaviour is unreliable and hard to predicts
     -- (basically in situation when both events fire during same
-    -- 'Step' win the one with bigger 'EventId'
+    -- 'Step' win the one with higher 'EventId'
     c1 <- e1 e (defer eventId . k)
     c2 <- e2 e (defer eventId . k)
     eventId <- nextQueueId e

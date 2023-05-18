@@ -39,15 +39,14 @@ Once `cabal build` is successful you can find the js executables in
 -- number into the input or by clicking one of the two buttons
 main :: IO ()
 main = void $ attachToBody do
-  -- First create a 'DynRef'
+  -- First create a 'DynRef
   counterRef <- newRef @Int 0
   div_ do
     input_ do
       -- Show the value inside <input>
       dynProp "value" $ T.pack . show <$> fromRef counterRef
       -- Parse and update the value on each InputEvent
-      onDecoder "input" valueDecoder $
-        modifyRef counterRef . maybe id const . readMaybe . T.unpack
+      on "input" $ decodeEvent intDecoder $ writeRef counterRef
     br_
     -- Decrease the value on each click
     button_ do
@@ -57,6 +56,10 @@ main = void $ attachToBody do
     button_ do
       on_ "click" $ modifyRef counterRef succ
       text "Increase"
+  where
+    intDecoder =
+      valueDecoder >=> MaybeT . pure . readMaybe . T.unpack
+
 ```
 [Open the demo](https://lagunoff.github.io/htmlt-counter/)
 
