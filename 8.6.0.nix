@@ -31,6 +31,10 @@ let
   overrides = self: super: {
     htmlt = self.callCabal2nixWithOptions "htmlt" ./. "-fexamples -fbenchmarks" {};
     gauge = cure super.gauge;
+    cabal-cargs = self.callCabal2nix "cabal-cargs" (builtins.fetchGit {
+      url = "https://github.com/lagunoff/cabal-cargs.git";
+      rev = "4d4c2e4860a442525091b7f6e9673b52dd06b4b7";
+    }) {};
   } // lib.optionalAttrs (!(super.ghc.isGhcjs or false)) {
     ghcjs-base = cure super.ghcjs-base;
   };
@@ -42,6 +46,7 @@ let
   } // {
     shell = pkgs.mkShell {
       inputsFrom = [self.htmlt.env];
+      buildInputs = if (super.ghc.isGhcjs or false) then [] else [self.cabal-cargs];
     };
   };
 in rec {

@@ -4,13 +4,14 @@
 -- which is designed to be used in conjunction with Dynamics and
 -- Events in typical applications.
 --
---  * NOTE: Currently, the module does not provide the ability to
---    revoke an already installed finalizer. Furthermore, there are
---    scenarios where it would be advantageous to list all the
---    subscriptions made by the code down the call stack. These
---    considerations make me think of refactoring the data types
---    associated with the aforementioned functionality
---    (renv_subscriptions and renv_finalizers fields from ReactiveEnv).
+--  * NOTE: Currently MonadReactive relies on the MonadReader
+--    constraint, which simplifies integration with
+--    applications. However, if you look into ReactiveEnv, it only
+--    consists of IORef fields. This suggests that we could
+--    potentially eliminate the IORef's and instead utilize the
+--    MonadState constraint in place of MonadReader. This would enable
+--    MonadReactive to operate as a pure function. I should
+--    investigate and try this approach
 module HtmlT.Event where
 
 import Control.Applicative
@@ -20,19 +21,23 @@ import Control.Monad.Reader
 import Control.Monad.State
 import Data.Foldable
 import Data.IORef
+import Data.Map (Map)
 import Data.Maybe
+import Data.Set (Set)
 import Data.Tuple
 import Debug.Trace
 import GHC.Exts
 import GHC.Generics
+import GHC.Fingerprint
 import Unsafe.Coerce
-import qualified Data.Map as M
+import qualified Data.Map as Map
+import qualified Data.Set as Set
 
 -- | Stream of event occurences of type @a@. Actual representation is
 -- just a function that subscribes to the event and returns the action
 -- to cancel the subscription.
 newtype Event a = Event
-  { unEvent :: ReactiveEnv -> Callback a -> IO Canceller
+  { unEvent :: ReactiveEnv -> Callback a -> IO ()
   }
 
 -- | Holds a value that changes over the time. Allows to read the
@@ -66,7 +71,7 @@ newtype Modifier a = Modifier
 
 -- | State inside 'Step'
 newtype TransactState = TransactState
-  { unTransactState :: M.Map QueueId (Step ())
+  { unTransactState :: Map QueueId (Step ())
   } deriving newtype (Semigroup, Monoid)
 
 -- | Evaluation of effects triggered by an event firing
@@ -76,19 +81,18 @@ newtype Step a = Step { unStep :: StateT TransactState IO a }
     , MonadCatch, MonadThrow, MonadMask
     )
 
--- | The environment required for some operations like creating a new
--- 'Event' or subscribing to an Event.
+-- | Represents the environment required for certain operations, such
+-- as creating a new 'Event' or subscribing to an event.
 data ReactiveEnv = ReactiveEnv
-  { renv_subscriptions :: IORef (M.Map QueueId [(QueueId, Callback Any)])
+  { renv_subscriptions :: IORef (Map QueueId [(QueueId, Callback Any)])
   -- ^ Keeps track of subscriptions
-  , renv_finalizers :: IORef [Canceller]
-  -- ^ List of cancellers (usually IO actions that remove event
-  -- listeners). This field is meant to be overridden with a new
-  -- instance for each dynamic part of the application. This way it is
-  -- possible to isolate finalizers and run them before this part is
-  -- going to be terminated
+  , renv_finalizers :: IORef (Map FinalizerKey FinalizerValue)
+  -- ^ Stores finalizers that will be invoked before a specific part
+  -- of the application is terminated. This field is intended to be
+  -- overridden with a new instance for each dynamic part of the
+  -- application, allowing for isolation of finalizers.
   , renv_id_generator :: IORef QueueId
-  -- ^ Next value for 'QueueId' or 'SubscriptionId'
+  -- ^ Maintains the next value to be used for generating 'QueueId'
   } deriving Generic
 
 -- | Minimal implementation for 'HasReactiveEnv'
@@ -109,6 +113,17 @@ newtype ReactiveT m a = ReactiveT
 newtype QueueId = QueueId {unQueueId :: Int}
   deriving newtype (Eq, Show, Ord, Num, Enum, Bounded)
 
+data FinalizerKey
+  = FinalizerEventId QueueId
+  | FinalizerQueueId QueueId
+  | FinalizerFingerprintId Fingerprint
+  deriving (Eq, Ord, Generic)
+
+data FinalizerValue
+  = SubscriptionSet (Set QueueId)
+  | CustomFinalizer (IO ())
+  deriving Generic
+
 class HasReactiveEnv m where askReactiveEnv :: m ReactiveEnv
 
 type MonadReactive m = (HasReactiveEnv m, MonadIO m)
@@ -119,13 +134,11 @@ type Callback a = a -> Step ()
 
 type Trigger a = a -> Step ()
 
-type Canceller = IO ()
-
 -- | Create new empty 'ReactiveEnv'
 newReactiveEnv :: MonadIO m => m ReactiveEnv
 newReactiveEnv = liftIO do
-  renv_finalizers <- newIORef []
-  renv_subscriptions <- newIORef M.empty
+  renv_finalizers <- newIORef Map.empty
+  renv_subscriptions <- newIORef Map.empty
   renv_id_generator <- newIORef $ QueueId 0
   return ReactiveEnv {..}
 
@@ -164,7 +177,7 @@ constDyn a = Dynamic (pure a) never
 
 -- | Event that will never fire
 never :: Event a
-never = Event \_ -> mempty
+never = Event \_ _ -> return ()
 
 -- | Write new value into a 'DynRef'
 --
@@ -212,36 +225,18 @@ updates = dynamic_updates
 
 -- | Attach a listener to the event and return an action to detach the
 -- listener
-subscribe :: MonadReactive m => Event a -> Callback a -> m Canceller
+subscribe :: MonadReactive m => Event a -> Callback a -> m ()
 subscribe (Event s) k = do
-  env@ReactiveEnv{renv_finalizers} <- askReactiveEnv
-  cancel <- liftIO $ s env k
-  liftIO $ modifyIORef' renv_finalizers (cancel:)
-  return cancel
+  re <- askReactiveEnv
+  liftIO $ s re k
 
 -- | Perform an action with current value of the given 'Dynamic' and
 -- each time the value changes. Return action to detach listener from
 -- receiving new values
-performDyn :: MonadReactive m => Dynamic (Step ()) -> m Canceller
+performDyn :: MonadReactive m => Dynamic (Step ()) -> m ()
 performDyn d = do
   liftIO $ dynamic_read d >>= dynStep
   subscribe (dynamic_updates d) id
-
--- | Same as 'performDyn', but ignores the canceller
-performDyn_ :: MonadReactive m => Dynamic (Step ()) -> m ()
-performDyn_ = void . performDyn
-
--- | Perform an action with current value of the given 'Dynamic' and
--- each time the value changes. Return action to detach listener from
--- receiving new values
-performDyn1 :: MonadReactive m => Dynamic (Step a) -> m (Dynamic a, Canceller)
-performDyn1 d = do
-  initVal <- liftIO $ dynamic_read d >>= dynStep
-  ref <- newRef initVal
-  cancel <- subscribe (dynamic_updates d) \step -> do
-    newVal <- step
-    writeRef ref newVal
-  return (fromRef ref, cancel)
 
 -- | Apply a lens to the value inside 'DynRef'
 lensMap :: forall s a. Lens' s a -> DynRef s -> DynRef a
@@ -271,6 +266,22 @@ holdUniqDynBy equalFn Dynamic{..} = Dynamic dynamic_read
       old <- liftIO $ atomicModifyIORef' oldRef (new,)
       unless (old `equalFn` new) $ k new
   )
+
+applyFinalizer :: ReactiveEnv -> Map FinalizerKey FinalizerValue -> IO ()
+applyFinalizer ReactiveEnv{renv_subscriptions} finalizers = do
+  forM_ (Map.toList finalizers) \(k, v) -> case (k, v) of
+    (FinalizerEventId e, SubscriptionSet s) ->
+      modifyIORef' renv_subscriptions $
+        flip Map.alter e $ mfilter (not . Prelude.null) . Just . deleteSubs s . fromMaybe []
+    (_, CustomFinalizer io) ->
+      io
+    (_, _) ->
+      return ()
+  where
+    deleteSubs _ss [] = []
+    deleteSubs ss ((s, c):xs)
+      | Set.member s ss = xs
+      | otherwise = (s, c) : deleteSubs ss xs
 
 -- | Alternative version if 'fmap' where given function will only be
 -- called once every time 'Dynamic a' value changes, whereas in 'fmap'
@@ -372,18 +383,18 @@ nextQueueId ReactiveEnv{renv_id_generator} =
 -- firing of events, constructed from multiple other events
 defer :: QueueId -> Step () -> Step ()
 defer k act =
-  Step $ modify \(TransactState s) -> TransactState (M.insert k act s)
+  Step $ modify \(TransactState s) -> TransactState (Map.insert k act s)
 
 -- | Run a reactive transaction.
 dynStep :: MonadIO m => Step a -> m a
-dynStep act = liftIO $ loop (TransactState M.empty) act where
+dynStep act = liftIO $ loop (TransactState Map.empty) act where
   loop :: TransactState -> Step a -> IO a
   loop rs (Step act) = do
     (r, newRs) <- runStateT act rs
     case popQueue newRs of
       (Just newAct, newerRs) -> r <$ loop newerRs newAct
       (Nothing, _newerRs) -> return r
-  popQueue intact@(TransactState m) = case M.minViewWithKey m of
+  popQueue intact@(TransactState m) = case Map.minViewWithKey m of
     Just ((_, act), rest) -> (Just act, TransactState rest)
     Nothing -> (Nothing, intact)
 
@@ -423,25 +434,24 @@ runReactiveT r = runReaderT (unReactiveT r)
 execReactiveT :: ReactiveEnv -> ReactiveT m a -> m a
 execReactiveT = flip runReactiveT
 
-unsafeSubscribe :: QueueId -> ReactiveEnv -> Callback a -> IO Canceller
-unsafeSubscribe eventId e@ReactiveEnv{renv_subscriptions} k = do
+unsafeSubscribe :: QueueId -> ReactiveEnv -> Callback a -> IO ()
+unsafeSubscribe eventId e@ReactiveEnv{renv_subscriptions, renv_finalizers} k = do
   subsId <- nextQueueId e
-  let newCancel = (subsId, k . unsafeCoerce)
-  alterSubs $ Just . (newCancel :) . fromMaybe []
-  return $ alterSubs $
-    mfilter (not . Prelude.null) . Just . deleteSub subsId . fromMaybe []
-  where
-    alterSubs =
-      modifyIORef' renv_subscriptions . flip M.alter eventId
-    deleteSub _sId [] = []
-    deleteSub sId ((xId, c):xs)
-      | sId == xId = xs
-      | otherwise = (xId, c) : deleteSub sId xs
+  let
+    newCancel = (subsId, k . unsafeCoerce)
+    f (SubscriptionSet s1) (SubscriptionSet s2) = SubscriptionSet (s1 <> s2)
+    -- Should never happen because FinalizerEventId always should map
+    -- into SubscriptionSet
+    f _ s = s
+  modifyIORef' renv_subscriptions $
+    flip Map.alter eventId $ Just . (newCancel :) . fromMaybe []
+  modifyIORef' renv_finalizers $ Map.insertWith f (FinalizerEventId eventId)
+    (SubscriptionSet (Set.singleton subsId))
 
 unsafeTrigger :: QueueId -> ReactiveEnv -> a -> Step ()
 unsafeTrigger eventId ReactiveEnv{..} a = defer eventId do
   subscriptions <- liftIO $ readIORef renv_subscriptions
-  let callbacks = fromMaybe [] $ M.lookup eventId subscriptions
+  let callbacks = fromMaybe [] $ Map.lookup eventId subscriptions
   for_ callbacks $ ($ unsafeCoerce @_ @Any a) . snd
 
 instance Functor Event where
@@ -452,10 +462,10 @@ instance Semigroup a => Semigroup (Event a) where
     -- TODO: this behaviour is unreliable and hard to predicts
     -- (basically in situation when both events fire during same
     -- 'Step' win the one with higher 'EventId'
-    c1 <- e1 e (defer eventId . k)
-    c2 <- e2 e (defer eventId . k)
+    e1 e (defer eventId . k)
+    e2 e (defer eventId . k)
     eventId <- nextQueueId e
-    return (c1 *> c2)
+    return ()
 
 instance Semigroup a => Monoid (Event a) where
   mempty = never
@@ -476,10 +486,10 @@ instance Applicative Dynamic where
             f <- liftIO $ maybe (readDyn df) pure newF
             a <- liftIO $ maybe (readDyn da) pure newA
             k (f a)
-        c1 <- unEvent (updates df) e \f -> fire (Just f) Nothing
-        c2 <- unEvent (updates da) e \a -> fire Nothing (Just a)
+        unEvent (updates df) e \f -> fire (Just f) Nothing
+        unEvent (updates da) e \a -> fire Nothing (Just a)
         eventId <- nextQueueId e
-        return (c1 *> c2)
+        return ()
 
 instance Applicative m => HasReactiveEnv (ReactiveT m) where
   askReactiveEnv = ReactiveT $ ReaderT pure
