@@ -53,7 +53,7 @@ attachOptions StartOpts{..} render = mdo
   result <- execHtmlT htmlEnv render
   when startopts_unload_call_finalizers $ onBeforeUnload do
     finalizers <- readIORef $ renv_finalizers startopts_reactive_env
-    sequence_ finalizers
+    applyFinalizer startopts_reactive_env finalizers
   return (result, runApp)
 
 -- | Start the application and attach it to the given HTMLElement
@@ -73,5 +73,5 @@ detach :: RunningApp -> IO ()
 detach RunningApp{..} = do
   finalizers <- readIORef . renv_finalizers . html_reactive_env $
     runapp_html_env
-  sequence_ finalizers
+  applyFinalizer (html_reactive_env runapp_html_env) finalizers
   removeBoundary runapp_boundary

@@ -12,6 +12,7 @@ import GHCJS.Marshal
 import GHCJS.Types
 import JavaScript.Object as Object
 import JavaScript.Object.Internal
+import qualified Data.Map as Map
 
 import HtmlT.DOM
 import HtmlT.Event
@@ -75,7 +76,7 @@ dynProp
   -> Html ()
 dynProp textKey dyn = do
   el <- asks html_current_element
-  performDyn_ $ liftIO . setup el <$> dyn
+  performDyn $ liftIO . setup el <$> dyn
   where
     setup el t = toJSVal t
       >>= flip (unsafeSetProp jsKey) (coerce el)
@@ -93,7 +94,7 @@ attr k v = do
 dynAttr :: Text -> Dynamic Text -> Html ()
 dynAttr k d = do
   el <- asks html_current_element
-  performDyn_ $ liftIO . setAttribute el k <$> d
+  performDyn $ liftIO . setAttribute el k <$> d
 
 -- | Attach listener to the root element. First agument is the name
 -- of the DOM event to listen. Second is the callback that accepts the fired
@@ -126,7 +127,8 @@ decodeEvent dec act (DOMEvent jsevent) =
 -- element (usually that would be @window@, @document@ or @body@
 -- objects)
 onGlobalEvent
-  :: ListenerOpts
+  :: MonadReactive m
+  => ListenerOpts
   -- ^ Specify whether to call @event.stopPropagation()@ and
   -- @event.preventDefault()@ on the fired event
   -> DOMNode
@@ -135,14 +137,17 @@ onGlobalEvent
   -- ^ Event name
   -> (DOMEvent -> Step ())
   -- ^ Callback that accepts reference to the DOM event
-  -> Html ()
+  -> m ()
 onGlobalEvent opts target name f = do
+  ReactiveEnv{renv_finalizers} <- askReactiveEnv
   let
-    event = Event \_ callback -> liftIO do
+    event = Event \re cb -> liftIO do
+      finalizerId <- nextQueueId re
       unlisten <- addEventListener opts target name $
-        void . liftIO . dynStep . callback . f
-      return $ liftIO unlisten
-  void $ subscribe event id
+        dynStep . cb . f
+      modifyIORef' renv_finalizers $ Map.insert
+        (FinalizerQueueId finalizerId) (CustomFinalizer unlisten)
+  subscribe event id
 
 -- | Assign CSS classes to the current root element. Compared to @prop
 -- "className"@ can be used multiple times for the same root
@@ -167,7 +172,7 @@ classes cs = do
 toggleClass :: Text -> Dynamic Bool -> Html ()
 toggleClass cs dyn = do
   rootEl <- asks html_current_element
-  performDyn_ $ liftIO . setup rootEl cs <$> dyn
+  performDyn $ liftIO . setup rootEl cs <$> dyn
   where
     setup rootEl cs = \case
       True -> classListAdd rootEl cs
@@ -185,7 +190,7 @@ toggleClass cs dyn = do
 toggleAttr :: Text -> Dynamic Bool -> Html ()
 toggleAttr att dyn = do
   rootEl <- asks html_current_element
-  performDyn_ $ liftIO . setup rootEl att <$> dyn
+  performDyn $ liftIO . setup rootEl att <$> dyn
   where
     setup rootEl name = \case
       True -> setAttribute rootEl name "on"
@@ -202,7 +207,7 @@ toggleAttr att dyn = do
 dynStyle :: Text -> Dynamic Text -> Html ()
 dynStyle cssProp dyn = do
   rootEl <- asks html_current_element
-  performDyn_ $ liftIO . setup rootEl <$> dyn
+  performDyn $ liftIO . setup rootEl <$> dyn
   where
     setup el t = do
       styleVal <- Object.getProp "style" (coerce el)
@@ -242,7 +247,7 @@ simpleList listDyn h = do
       ([], []) -> return []
       -- New list is longer, append new elements
       ([], x:xs) -> do
-        finalizers <- liftIO $ newIORef []
+        finalizers <- liftIO $ newIORef Map.empty
         elementRef <- liftIO $ execReactiveT (html_reactive_env htmlEnv) $ newRef x
         boundary <- liftIO $ execHtmlT htmlEnv insertBoundary
         let
@@ -266,15 +271,16 @@ simpleList listDyn h = do
     finalizeElems remove = traverse_ \ElemEnv{ee_html_env} -> do
       when remove $
         mapM_ removeBoundary $ html_content_boundary ee_html_env
-      finalizers <- readIORef $ renv_finalizers $ html_reactive_env ee_html_env
-      sequence_ finalizers
+      let re = html_reactive_env ee_html_env
+      finalizers <- readIORef $ renv_finalizers re
+      applyFinalizer re finalizers
     updateList new = do
       old <- liftIO $ atomicModifyIORef' prevValue (new,)
       eenvs <- liftIO $ readIORef elemEnvsRef
       newEenvs <- setup 0 new eenvs
       liftIO $ writeIORef elemEnvsRef newEenvs
-  performDyn_ $ updateList <$> listDyn
-  addFinalizer $ readIORef elemEnvsRef >>= finalizeElems False
+  performDyn $ updateList <$> listDyn
+  void $ installFinalizer $ readIORef elemEnvsRef >>= finalizeElems False
 
 -- | First build a DOM with the widget that is currently held by the
 -- given Dynamic, then rebuild it every time Dynamic's value
@@ -298,12 +304,12 @@ dyn d = do
     finalizeEnv newEnv = do
       readIORef childRef >>= \case
         Just HtmlEnv{html_reactive_env} -> do
-          finalizers <- atomicModifyIORef' (renv_finalizers html_reactive_env) ([],)
-          sequence_ finalizers
+          finalizers <- atomicModifyIORef' (renv_finalizers html_reactive_env) (Map.empty,)
+          applyFinalizer html_reactive_env finalizers
         Nothing -> return ()
       writeIORef childRef newEnv
     setup html = liftIO do
-      finalizers <- newIORef []
+      finalizers <- newIORef Map.empty
       let
         newEnv = htmlEnv
           { html_reactive_env = (html_reactive_env htmlEnv)
@@ -313,14 +319,18 @@ dyn d = do
       finalizeEnv (Just newEnv)
       clearBoundary boundary
       execHtmlT newEnv html
-  addFinalizer (finalizeEnv Nothing)
-  performDyn_ $ setup <$> d
+  installFinalizer (finalizeEnv Nothing)
+  performDyn $ setup <$> d
 
 -- | Run an action before the current node is detached from the DOM
-addFinalizer :: MonadReactive m => IO () -> m ()
-addFinalizer fin = do
-  ReactiveEnv{renv_finalizers} <- askReactiveEnv
-  liftIO $ modifyIORef renv_finalizers (fin:)
+installFinalizer :: MonadReactive m => IO () -> m FinalizerKey
+installFinalizer fin = do
+  renv@ReactiveEnv{renv_finalizers} <- askReactiveEnv
+  finalizerId <- liftIO $ nextQueueId renv
+  let finalizerKey = FinalizerQueueId finalizerId
+  liftIO $ modifyIORef renv_finalizers $
+    Map.insert finalizerKey $ CustomFinalizer fin
+  return finalizerKey
 
 -- | Attach resulting DOM to the given node instead of
 -- 'html_current_element'. Might be useful for implementing modal
@@ -336,7 +346,7 @@ portal newRootEl html = do
     { html_current_element = newRootEl
     , html_content_boundary = Just boundary
     }) html
-  addFinalizer $ removeBoundary boundary
+  installFinalizer $ removeBoundary boundary
   return result
 
 -- | Parse given text as HTML and attach the resulting tree to

@@ -45,7 +45,7 @@ defaultListenerOpts = ListenerOpts False False False
 getCurrentWindow :: MonadIO m => m JSVal
 getCurrentWindow = liftIO js_getCurrentWindow
 
--- | Get global Window object
+-- | Get global Document object
 -- https://developer.mozilla.org/en-US/docs/Web/API/Document
 getCurrentDocument :: MonadIO m => m JSVal
 getCurrentDocument = liftIO js_getCurrentDocument
