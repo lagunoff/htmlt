@@ -4,6 +4,7 @@ module HtmlT.Main where
 import Control.Monad
 import Data.IORef
 import GHC.Generics
+import GHCJS.Concurrent
 
 import HtmlT.DOM
 import HtmlT.Event
@@ -51,7 +52,7 @@ attachOptions StartOpts{..} render = mdo
       }
     runApp = RunningApp htmlEnv boundary
   result <- execHtmlT htmlEnv render
-  when startopts_unload_call_finalizers $ onBeforeUnload do
+  when startopts_unload_call_finalizers $ onBeforeUnload $ withoutPreemption do
     finalizers <- readIORef $ renv_finalizers startopts_reactive_env
     applyFinalizer startopts_reactive_env finalizers
   return (result, runApp)
