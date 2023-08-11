@@ -1,17 +1,14 @@
 -- | Most essential public definions
 module HtmlT.Base where
 
+import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
 import Data.Coerce
 import Data.Foldable
 import Data.IORef
-import Data.JSString.Text as JSS
 import Data.Text as T hiding (index)
-import GHCJS.Marshal
-import GHCJS.Types
-import JavaScript.Object as Object
-import JavaScript.Object.Internal
+import GHC.JS.Prim
 import qualified Data.Map as Map
 
 import HtmlT.DOM
@@ -63,10 +60,10 @@ dynText d = do
 -- attributes and properties
 -- https://stackoverflow.com/questions/6003819/what-is-the-difference-between-properties-and-attributes-in-html
 prop :: ToJSVal v => Text -> v -> Html ()
-prop (JSS.textToJSString -> key) val = do
+prop (textToJSString -> key) val = do
   rootEl <- asks html_current_element
   v <- liftIO $ toJSVal val
-  liftIO $ Object.setProp key v (coerce rootEl)
+  liftIO $ js_setProp (unDOMElement rootEl) (unJSString key) v
 
 -- | Assign a property with dynamic content to the root element
 dynProp
@@ -79,8 +76,8 @@ dynProp textKey dyn = do
   performDyn $ liftIO . setup el <$> dyn
   where
     setup el t = toJSVal t
-      >>= flip (unsafeSetProp jsKey) (coerce el)
-    jsKey = JSS.textToJSString textKey
+      >>= js_setProp (unDOMElement el) jsKey
+    jsKey = unJSString $ textToJSString textKey
 
 -- | Assign an attribute to the root element. Don't confuse attributes
 -- and properties
@@ -210,10 +207,10 @@ dynStyle cssProp dyn = do
   performDyn $ liftIO . setup rootEl <$> dyn
   where
     setup el t = do
-      styleVal <- Object.getProp "style" (coerce el)
+      styleVal <- getProp (unDOMElement el) "style"
       cssVal <- toJSVal t
-      unsafeSetProp jsCssProp cssVal (coerce styleVal)
-    jsCssProp = JSS.textToJSString cssProp
+      js_setProp styleVal jsCssProp cssVal
+    jsCssProp = unJSString $ textToJSString cssProp
 
 -- | Alias for @pure ()@, useful when some Html action is expected.
 blank :: Applicative m => m ()

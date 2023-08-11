@@ -15,6 +15,7 @@
 module HtmlT.Event where
 
 import Control.Applicative
+import Control.Monad
 import Control.Monad.Catch
 import Control.Monad.Identity
 import Control.Monad.Reader
@@ -32,6 +33,7 @@ import GHC.Fingerprint
 import Unsafe.Coerce
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import Control.Monad.Fix
 
 -- | Stream of event occurences of type @a@. Actual representation is
 -- just a function that subscribes to the event and returns the action
@@ -397,36 +399,6 @@ dynStep act = liftIO $ loop (TransactState Map.empty) act where
   popQueue intact@(TransactState m) = case Map.minViewWithKey m of
     Just ((_, act), rest) -> (Just act, TransactState rest)
     Nothing -> (Nothing, intact)
-
--- | Print a debug message each time given event fires
-traceEvent :: Show a => String -> Event a -> Event a
-traceEvent tag = traceEventWith (((tag <> ": ") <>) . show)
-
--- | Print a debug message when the event fires using given printing
--- function
-traceEventWith :: (a -> String) -> Event a -> Event a
-traceEventWith showA (Event f) = Event \e c ->
-  f e (c . (\x -> trace (showA x) x))
-
--- | Print a debug message when value inside the Dynamic changes
-traceDyn :: Show a => String -> Dynamic a -> Dynamic a
-traceDyn tag = traceDynWith (((tag <> ": ") <>) . show)
-
--- | Print a debug message when value inside Dynamic changes using
--- given printing function
-traceDynWith :: (a -> String) -> Dynamic a -> Dynamic a
-traceDynWith showA d = d {dynamic_updates = e} where
-  e = traceEventWith showA (dynamic_updates d)
-
--- | Print a debug message when value inside the DynRef changes
-traceRef :: Show a => String -> DynRef a -> DynRef a
-traceRef tag DynRef{..} = DynRef
-  {dynref_dynamic = traceDynWith (((tag <> ": ") <>) . show) dynref_dynamic, ..}
-
--- | Print a debug message when value inside the DynRef changes
-traceRefWith :: (a -> String) -> DynRef a -> DynRef a
-traceRefWith f DynRef{..} = DynRef
-  {dynref_dynamic = traceDynWith f dynref_dynamic, ..}
 
 runReactiveT :: ReactiveT m a -> ReactiveEnv -> m a
 runReactiveT r = runReaderT (unReactiveT r)

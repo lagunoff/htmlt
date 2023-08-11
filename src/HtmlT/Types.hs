@@ -6,10 +6,9 @@ import Control.Monad.Reader
 import Data.Coerce
 import Data.Text
 import GHC.Generics
-import GHCJS.Marshal.Pure
-import GHCJS.Prim
-import GHCJS.Types
 import HtmlT.Event
+import Control.Monad.Fix
+import GHC.JS.Prim
 
 -- | HtmlT is nothing more than just a newtype over ReaderT HtmlEnv
 newtype HtmlT m a = HtmlT {unHtmlT :: ReaderT HtmlEnv m a}
@@ -33,20 +32,14 @@ type Html = HtmlT IO
 -- | A newtype over JSVal which is an instance of Node
 -- https://developer.mozilla.org/en-US/docs/Web/API/Node
 newtype DOMNode = DOMNode {unDOMNode :: JSVal}
-  deriving anyclass (IsJSVal)
-  deriving newtype (PToJSVal, PFromJSVal)
 
 -- | A newtype over JSVal which is an instance of HTMLElement
 -- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement
 newtype DOMElement = DOMElement {unDOMElement :: JSVal}
-  deriving anyclass (IsJSVal)
-  deriving newtype (PToJSVal, PFromJSVal)
 
 -- | A newtype over JSVal which is an instance of Event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event
 newtype DOMEvent = DOMEvent {unDOMEvent :: JSVal}
-  deriving anyclass (IsJSVal)
-  deriving newtype (PToJSVal, PFromJSVal)
 
 -- | Untyped for simplicity and because it was annoying to not find
 -- some of the new Events in ghcjs-dom where these names are

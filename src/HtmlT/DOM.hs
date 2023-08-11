@@ -7,22 +7,51 @@
 {-# LANGUAGE JavaScriptFFI #-}
 module HtmlT.DOM where
 
+import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
 import Data.Coerce
 import Data.String
-import Data.Text as T
-import Data.JSString.Text
+import Data.Text as Text
+import GHC.Exts as Exts
 import GHC.Generics
-import GHCJS.Foreign.Callback
-import GHCJS.Prim as Prim
-import GHCJS.Marshal
-import GHCJS.Types
-import GHCJS.Nullable
-import JavaScript.Object.Internal (Object(..))
-import qualified JavaScript.Object as Object
+import GHC.JS.Prim
+import GHC.JS.Foreign.Callback
+import Unsafe.Coerce
+import System.IO.Unsafe
 
 import HtmlT.Types
+
+newtype JSString = JSString {unJSString :: JSVal}
+
+newtype Nullable v = Nullable {unNullable :: JSVal}
+
+textToJSString :: Text -> JSString
+textToJSString = undefined
+
+maybeToNullable :: Coercible v JSVal => Maybe v -> Nullable v
+maybeToNullable = \case
+  Nothing -> Nullable jsNull -- FIXME: jsNull generates invalid javascript!
+  Just v -> Nullable $ coerce v
+
+instance IsString JSString where
+  fromString = unsafePerformIO . fmap JSString . js_fromHSString . unsafeCoerce @_ @Any
+  {-# NOINLINE fromString #-}
+
+class FromJSVal v where fromJSVal :: JSVal -> IO (Maybe v)
+instance FromJSVal Int where fromJSVal = pure . Just . fromJSInt
+instance FromJSVal Bool -- where fromJSVal = pure . Just . fromJSInt
+instance FromJSVal JSVal
+instance FromJSVal Text
+instance FromJSVal v => FromJSVal (Maybe v)
+
+class ToJSVal v where toJSVal :: v -> IO JSVal
+instance ToJSVal Int
+instance ToJSVal Double
+instance ToJSVal Text
+instance ToJSVal Bool
+instance ToJSVal JSVal
+instance ToJSVal v => ToJSVal (Maybe v)
 
 data ListenerOpts = ListenerOpts
   { lo_stop_propagation :: Bool
@@ -35,7 +64,6 @@ data ListenerOpts = ListenerOpts
   -- listening to @BeforeUnloadEvent@
   -- https://developer.mozilla.org/en-US/docs/Web/API/BeforeUnloadEvent
   } deriving stock (Eq, Show, Generic)
-    deriving anyclass (ToJSVal)
 
 defaultListenerOpts :: ListenerOpts
 defaultListenerOpts = ListenerOpts False False False
@@ -148,10 +176,10 @@ addEventListener ListenerOpts{..} target name f = do
   hscb <- mkcallback (f . DOMEvent)
   jscb <- withopts hscb
   js_callMethod2 (coerce target) "addEventListener"
-    (jsval (textToJSString name)) (jsval jscb)
+    (unJSString (textToJSString name)) (unsafeCoerce jscb)
   return do
     js_callMethod2 (coerce target) "removeEventListener"
-      (jsval (textToJSString name)) (jsval jscb)
+      (unJSString (textToJSString name)) (unsafeCoerce jscb)
     releaseCallback hscb
   where
     mkcallback = if lo_sync_callback
@@ -267,7 +295,7 @@ propDecoder k obj = do
   -- Object.getProp will never throw an exception!
   guard $ not (isUndefined obj) && not (isNull obj)
   MaybeT $ liftIO $ fromJSVal =<<
-    Object.getProp (textToJSString k) (coerce obj)
+    getProp obj (Text.unpack k)
 
 errorGhcjsOnly :: a
 errorGhcjsOnly = error "Only GHCJS is supported"
@@ -275,6 +303,7 @@ errorGhcjsOnly = error "Only GHCJS is supported"
 #ifndef ghcjs_HOST_OS
 js_onBeforeUnload :: Callback a -> IO ()
 js_onBeforeUnload = errorGhcjsOnly
+
 
 js_appendChild :: DOMElement -> DOMNode -> IO () = errorGhcjsOnly
 js_insertBefore :: DOMElement -> DOMNode -> DOMNode -> IO () = errorGhcjsOnly
@@ -303,6 +332,8 @@ js_callMethod1 :: JSVal -> JSString -> JSVal -> IO JSVal = errorGhcjsOnly
 js_callMethod2 :: JSVal -> JSString -> JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
 js_waitDocumentLoad :: IO () = errorGhcjsOnly
 js_callbackWithOptions :: Bool -> Bool -> Callback (JSVal -> IO ()) -> IO (Callback (JSVal -> IO ())) = errorGhcjsOnly
+js_setProp :: JSVal -> JSVal -> JSVal -> IO () = errorGhcjsOnly
+js_fromHSString :: Exts.Any -> IO JSVal = errorGhcjsOnly
 #else
 foreign import javascript unsafe
   "$1.appendChild($2)"
@@ -416,12 +447,20 @@ foreign import javascript interruptible
     $c();\
   }"
   js_waitDocumentLoad :: IO ()
+foreign import javascript unsafe
+  "($1, $2, $3) => { $1[$2] = $3; }"
+  js_setProp :: JSVal -> JSVal -> JSVal -> IO ()
+foreign import javascript unsafe
+  "($1) => { return h$fromHsString($1); }"
+  js_fromHSString :: Exts.Any -> IO JSVal
+foreign import javascript unsafe "(() => { return null; })"
+  js_null :: JSVal
 #endif
 
 instance (a ~ (), MonadIO m) => IsString (HtmlT m a) where
   fromString s = do
     HtmlEnv{html_current_element, html_content_boundary} <- ask
-    textNode <- liftIO $ createTextNode (T.pack s)
+    textNode <- liftIO $ createTextNode (Text.pack s)
     case html_content_boundary of
       Just ContentBoundary{boundary_end} -> liftIO $
         js_insertBefore html_current_element textNode boundary_end
