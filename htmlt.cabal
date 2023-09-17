@@ -52,6 +52,7 @@ common htmlt-common
     GADTs
     GeneralizedNewtypeDeriving
     ImplicitParams
+    ImportQualifiedPost
     LambdaCase
     NamedFieldPuns
     OverloadedLabels

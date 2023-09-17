@@ -8,11 +8,10 @@ import HtmlT
 
 import "this" Utils
 
-
 data TodoItemConfig = TodoItemConfig
-  { tic_state_ref :: DynRef TodoItemState
-  , tic_is_hidden :: Dynamic Bool
-  , tic_delete_item :: Step ()
+  { state_ref :: DynRef TodoItemState
+  , is_hidden :: Dynamic Bool
+  , ask_delete_item :: Step ()
   }
 
 data TodoItemState = TodoItemState
@@ -21,54 +20,72 @@ data TodoItemState = TodoItemState
   , tis_editing :: Maybe JSString
   } deriving stock (Show, Eq, Generic)
 
-todoItemWidget :: TodoItemConfig -> Html ()
-todoItemWidget TodoItemConfig{..} = li_ do
+data TodoItemAction a where
+  CancelAction :: TodoItemConfig -> TodoItemAction ()
+  CommitAction :: TodoItemConfig -> TodoItemAction ()
+  InputAction :: TodoItemConfig -> JSString -> TodoItemAction ()
+  DoubleClickAction :: TodoItemConfig -> JSVal -> TodoItemAction ()
+  CheckedAction :: TodoItemConfig -> Bool -> TodoItemAction ()
+  KeydownAction :: TodoItemConfig -> Int -> TodoItemAction ()
+
+eval :: TodoItemAction a -> Step a
+eval = \case
+  CancelAction cfg ->
+    modifyRef cfg.state_ref \s -> s{tis_editing=Nothing}
+  CommitAction cfg -> do
+    isEditing <- (.tis_editing) <$> readRef cfg.state_ref
+    case isEditing of
+      Just "" ->
+        cfg.ask_delete_item
+      Just t ->
+        modifyRef cfg.state_ref \s -> s {tis_editing=Nothing, tis_title = t}
+      Nothing ->
+        pure ()
+  InputAction cfg newVal ->
+    modifyRef cfg.state_ref \s -> s{tis_editing = Just newVal}
+  DoubleClickAction cfg targetEl -> do
+    modifyRef cfg.state_ref \s -> s {tis_editing = Just s.tis_title}
+    liftIO $ js_todoItemInputFocus targetEl
+  CheckedAction cfg isChecked -> do
+    modifyRef cfg.state_ref \s -> s{tis_completed = isChecked}
+  KeydownAction cfg key -> case key of
+    13 {- Enter -} -> eval (CommitAction cfg)
+    27 {- Escape -} -> eval (CancelAction cfg)
+    _ -> return ()
+
+html :: TodoItemConfig -> Html ()
+html cfg = li_ do
+  let
+    completedDyn =
+      (.tis_completed) <$> fromRef cfg.state_ref
+    editingDyn =
+      isJust . (.tis_editing) <$> fromRef cfg.state_ref
+    valueDyn =
+      fromMaybe "" . (.tis_editing) <$> fromRef cfg.state_ref
   toggleClass "completed" completedDyn
   toggleClass "editing" editingDyn
-  toggleClass "hidden" tic_is_hidden
+  toggleClass "hidden" cfg.is_hidden
   div_ [class_ "view"] do
-    on "dblclick" $ decodeEvent (propDecoder "target") \targetEl -> do
-      title <- (.tis_title) <$> readRef tic_state_ref
-      modifyRef tic_state_ref \s -> s {tis_editing = Just title}
-      liftIO $ js_todoItemInputFocus targetEl
+    on "dblclick" $ decodeEvent (propDecoder "target") $
+      eval . DoubleClickAction cfg
     input_ [class_ "toggle", type_ "checkbox"] do
-      dynChecked $ (.tis_completed) <$> fromRef tic_state_ref
+      dynChecked $ (.tis_completed) <$> fromRef cfg.state_ref
       on "change" $ decodeEvent checkedDecoder $
-        modifyRef tic_state_ref . (\v s -> s{tis_completed = v})
-    label_ $ dynText $ (.tis_title) <$> fromRef tic_state_ref
+        eval . CheckedAction cfg
+    label_ $ dynText $ (.tis_title) <$> fromRef cfg.state_ref
     button_ [class_ "destroy"] do
-      on_ "click" $ tic_delete_item
+      on_ "click" $ cfg.ask_delete_item
   input_ [class_ "edit", type_ "text"] do
     dynValue valueDyn
     on "input" $ decodeEvent valueDecoder $
-      modifyRef tic_state_ref . (\v s -> s{tis_editing = v}) . Just
-    on "keydown" $ decodeEvent keyCodeDecoder \case
-      13 -> commitEditing -- Enter
-      27 -> cancelEditing -- Escape
-      _ -> return ()
-    on_ "blur" commitEditing
-  where
-    completedDyn =
-      (.tis_completed) <$> fromRef tic_state_ref
-    editingDyn =
-      isJust . (.tis_editing) <$> fromRef tic_state_ref
-    valueDyn =
-      fromMaybe "" . (.tis_editing) <$> fromRef tic_state_ref
-    commitEditing = readEditing >>= \case
-      Just "" ->
-        tic_delete_item
-      Just t ->
-        dynStep $ modifyRef tic_state_ref \s -> s
-          {tis_editing=Nothing, tis_title = t}
-      Nothing ->
-        pure ()
-      where
-        readEditing = (.tis_editing) <$> readRef tic_state_ref
-    cancelEditing =
-      dynStep $ modifyRef tic_state_ref \s -> s{tis_editing=Nothing}
+      eval . InputAction cfg
+    on "keydown" $ decodeEvent keyCodeDecoder $
+      eval . KeydownAction cfg
+    on_ "blur" $
+      eval (CommitAction cfg)
 
-defaultItemState :: TodoItemState
-defaultItemState = TodoItemState "" False Nothing
+emptyTodoItemState :: TodoItemState
+emptyTodoItemState = TodoItemState "" False Nothing
 
 instance ToJSVal TodoItemState where
   toJSVal s = do
