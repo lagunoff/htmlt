@@ -1,12 +1,9 @@
 module TodoList where
 
-import Control.Lens hiding ((#))
 import Control.Monad.IO.Class
 import Data.Foldable
 import Data.Maybe
-import Data.Text as T hiding (foldl)
 import GHC.Generics (Generic)
-import GHCJS.Marshal
 import HtmlT
 
 import "this" TodoItem
@@ -17,7 +14,7 @@ data TodoListConfig = TodoListConfig
   }
 
 data TodoListState = TodoListState
-  { tls_title :: Text
+  { tls_title :: JSString
   , tls_items :: [TodoItemState]
   , tls_filter :: Filter
   } deriving (Show, Eq, Generic)
@@ -25,19 +22,19 @@ data TodoListState = TodoListState
 data Filter = All | Active | Completed
   deriving (Show, Eq, Generic)
 
-initTodos :: MonadReactive m => DynRef Text -> m (DynRef TodoListState)
+initTodos :: MonadReactive m => DynRef JSString -> m (DynRef TodoListState)
 initTodos urlHashRef = do
   todos <- fromMaybe [] . fmap unLocalStorageTodoItems <$> liftIO localStorageGet
-  initFilter <- parseFilter <$> readRef urlHashRef
+  initFilter <- parseFilter' <$> readRef urlHashRef
   todosRef <- newRef $ TodoListState "" todos initFilter
   liftIO $ onBeforeUnload do
     TodoListState{tls_items} <- readRef todosRef
     localStorageSet $ LocalStorageTodoItems tls_items
   subscribe (updates (fromRef urlHashRef)) $
-    modifyRef todosRef . set #tls_filter . parseFilter
+    modifyRef todosRef . (\v s -> s{tls_filter=v}) . parseFilter'
   return todosRef
   where
-    parseFilter = fromMaybe All . firstOf url2Filter
+    parseFilter' = fromMaybe All . parseFilter
 
 todoListWidget :: TodoListConfig -> Html ()
 todoListWidget TodoListConfig{..} = do
@@ -52,9 +49,9 @@ todoListWidget TodoListConfig{..} = do
     headerWidget = header_ [class_ "header"] do
       h1_ (text "todos")
       input_ [class_ "new-todo", placeholder_ "What needs to be done?", autofocus_ True] do
-        dynValue $ view #tls_title <$> fromRef tlc_state_ref
+        dynValue $ (.tls_title) <$> fromRef tlc_state_ref
         on "input" $ decodeEvent valueDecoder $
-          modifyRef tlc_state_ref . set #tls_title
+          modifyRef tlc_state_ref . (\v s -> s{tls_title=v})
         on "keydown" $ decodeEvent keyCodeDecoder \case
           13 -> commitEditing
           _ -> return ()
@@ -68,13 +65,13 @@ todoListWidget TodoListConfig{..} = do
       ul_ [class_ "todo-list"] do
         simpleList itemsDyn \idx todoRef ->
           todoItemWidget $ TodoItemConfig
-            { tic_state_ref = over #dynref_modifier (todoItemModifier idx) todoRef
+            { tic_state_ref = todoRef {dynref_modifier = (todoItemModifier idx) todoRef.dynref_modifier}
             , tic_is_hidden = isTodoItemHidden <$> fromRef tlc_state_ref <*> fromRef todoRef
             , tic_delete_item = deleteTodoItem idx }
     footerWidget = footer_ [class_ "footer"] do
       toggleClass "hidden" hiddenDyn
       span_ [class_ "todo-count"] do
-        strong_ $ dynText $ T.pack . show <$> itemsLeftDyn
+        strong_ $ dynText $ fromHSString . show <$> itemsLeftDyn
         dynText $ pluralize " item left" " items left" <$> itemsLeftDyn
       ul_ [class_ "filters"] do
         for_ [All, Active, Completed] filterWidget
@@ -90,34 +87,37 @@ todoListWidget TodoListConfig{..} = do
         text "Part of "
         a_ [href_ "http://todomvc.com"] "TodoMVC"
     filterWidget flt = li_ do
-      a_ [href_ (review url2Filter flt)] do
+      a_ [href_ (printFilter flt)] do
         toggleClass "selected" $ filterSelectedDyn flt
-        text $ T.pack (show flt)
+        text $ fromHSString (show flt)
     commitEditing = readTitle >>= \case
       "" -> return ()
-      title -> modifyRef tlc_state_ref $
-        over #tls_items (<> [mkNewItem title]) .
-          set #tls_title ""
+      title -> modifyRef tlc_state_ref \s -> s
+        { tls_items = s.tls_items <> [mkNewItem title]
+        , tls_title = ""
+        }
       where
-        readTitle = view (#tls_title . to T.strip) <$> readRef tlc_state_ref
+        readTitle = {- JSS.strip . -} (.tls_title) <$> readRef tlc_state_ref
         mkNewItem title = defaultItemState {tis_title = title}
     hiddenDyn =
-      view (#tls_items . to Prelude.null) <$> fromRef tlc_state_ref
+      Prelude.null . (.tls_items) <$> fromRef tlc_state_ref
     itemsLeftDyn =
       countItemsLeft <$> fromRef tlc_state_ref
     toggleAll check =
-      modifyRef tlc_state_ref (#tls_items %~ fmap (#tis_completed .~ check))
+      modifyRef tlc_state_ref \s -> s
+        {tls_items = fmap (\i -> i{tis_completed=check}) s.tls_items}
     filterSelectedDyn flt =
-      view (#tls_filter . to (==flt)) <$> fromRef tlc_state_ref
+      (==flt) . (.tls_filter) <$> fromRef tlc_state_ref
     itemsDyn =
-      view #tls_items <$> fromRef tlc_state_ref
+      (.tls_items) <$> fromRef tlc_state_ref
     clearCompleted =
-      modifyRef tlc_state_ref $ over #tls_items (Prelude.filter (not . tis_completed))
+      modifyRef tlc_state_ref \s -> s
+        {tls_items = (Prelude.filter (not . tis_completed)) s.tls_items}
     countItemsLeft TodoListState{tls_items} =
       foldl (\acc TodoItemState{tis_completed} ->
         if not tis_completed then acc + 1 else acc) 0 tls_items
     deleteTodoItem idx =
-      modifyRef tlc_state_ref (#tls_items %~ deleteAt idx)
+      modifyRef tlc_state_ref \s -> s {tls_items = deleteAt idx s.tls_items}
     -- Synchronize local TodoItemState with whole list of Todo-items
     -- inside TodoListState
     todoItemModifier idx (Modifier elemMod) = Modifier \upd f -> do
@@ -129,29 +129,34 @@ todoListWidget TodoListConfig{..} = do
       -- of items to be updated while only some particular item is
       -- changed, but they left out for the sake of simplicity
       unModifier (dynref_modifier tlc_state_ref) upd
-        ((,()) . set (#tls_items . ix idx) new)
+        ((,()) . (\s -> s{tls_items = overIx idx (const new) s.tls_items}))
       return result
     isTodoItemHidden TodoListState{..} TodoItemState{..} =
       case (tls_filter, tis_completed) of
         (Active,    True)  -> True
         (Completed, False) -> True
         _                  -> False
+    overIx :: Int -> (a -> a) -> [a] -> [a]
+    overIx 0 f (x:xs) = f x : xs
+    overIx n f (x:xs) = x : overIx (pred n) f xs
+    overIx n _ [] = []
 
-pluralize :: Text -> Text -> Int -> Text
+pluralize :: JSString -> JSString -> Int -> JSString
 pluralize singular plural 0 = singular
 pluralize singular plural _ = plural
 
-url2Filter :: Prism' Text Filter
-url2Filter = prism' build match where
-  match = \case
-    "#/"          -> Just All
-    "#/active"    -> Just Active
-    "#/completed" -> Just Completed
-    _             -> Nothing
-  build = \case
-    All       -> "#/"
-    Active    -> "#/active"
-    Completed -> "#/completed"
+parseFilter :: JSString -> Maybe Filter
+parseFilter =  \case
+  "#/"          -> Just All
+  "#/active"    -> Just Active
+  "#/completed" -> Just Completed
+  _             -> Nothing
+
+printFilter :: Filter -> JSString
+printFilter =  \case
+  All       -> "#/"
+  Active    -> "#/active"
+  Completed -> "#/completed"
 
 deleteAt :: Int -> [a] -> [a]
 deleteAt _ []     = []
@@ -159,7 +164,7 @@ deleteAt i (a:as)
   | i == 0    = as
   | otherwise = a : deleteAt (i-1) as
 
-styles :: Text
+styles :: JSString
 styles = "\
   \body {\
   \  margin: 0;\

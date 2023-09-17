@@ -1,7 +1,6 @@
 -- | Shortcuts for most common HTML5 elements
 module HtmlT.Element where
 
-import Data.Text as T
 import HtmlT.Base
 import HtmlT.Types
 
@@ -16,7 +15,7 @@ import HtmlT.Types
 -- https://github.com/chrisdone/lucid/blob/fb3b0e7c189c2acd8d88838d4a13923f24542ee8/src/Lucid/Base.hs#L272
 class Term arg result | result -> arg where
   term
-    :: Text -- ^ Name.
+    :: JSString -- ^ Name.
     -> arg -- ^ Some argument.
     -> result -- ^ Result: either an element or an attribute.
 

@@ -41,7 +41,7 @@ highlightHaskell = textFromJSString . js_highlightHaskell . textToJSString
 insertScript :: Text -> IO ()
 insertScript = js_insertScript . textToJSString
 
-#ifdef ghcjs_HOST_OS
+#if defined(javascript_HOST_ARCH)
 foreign import javascript unsafe
   "(function(el, code){\
     if (!code) return;\

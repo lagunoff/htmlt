@@ -36,8 +36,9 @@ data RunningApp = RunningApp
 -- StartOpts argument
 attachOptions :: StartOpts -> Html a -> IO (a, RunningApp)
 attachOptions StartOpts{..} render = mdo
-  when startopts_wait_document_load
-    js_waitDocumentLoad
+  -- TODO: doesn't work with javascript-backend
+  -- when startopts_wait_document_load
+  --   js_waitDocumentLoad
   begin <- createComment "ContentBoundary {{"
   end <- createComment "}}"
   appendChild startopts_root_element begin
