@@ -5,6 +5,8 @@ import Data.Maybe
 import GHC.Generics (Generic)
 import GHC.JS.Prim
 import HtmlT
+import JavaScript.Compat.Marshal
+import JavaScript.Compat.String (JSString(..))
 
 import "this" Utils
 
@@ -33,8 +35,8 @@ eval = \case
   CancelAction cfg ->
     modifyRef cfg.state_ref \s -> s{tis_editing=Nothing}
   CommitAction cfg -> do
-    isEditing <- (.tis_editing) <$> readRef cfg.state_ref
-    case isEditing of
+    state <- readRef cfg.state_ref
+    case state.tis_editing of
       Just "" ->
         cfg.ask_delete_item
       Just t ->

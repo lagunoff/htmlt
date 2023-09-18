@@ -10,6 +10,9 @@ import Data.Typeable
 import GHC.JS.Foreign.Callback
 import GHC.JS.Prim
 import HtmlT
+import JavaScript.Compat.Marshal
+import JavaScript.Compat.String (JSString(..))
+import JavaScript.Compat.String qualified as JSS
 import Unsafe.Coerce
 
 mkUrlHashRef :: MonadReactive m => m (DynRef JSString)
@@ -30,15 +33,14 @@ localStorageSet :: forall a m. (MonadIO m, ToJSVal a, Typeable a) => a -> m ()
 localStorageSet val =
   liftIO (toJSVal val >>= js_setItem key)
   where
-    key = JSString $ toJSString $ show $ typeRepFingerprint $ typeRep (Proxy @a)
+    key = JSS.pack . show $ typeRepFingerprint $ typeRep (Proxy @a)
 
 localStorageGet :: forall a m. (MonadIO m, FromJSVal a, Typeable a) => m (Maybe a)
 localStorageGet = liftIO do
   mval <- nullableToMaybe <$> (js_getItem key)
   join <$> forM mval fromJSVal
   where
-    key = JSString . toJSString . show . typeRepFingerprint $
-      typeRep (Proxy @a)
+    key = JSS.pack . show . typeRepFingerprint $ typeRep (Proxy @a)
 
 #if defined(javascript_HOST_ARCH)
 foreign import javascript unsafe

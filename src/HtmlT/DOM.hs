@@ -13,12 +13,13 @@ import Control.Monad.Trans.Maybe
 import Data.Coerce
 import GHC.Exts as Exts
 import GHC.Generics
-import GHC.JS.Prim
 import GHC.JS.Foreign.Callback
+import GHC.JS.Prim
 import Unsafe.Coerce
-import System.IO.Unsafe
 
 import HtmlT.Types
+import JavaScript.Compat.Marshal
+import JavaScript.Compat.String (JSString(..))
 
 data ListenerOpts = ListenerOpts
   { lo_stop_propagation :: Bool

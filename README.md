@@ -1,24 +1,17 @@
 
-Lightweight frontend library for GHCJS with focus on minimalism and
-simplicity
+Lightweight frontend library for GHC with JavaScript backend with
+focus on minimalism and simplicity
 
 ## Getting started
 
-First you have to install [nix](https://nixos.org/download.html)
-package manager to download and install the dependecies. By default
-nix-shell gets GHCJS compiler from
-[reflex-platform](https://github.com/reflex-frp/reflex-platform)
-project. You have to add their binary caches to your `nix.conf` to
-avoid building everything from sources
+To begin you would need to have [nix](https://nixos.org/download.html)
+installed in your system to follow the instructions. Alternatively,
+you can opt to install [GHC with JavaScript
+Backend](https://engineering.iog.io/2023-01-24-javascript-browser-tutorial/),
+and `cabal` (comes with every [GHC](https://www.haskell.org/ghc/))
+manually
 
-```
-# ~/.config/nix.conf
-substituters = https://nixcache.reflex-frp.org
-trusted-substituters = https://nixcache.reflex-frp.org
-trusted-public-keys = ryantrinkle.com-1:JJiAKaRv9mWgpVAz8dwewnZe0AzzEAzPkagE9SP5NWI=
-```
-
-Build the examples:
+How to build library and the examples:
 ```sh
 # Clone the repository
 git clone https://github.com/lagunoff/htmlt.git
@@ -26,39 +19,43 @@ cd htmlt
 # Enter the nix-shell
 nix-shell
 # Build examples with cabal
-cabal build -fexamples --ghcjs --ghcjs-options="-j"
+cabal --with-ghc=javascript-unknown-ghcjs-ghc --with-ghc-pkg=javascript-unknown-ghcjs-ghc-pkg build -f examples
 ```
-Once `cabal build` is successful you can find the js executables in
-`dist-newstyle/build/x86_64-linux/ghcjs-8.6.0.1/htmlt-0.1.0.0/x/` and run them opening `index.html` in browser
+Once `cabal build` is successful you can find js executables in
+`./dist-newstyle/build/javascript-ghcjs/ghc-9.7.20230527/htmlt-0.1.0.0/x` and run them by opening `index.html` in browser
 
-### Simple example
+### Minimal example
 
 ```haskell
 -- Example featuring <input> element and two buttons. The input value
 -- is synchronized with 'DynRef's state and can be modified by either entering a
 -- number into the input or by clicking one of the two buttons
-main :: IO ()
-main = void $ attachToBody do
+app :: Html ()
+app = do
   -- First create a 'DynRef
   counterRef <- newRef @Int 0
   div_ do
-    input_ do
+    input_ [type_ "number"] do
       -- Show the value inside <input>
-      dynProp "value" $ T.pack . show <$> fromRef counterRef
+      dynProp "value" $ JSS.pack . show <$> fromRef counterRef
       -- Parse and update the value on each InputEvent
       on "input" $ decodeEvent intDecoder $ writeRef counterRef
     br_
     -- Decrease the value on each click
     button_ do
       on_ "click" $ modifyRef counterRef pred
-      text "Decrease"
+      text "-"
     -- Increase the value on each click
     button_ do
       on_ "click" $ modifyRef counterRef succ
-      text "Increase"
+      text "+"
   where
     intDecoder =
-      valueDecoder >=> MaybeT . pure . readMaybe . T.unpack
+      valueDecoder >=> MaybeT . pure . readMaybe . JSS.unpack
+
+main :: IO ()
+main =
+  void $ attachToBody app
 
 ```
 [Open the demo](https://lagunoff.github.io/htmlt-counter/)
@@ -67,22 +64,22 @@ main = void $ attachToBody do
 
 ```hs
 -- Constructing DOM
-el :: Text -> Html a -> Html a
-elns :: Text -> Text -> Html a -> Html a
-text :: Text -> Html ()
-dynText :: Dynamic Text -> Html ()
+el :: JSString -> Html a -> Html a
+elns :: JSString -> JSString -> Html a -> Html a
+text :: JSString -> Html ()
+dynText :: Dynamic JSString -> Html ()
 
 -- Applying attributes and properties
-prop :: Text -> v -> Html ()
-dynProp :: Text -> Dynamic v -> Html ()
-attr :: Text -> Text -> Html ()
-dynAttr :: Text -> Text -> Html ()
-toggleClass :: Text -> Dynamic Bool -> Html ()
-toggleAttr :: Text -> Dynamic Bool -> Html ()
-dynStyle :: Text -> Dynamic Text -> Html ()
-dynStyles :: Dynamic Text -> Html ()
-dynValue :: Dynamic Text -> Html ()
-dynClass :: Dynamic Text -> Html ()
+prop :: JSString -> v -> Html ()
+dynProp :: JSString -> Dynamic v -> Html ()
+attr :: JSString -> JSString -> Html ()
+dynAttr :: JSString -> JSString -> Html ()
+toggleClass :: JSString -> Dynamic Bool -> Html ()
+toggleAttr :: JSString -> Dynamic Bool -> Html ()
+dynStyle :: JSString -> Dynamic JSString -> Html ()
+dynStyles :: Dynamic JSString -> Html ()
+dynValue :: Dynamic JSString -> Html ()
+dynClass :: Dynamic JSString -> Html ()
 dynChecked :: Dynamic Bool -> Html ()
 dynDisabled :: Dynamic Bool -> Html ()
 
@@ -90,7 +87,6 @@ dynDisabled :: Dynamic Bool -> Html ()
 on :: EventName -> (DOMEvent -> Step ()) -> Html ()
 on_ :: EventName -> Step () -> Html ()
 onOptions :: EventName -> ListenerOpts -> (DOMEvent -> Step ()) -> Html ()
-onDecoder :: EventName -> Decoder a -> (a -> Step ()) -> Html ()
 onGlobalEvent :: ListenerOpts -> DOMNode -> EventName -> (DOMEvent -> Step ()) -> Html ()
 
 -- Decoding data from DOM Events
@@ -101,13 +97,13 @@ pageXYDecoder :: JSVal -> MaybeT m (Point Int)
 keyModifiersDecoder :: JSVal -> MaybeT m KeyModifiers
 keyCodeDecoder :: JSVal -> MaybeT m Int
 keyboardEventDecoder :: JSVal -> MaybeT m KeyboardEvent
-valueDecoder :: JSVal -> MaybeT m Text
+valueDecoder :: JSVal -> MaybeT m JSString
 checkedDecoder :: JSVal -> MaybeT m Bool
 
 -- DOM extras, useful helpers
-unsafeHtml :: MonadIO m => Text -> HtmlT m ()
+unsafeHtml :: MonadIO m => JSString -> HtmlT m ()
 portal :: Monad m => DOMElement -> HtmlT m a -> HtmlT m a
-addFinalizer :: MonadReactive m => IO () -> m ()
+installFinalizer :: MonadReactive m => IO () -> m ()
 
 -- Dynamic collections
 simpleList :: Dynamic [a] -> (Int -> DynRef a -> Html ()) -> Html ()
@@ -120,7 +116,6 @@ newEvent :: MonadReactive m => m (Event a, Trigger a)
 fmap :: (a -> b) -> Event a -> Event a
 never :: Event a
 updates :: Dynamic a -> Event a
-mapMaybeE :: (a -> Maybe b) -> Event a -> Event b
 
 -- Constructing Dynamics
 constDyn :: a -> Dynamic a
@@ -129,6 +124,7 @@ fmap :: (a -> b) -> Dynamic a -> Dynamic b
 (<*>) :: Dynamic (a -> b) -> Dynamic a -> Dynamic b
 mapDyn :: MonadReactive m => Dynamic a -> (a -> b)-> m (Dynamic b)
 mapDyn2 :: MonadReactive m => Dynamic a -> Dynamic b -> (a -> b -> c) -> m (Dynamic c)
+mapDyn3 :: MonadReactive m => Dynamic a -> Dynamic b -> Dynamic c -> (a -> b -> c -> d) -> m (Dynamic d)
 holdUniqDyn :: Eq a => Dynamic a -> Dynamic a
 holdUniqDynBy :: (a -> a -> Bool) -> Dynamic a -> Dynamic a
 
@@ -141,6 +137,7 @@ readDyn :: MonadIO m => Dynamic a -> m a
 readRef :: MonadIO m => DynRef a -> m a
 writeRef :: DynRef a -> a -> Step ()
 modifyRef :: DynRef a -> (a -> a) -> Step ()
+atomicModifyRef :: DynRef a -> (a -> (a, r)) -> Step r
 
 -- Starting and shutting down the application
 atatchOptions :: StartOpts -> Html a -> IO (a, RunningApp)
@@ -172,9 +169,6 @@ detach :: RunningApp -> IO ()
 </table>
 
 ## Todos
- - [x] API to display sum types
- - [x] Reduce compile time by getting rid of `ghcjs-dom` and
-       `jsaddle-dom` from dependency list
- - [x] Add benchmarks
+ - [x] Migrate to GHC with JavaScript backend
  - [ ] More examples and documentation
  - [ ] Similar library for ReactNative

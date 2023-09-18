@@ -4,7 +4,6 @@ module HtmlT.Base where
 import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
-import Data.Coerce
 import Data.Foldable
 import Data.IORef
 import GHC.JS.Prim
@@ -14,6 +13,8 @@ import HtmlT.DOM
 import HtmlT.Event
 import HtmlT.Internal
 import HtmlT.Types
+import JavaScript.Compat.Marshal
+import JavaScript.Compat.String (JSString(..))
 
 -- | Create a DOM element with a given tag name and attach it to
 -- 'html_current_element'. Attributes, properties and children nodes can
@@ -319,10 +320,10 @@ dyn d = do
 -- | Run an action before the current node is detached from the DOM
 installFinalizer :: MonadReactive m => IO () -> m FinalizerKey
 installFinalizer fin = do
-  renv@ReactiveEnv{renv_finalizers} <- askReactiveEnv
+  renv <- askReactiveEnv
   finalizerId <- liftIO $ nextQueueId renv
   let finalizerKey = FinalizerQueueId finalizerId
-  liftIO $ modifyIORef renv_finalizers $
+  liftIO $ modifyIORef renv.renv_finalizers $
     Map.insert finalizerKey $ CustomFinalizer fin
   return finalizerKey
 
@@ -355,7 +356,7 @@ portal newRootEl html = do
 -- >     \</svg>"
 unsafeHtml :: MonadIO m => JSString -> HtmlT m ()
 unsafeHtml htmlText = do
-  HtmlEnv{html_content_boundary, html_current_element} <- ask
-  let anchor = fmap boundary_end html_content_boundary
-  liftIO $ unsafeInsertHtml html_current_element anchor
+  henv <- ask
+  let anchor = fmap boundary_end henv.html_content_boundary
+  liftIO $ unsafeInsertHtml henv.html_current_element anchor
     htmlText

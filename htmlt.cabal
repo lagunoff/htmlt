@@ -89,6 +89,8 @@ library
     HtmlT.Main
     HtmlT.Property
     HtmlT.Types
+    JavaScript.Compat.String
+    JavaScript.Compat.Marshal
   other-modules: Paths_htmlt
   build-depends:
     base,
@@ -136,15 +138,10 @@ executable htmlt-simple-routing
   build-depends:
     base,
     bytestring,
-    lens,
-    generic-lens,
     mtl,
-    network-uri,
-    http-api-data,
     htmlt,
-    text,
-  -- Fails to build for now with javascript-backend
-  buildable: False
+  if !flag(examples)
+    buildable: False
   
 executable htmlt-benchmarks
   import: htmlt-common         
@@ -155,6 +152,6 @@ executable htmlt-benchmarks
     htmlt,
     text,
     gauge,
-  -- Fails to build for now with javascript-backend
+  -- Fails to build with javascript-backend
   buildable: False
   

@@ -1,17 +1,15 @@
 module Pages where
 
-import Control.Lens
 import Control.Monad.IO.Class
 import Control.Monad.Reader
 import Data.Foldable
-import Data.Generics.Labels ()
-import Data.JSString.Text
-import Data.List as L
+import Data.List qualified as List
 import Data.Maybe
 import Data.Ord
-import Data.Text as T
-import GHCJS.Nullable
 import HtmlT
+import JavaScript.Compat.Marshal
+import JavaScript.Compat.String (JSString(..))
+import JavaScript.Compat.String qualified as JSS
 
 import "this" Assets
 import "this" Router
@@ -40,13 +38,13 @@ homePage = unsafeHtml $ "\
   \parseRoute = \\case\n\
   \  Url [] [] -> Just HomeR\n\
   \  Url [\"map\"] q\n\
-  \    | selected <- L.lookup \"selected\" q\n\
+  \    | selected <- List.lookup \"selected\" q\n\
   \    -> Just $ CountriesMapR CountriesMapQ{..}\n\
   \  Url [\"list\"] q\n\
-  \    | search <- L.lookup \"search\" q\n\
-  \    , page <- parsePage $ L.lookup \"page\" q\n\
-  \    , sort_dir <- parseSortDir $ L.lookup \"sort_dir\" q\n\
-  \    , sort_by <- parseSortBy $ L.lookup \"sort_by\" q\n\
+  \    | search <- List.lookup \"search\" q\n\
+  \    , page <- parsePage $ List.lookup \"page\" q\n\
+  \    , sort_dir <- parseSortDir $ List.lookup \"sort_dir\" q\n\
+  \    , sort_by <- parseSortBy $ List.lookup \"sort_by\" q\n\
   \    -> Just $ CountriesListR CountriesListQ{..}"
   <> "</pre><pre>" <> highlightHaskell "\
   \printRoute :: Route -> UrlParts\n\
@@ -69,7 +67,7 @@ homePage = unsafeHtml $ "\
   \and implement backend part of HTML5-style routing.</p>\
   \<p>Last thing we need to run the site is this auxiliary function \
   \<a href=\"https://github.com/lagunoff/htmlt/blob/master/examples/simple-routing/Utils.hs#L18\">mkUrlHashRef</a> \
-  \that creates a <code>DynRef Text</code> — dynamic value containing current \
+  \that creates a <code>DynRef JSString</code> — dynamic value containing current \
   \hash-string from the browser. When parsed to <code>Dynamic Route</code> \
   \and then mapped with <code>(<&>)</code> operator to \
   \<code>Dynamic (Html ())</code> the <code>dyn</code> function can be used to \
@@ -105,7 +103,7 @@ countriesListPage q@CountriesListQ{..} = div_ [class_ "CountriesList"] do
       thSort SortByPopulation "Population"
     tbody_ do
       for_ pageResults \(n, Country{..}) -> tr_ do
-        td_ do text (T.pack (show @Int n))
+        td_ do text (JSS.pack (show @Int n))
         td_ do
           a_ [href_ (mkMapLink code)] do
             for_ flag_icon
@@ -113,14 +111,14 @@ countriesListPage q@CountriesListQ{..} = div_ [class_ "CountriesList"] do
             text title
         td_ do text region
         td_ do text subregion
-        td_ do text (T.pack (show population))
+        td_ do text (JSS.pack (show population))
   center_ do
     for_ (paginate total page itemsPerPage) \case
       Nothing ->
         button_ [disabled_ True] "..."
       Just p -> a_
         [ href_ (toUrl (CountriesListR q {page = p}))] $
-        button_ [disabled_ (page == p)] $ text $ T.pack $ show p
+        button_ [disabled_ (page == p)] $ text $ JSS.pack $ show p
   dl_ do
     dt_ "Country"
     dd_ $ unsafeHtml "The word <i>country</i> comes from <a href=\"\
@@ -154,12 +152,12 @@ countriesListPage q@CountriesListQ{..} = div_ [class_ "CountriesList"] do
       . Prelude.take itemsPerPage
       . Prelude.drop offset
       $ countryResults
-    countryResults = L.sortOn countrySortDir
+    countryResults = List.sortOn countrySortDir
       . Prelude.filter countryFilter
       $ countries
     countryFilter
       | Just needle <- search = \Country{..} ->
-        T.isInfixOf (T.toLower needle) (T.toLower title)
+        JSS.isInfixOf (JSS.toLower needle) (JSS.toLower title)
       | otherwise = const True
     countrySortBy = case sort_by of
       SortByTitle -> Left . view #title
@@ -170,7 +168,7 @@ countriesListPage q@CountriesListQ{..} = div_ [class_ "CountriesList"] do
       Asc -> Left . countrySortBy
       Desc -> Right . Down . countrySortBy
     itemsPerPage = 40
-    mkMapLink = toUrl . CountriesMapR . CountriesMapQ . Just . T.toLower
+    mkMapLink = toUrl . CountriesMapR . CountriesMapQ . Just . JSS.toLower
 
 countriesMapPage :: CountriesMapQ -> Html ()
 countriesMapPage CountriesMapQ{..} =

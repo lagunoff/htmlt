@@ -1,16 +1,17 @@
 -- | Shortcuts for common HTML5 attributes and properties
 module HtmlT.Property where
 
-import HtmlT.Types
 import HtmlT.Base
 import HtmlT.Event
+import HtmlT.Types
+import JavaScript.Compat.String (JSString(..))
 
 
--- TODO: Time showed in real apps dynStyles isn't sufficiently
--- composable. For instance, suppose 'dynStyles' was applied for an
--- element to set CSS color, then essentially no other CSS property
--- can be set to this element, because they will be overwritten by
--- 'dynStyles'
+-- TODO: Real-world usage has demonstrated that 'dynStyles' not
+-- sufficiently composable. For instance, if 'dynStyles' is used to
+-- set the CSS color for an element, essentially no other CSS property
+-- can be applied to this element, as they will be overwritten by
+-- 'dynStyles'.
 dynStyles :: Dynamic JSString -> Html ()
 dynStyles = dynProp "style"
 {-# INLINE dynStyles #-}
@@ -351,9 +352,9 @@ class_ :: JSString -> Html ()
 class_ = prop "className"
 {-# INLINE class_ #-}
 
--- data_ :: JSString -> JSString -> Html ()
--- data_ k v = prop @JSString ("data-" <> k) v
--- {-# INLINE data_ #-}
+data_ :: JSString -> JSString -> Html ()
+data_ k v = prop @JSString ("data-" <> k) v
+{-# INLINE data_ #-}
 
 role_ :: JSString -> Html ()
 role_ = attr "role"

@@ -5,41 +5,30 @@ module Utils where
 
 import Control.Monad.IO.Class
 import Data.Coerce
-import Data.JSString.Text
-import Data.Text
-import GHCJS.Foreign.Callback
-import GHCJS.Nullable
-import GHCJS.Types
+import GHC.JS.Foreign.Callback
 import HtmlT
-import JavaScript.Object.Internal
-import qualified JavaScript.Object as Object
-import qualified JavaScript.Web.Location as JS
+import JavaScript.Compat.Marshal
+import JavaScript.Compat.String (JSString(..))
+import Unsafe.Coerce
 
-mkUrlHashRef :: MonadReactive m => m (DynRef Text)
+mkUrlHashRef :: MonadReactive m => m (DynRef JSString)
 mkUrlHashRef = do
-  initial <- liftIO readUrlHash
+  initial <- liftIO js_readUrlHash
   routeRef <- newRef initial
   win <- liftIO getCurrentWindow
   popStateCb <- liftIO $ asyncCallback $
-    readUrlHash >>= dynStep . writeRef routeRef
-  liftIO $ Object.setProp "onpopstate" (jsval popStateCb) (coerce win)
+    js_readUrlHash >>= dynStep . writeRef routeRef
+  liftIO $ js_setProp (coerce win) "onpopstate" (unsafeCoerce popStateCb)
   return routeRef
 
-readUrlHash :: IO Text
-readUrlHash = do
-  loc <- JS.getWindowLocation
-  textFromJSString <$> JS.getHash loc
+pushUrl :: MonadIO m => JSString -> m ()
+pushUrl url = liftIO $ js_pushHref url
 
-pushUrl :: MonadIO m => Text -> m ()
-pushUrl url = liftIO do
-  loc <- JS.getWindowLocation
-  JS.setHref (textToJSString url) loc
+highlightHaskell :: JSString -> JSString
+highlightHaskell = js_highlightHaskell
 
-highlightHaskell :: Text -> Text
-highlightHaskell = textFromJSString . js_highlightHaskell . textToJSString
-
-insertScript :: Text -> IO ()
-insertScript = js_insertScript . textToJSString
+insertScript :: JSString -> IO ()
+insertScript = js_insertScript
 
 #if defined(javascript_HOST_ARCH)
 foreign import javascript unsafe
@@ -78,9 +67,21 @@ foreign import javascript unsafe
     document.head.appendChild(scriptEl);\
   })($1)"
   js_insertScript :: JSString -> IO ()
+foreign import javascript unsafe
+  "(function(){\
+    return location.hash;\
+  })"
+  js_readUrlHash :: IO JSString
+foreign import javascript unsafe
+  "(function(url){\
+    return location.push(url);\
+  })"
+  js_pushHref :: JSString -> IO ()
 #else
 js_selectCountry :: DOMElement -> Nullable JSString -> IO () = errorGhcjsOnly
 js_svgClickGetCountryCode :: DOMEvent -> IO (Nullable JSString) = errorGhcjsOnly
 js_highlightHaskell :: JSString -> JSString = errorGhcjsOnly
 js_insertScript :: JSString -> IO () = errorGhcjsOnly
+js_readUrlHash :: IO JSString = errorGhcjsOnly
+js_pushHref :: JSString -> IO () = errorGhcjsOnly
 #endif

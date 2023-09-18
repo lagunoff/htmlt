@@ -1,7 +1,8 @@
 import Control.Monad
 import Control.Monad.Trans.Maybe
-import Text.Read (readMaybe)
 import HtmlT
+import JavaScript.Compat.String qualified as JSS
+import Text.Read (readMaybe)
 
 app :: Html ()
 app = do
@@ -10,7 +11,7 @@ app = do
   div_ do
     input_ [type_ "number"] do
       -- Show the value inside <input>
-      dynProp "value" $ fromHSString . show <$> fromRef counterRef
+      dynProp "value" $ JSS.pack . show <$> fromRef counterRef
       -- Parse and update the value on each InputEvent
       on "input" $ decodeEvent intDecoder $ writeRef counterRef
     br_
@@ -24,7 +25,7 @@ app = do
       text "+"
   where
     intDecoder =
-      valueDecoder >=> MaybeT . pure . readMaybe . toHSString
+      valueDecoder >=> MaybeT . pure . readMaybe . JSS.unpack
 
 main :: IO ()
 main =

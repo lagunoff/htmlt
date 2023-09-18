@@ -6,6 +6,9 @@ import Data.List qualified as List
 import Data.Maybe
 import GHC.Generics (Generic)
 import HtmlT
+import JavaScript.Compat.Marshal
+import JavaScript.Compat.String (JSString(..))
+import JavaScript.Compat.String qualified as JSS
 
 import "this" TodoItem qualified as TodoItem
 import "this" Utils
@@ -59,7 +62,7 @@ eval = \case
   InputAction cfg newVal -> do
     modifyRef cfg.state_ref \s -> s {tls_title = newVal}
   CommitAction cfg -> do
-    title <- {- JSS.strip . -} (.tls_title) <$> readRef cfg.state_ref
+    title <- JSS.strip . (.tls_title) <$> readRef cfg.state_ref
     case title of
       "" -> return ()
       t -> modifyRef cfg.state_ref \s -> s
@@ -113,7 +116,7 @@ html cfg = do
         simpleList itemsDyn \idx todoRef ->
           TodoItem.html $ TodoItem.TodoItemConfig
             { TodoItem.state_ref = todoRef
-              { dynref_modifier = todoItemModifier idx todoRef.dynref_modifier
+              { dynref_modifier = todoItemModifier cfg idx todoRef.dynref_modifier
               }
             , TodoItem.is_hidden =
               isTodoItemHidden <$> fromRef cfg.state_ref <*> fromRef todoRef
@@ -122,7 +125,7 @@ html cfg = do
     footerWidget = footer_ [class_ "footer"] do
       toggleClass "hidden" hiddenDyn
       span_ [class_ "todo-count"] do
-        strong_ $ dynText $ fromHSString . show <$> itemsLeftDyn
+        strong_ $ dynText $ JSS.pack . show <$> itemsLeftDyn
         dynText $ pluralize " item left" " items left" <$> itemsLeftDyn
       ul_ [class_ "filters"] do
         for_ [All, Active, Completed] filterWidget
@@ -140,7 +143,7 @@ html cfg = do
     filterWidget flt = li_ do
       a_ [href_ (printFilter flt)] do
         toggleClass "selected" $ filterSelectedDyn flt
-        text $ fromHSString (show flt)
+        text $ JSS.pack (show flt)
     hiddenDyn =
       Prelude.null . (.tls_items) <$> fromRef cfg.state_ref
     itemsLeftDyn =
@@ -152,24 +155,32 @@ html cfg = do
     countItemsLeft TodoListState{tls_items} =
       foldl (\acc TodoItem.TodoItemState{tis_completed} ->
         if not tis_completed then acc + 1 else acc) 0 tls_items
-    -- Synchronize local TodoItemState with whole list of Todo-items
-    -- inside TodoListState
-    todoItemModifier idx (Modifier elemMod) = Modifier \upd f -> do
-      (new, result) <- elemMod upd \old ->
-        let (new, result) = f old in (new, (new, result))
-      -- After the local DynRef TodoItemState is updated, update
-      -- corresponding element inside TodoListState. Here it's
-      -- possible to apply optimisations that would prevent whole list
-      -- of items to be updated while only some particular item is
-      -- changed, but they left out for the sake of simplicity
-      unModifier (dynref_modifier cfg.state_ref) upd
-        ((,()) . (\s -> s{tls_items = overIx idx (const new) s.tls_items}))
-      return result
     isTodoItemHidden listState itemState =
       case (listState.tls_filter, itemState.tis_completed) of
         (Active,    True)  -> True
         (Completed, False) -> True
         _                  -> False
+
+-- | Synchronize changes inside TodoItem widget with the outer
+-- TodoList widget.
+todoItemModifier
+  :: TodoListConfig
+  -> Int
+  -> Modifier TodoItem.TodoItemState
+  -> Modifier TodoItem.TodoItemState
+todoItemModifier cfg idx elemModifier = Modifier \upd f -> do
+  -- Update the local TodoItem element widget
+  ((old, new), result) <- unModifier elemModifier upd \old ->
+    let (new, result) = f old in (new, ((old, new), result))
+  let
+    -- When False, the update event won't be propagated into the outer
+    -- widget for the sake of optimization
+    needsUpdate = upd && (old.tis_completed /= new.tis_completed)
+  -- Update the outer widget
+  unModifier (dynref_modifier cfg.state_ref) needsUpdate \old ->
+    (old {tls_items = overIx idx (const new) old.tls_items}, ())
+  return result
+  where
     overIx :: Int -> (a -> a) -> [a] -> [a]
     overIx 0 f (x:xs) = f x : xs
     overIx n f (x:xs) = x : overIx (pred n) f xs

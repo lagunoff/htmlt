@@ -1,49 +1,42 @@
--- | Module provides a simple and straightforward implementation of
--- FRP concepts such as 'Event's and 'Dynamic's, inspired by
--- Reflex. Additionally, it introduces a new type called 'DynRef',
--- which is designed to be used in conjunction with Dynamics and
--- Events in typical applications.
---
---  * NOTE: Currently MonadReactive relies on the MonadReader
---    constraint, which simplifies integration with
---    applications. However, if you look into ReactiveEnv, it only
---    consists of IORef fields. This suggests that we could
---    potentially eliminate the IORef's and instead utilize the
---    MonadState constraint in place of MonadReader. This would enable
---    MonadReactive to operate as a pure function. I should
---    investigate and try this approach
+{-|
+
+This module offers clear and straightforward implementation of FRP
+concepts such as Events and Dynamics, inspired by
+Reflex. Additionally, it introduces DynRefs, which are represented by
+a Dynamic along with a function to modify the value inside the
+Dynamic. DynRef has similar inferface to IORef with functions like
+readRef, writeRef, modifyRef etc.
+-}
 module HtmlT.Event where
 
 import Control.Applicative
 import Control.Monad
 import Control.Monad.Catch
-import Control.Monad.Identity
+import Control.Monad.Fix
 import Control.Monad.Reader
 import Control.Monad.State
 import Data.Foldable
 import Data.IORef
 import Data.Map (Map)
+import Data.Map qualified as Map
 import Data.Maybe
 import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Tuple
-import Debug.Trace
 import GHC.Exts
-import GHC.Generics
 import GHC.Fingerprint
+import GHC.Generics
 import Unsafe.Coerce
-import qualified Data.Map as Map
-import qualified Data.Set as Set
-import Control.Monad.Fix
 
--- | Stream of event occurences of type @a@. Actual representation is
--- just a function that subscribes to the event and returns the action
--- to cancel the subscription.
+-- | Represents a stream of event occurrences of type @a@. Its actual
+-- representation is simply a function that subscribes to the event
 newtype Event a = Event
   { unEvent :: ReactiveEnv -> Callback a -> IO ()
   }
 
--- | Holds a value that changes over the time. Allows to read the
--- current value and subscribe to its future changes.
+-- | Contains a value that is subject to change over time. Provides
+-- operations for reading the current value ('readDyn') and
+-- subscribing to its future changes ('updates').
 data Dynamic a = Dynamic
   { dynamic_read :: IO a
   -- ^ Read current value. Use public alias 'readDyn' instead
@@ -52,8 +45,9 @@ data Dynamic a = Dynamic
   -- 'updates' instead
   } deriving stock Generic
 
--- | Mutable variable that supports subscribing to new values. Has
--- similar API to 'IORef' (see 'readRef', 'writeRef', 'modifyRef')
+-- | A mutable variable that allows for subscription to new values. It
+-- shares a similar API to 'IORef' (see 'readRef', 'writeRef',
+-- 'modifyRef')
 data DynRef a = DynRef
   { dynref_dynamic :: Dynamic a
   -- ^ Holds the current value and an event that notifies about value
@@ -62,13 +56,14 @@ data DynRef a = DynRef
   -- ^ Funtion to update the value
   } deriving stock Generic
 
+-- | Function that updates the value inside the 'DynRef'
 newtype Modifier a = Modifier
   { unModifier :: forall r. Bool -> (a -> (a, r)) -> Step r
-  -- ^ First argument controls whether the 'DynRef' should fire an
-  -- update event after modification. Should be set to 'True' in most
-  -- cases, however, in rare situations where it is known that the new
-  -- state is already synchronized with the DOM, setting it to 'False'
-  -- can serve as an optimization to skip unnecessary update events.
+  -- ^ 'Bool' argument controls whether the modification should
+  -- trigger an update event. It's possible to update the 'DynRef'
+  -- without notifying the subscribers for optimization purposes, in
+  -- cases when you know that all changes already been reflected in
+  -- the DOM
   }
 
 -- | State inside 'Step'
@@ -83,16 +78,14 @@ newtype Step a = Step { unStep :: StateT TransactState IO a }
     , MonadCatch, MonadThrow, MonadMask
     )
 
--- | Represents the environment required for certain operations, such
--- as creating a new 'Event' or subscribing to an event.
+-- | Represents the environment necessary for "reactive" operations,
+-- such as creating a new 'Event', subscribing to an event etc
 data ReactiveEnv = ReactiveEnv
   { renv_subscriptions :: IORef (Map QueueId [(QueueId, Callback Any)])
   -- ^ Keeps track of subscriptions
   , renv_finalizers :: IORef (Map FinalizerKey FinalizerValue)
-  -- ^ Stores finalizers that will be invoked before a specific part
-  -- of the application is terminated. This field is intended to be
-  -- overridden with a new instance for each dynamic part of the
-  -- application, allowing for isolation of finalizers.
+  -- ^ Keeps track of finalizers. These finalizers will be activated
+  -- shortly before the current part of the application is terminated.
   , renv_id_generator :: IORef QueueId
   -- ^ Maintains the next value to be used for generating 'QueueId'
   } deriving Generic
@@ -106,12 +99,12 @@ newtype ReactiveT m a = ReactiveT
     )
 
 -- | Identifies a computation inside 'TransactState'. The integer
--- value inside 'QueueId' determines the execution order during
--- reactive transaction (higher values executed later) and it used to
--- prioritize events derived from other events ensuring they are
--- processed after the source events.  This is basically the mechanism
--- that prevents double-firing of Dynamics constructed using
--- Applicative instance for example.
+-- value within 'QueueId' dictates the execution order in a reactive
+-- transaction (with higher values executing later). It is also
+-- utilized to prioritize events derived from other events, ensuring
+-- they are processed after the source events. This is basically the
+-- mechanism that prevents double-firing of Dynamics constructed
+-- using, for instance, the Applicative instance.
 newtype QueueId = QueueId {unQueueId :: Int}
   deriving newtype (Eq, Show, Ord, Num, Enum, Bounded)
 
@@ -155,7 +148,7 @@ newEvent = do
   let event = Event $ unsafeSubscribe eventId
   return (event, unsafeTrigger eventId renv)
 
--- | Create new 'DynRef' using given initial value
+-- | Create a new 'DynRef' using given initial value
 --
 -- > showRef <- newRef False
 -- > dynStep $ writeRef showRef True -- this triggers update event for showRef
@@ -232,9 +225,8 @@ subscribe (Event s) k = do
   re <- askReactiveEnv
   liftIO $ s re k
 
--- | Perform an action with current value of the given 'Dynamic' and
--- each time the value changes. Return action to detach listener from
--- receiving new values
+-- | Executes an action currently held inside the 'Dynamic' and every
+-- time the value changes.
 performDyn :: MonadReactive m => Dynamic (Step ()) -> m ()
 performDyn d = do
   liftIO $ dynamic_read d >>= dynStep
@@ -269,6 +261,7 @@ holdUniqDynBy equalFn Dynamic{..} = Dynamic dynamic_read
       unless (old `equalFn` new) $ k new
   )
 
+-- | Execute the gives finalizers
 applyFinalizer :: ReactiveEnv -> Map FinalizerKey FinalizerValue -> IO ()
 applyFinalizer ReactiveEnv{renv_subscriptions} finalizers = do
   forM_ (Map.toList finalizers) \(k, v) -> case (k, v) of
@@ -287,7 +280,9 @@ applyFinalizer ReactiveEnv{renv_subscriptions} finalizers = do
 
 -- | Alternative version if 'fmap' where given function will only be
 -- called once every time 'Dynamic a' value changes, whereas in 'fmap'
--- it would be called once for each subscription per change event
+-- it would be called once for each subscription per change event. As
+-- a general guideline, if the function @f! is inexpensive, opt for
+-- using @fmap f@. Otherwise, consider using @mapDyn f@.
 mapDyn
   :: MonadReactive m
   => (a -> b)
@@ -317,10 +312,11 @@ mapDyn2
   -> Dynamic a
   -> Dynamic b
   -> m (Dynamic c)
-mapDyn2 fun adyn bdyn = do
-  unsafeMapDynN
-    (\[a, b] -> return $ fun (unsafeCoerce a) (unsafeCoerce b))
-    [unsafeCoerce adyn, unsafeCoerce bdyn]
+mapDyn2 f adyn bdyn = do
+  unsafeMapDynN g [unsafeCoerce adyn, unsafeCoerce bdyn]
+  where
+    g [a, b] = return $ f (unsafeCoerce a) (unsafeCoerce b)
+    g _ = error "mapDyn2: impossible happend!"
 
 -- | I hope three arguments will be enough for most cases if more
 -- needed it's easy to define this function in the application code
@@ -332,18 +328,19 @@ mapDyn3
   -> Dynamic b
   -> Dynamic c
   -> m (Dynamic d)
-mapDyn3 fun adyn bdyn cdyn = do
-  unsafeMapDynN
-    (\[a, b, c] -> return $ fun (unsafeCoerce a) (unsafeCoerce b)
-      (unsafeCoerce c))
+mapDyn3 f adyn bdyn cdyn = do
+  unsafeMapDynN g
     [unsafeCoerce adyn, unsafeCoerce bdyn, unsafeCoerce cdyn]
+  where
+    g [a, b, c] = return $ f (unsafeCoerce a) (unsafeCoerce b) (unsafeCoerce c)
+    g _ = error "mapDyn3: impossible happend!"
 
--- | Receives a list of Dynamics and a function to construct the
--- output. Position of elements from the list of [Any] that
--- function receives always correspond to positions of [Dynamic Any]
--- from which these values were generated. Dynamic created by this
--- function will only fire at most once per transaction and only in
--- case any of the input Dynamics change their values
+-- | Takes a list of Dynamics and a function to generate the
+-- output. The positions of elements in the list of [Any] received by
+-- the function always correspond to the positions of [Dynamic Any]
+-- from which these values were generated. The Dynamic created by this
+-- function will fire at most once per transaction, and only if any of
+-- the input Dynamics change their values.
 unsafeMapDynN
   :: MonadReactive m
   => ([Any] -> IO a)
@@ -380,9 +377,9 @@ nextQueueId :: ReactiveEnv -> IO QueueId
 nextQueueId ReactiveEnv{renv_id_generator} =
   atomicModifyIORef' renv_id_generator \eid -> (succ eid, eid)
 
--- | Defer a computation (usually an event firing) till the end of
--- current reactive transaction. This makes possible to avoid double
--- firing of events, constructed from multiple other events
+-- | Defers a computation (typically an event firing) until the end of
+-- the current reactive transaction. This allows for the avoidance of
+-- double firing of events constructed from multiple other events.
 defer :: QueueId -> Step () -> Step ()
 defer k act =
   Step $ modify \(TransactState s) -> TransactState (Map.insert k act s)
@@ -412,8 +409,8 @@ unsafeSubscribe eventId e@ReactiveEnv{renv_subscriptions, renv_finalizers} k = d
   let
     newCancel = (subsId, k . unsafeCoerce)
     f (SubscriptionSet s1) (SubscriptionSet s2) = SubscriptionSet (s1 <> s2)
-    -- Should never happen because FinalizerEventId always should map
-    -- into SubscriptionSet
+    -- Unreacheable because FinalizerEventId always should map into
+    -- SubscriptionSet
     f _ s = s
   modifyIORef' renv_subscriptions $
     flip Map.alter eventId $ Just . (newCancel :) . fromMaybe []
@@ -429,11 +426,11 @@ unsafeTrigger eventId ReactiveEnv{..} a = defer eventId do
 instance Functor Event where
   fmap f (Event s) = Event \e k -> s e . (. f) $ k
 
+-- | Please be aware that in cases where both events fire during the
+-- same 'Step,' the one having a higher 'EventId' will win, which is
+-- very hard to predict, use with caution.
 instance Semigroup a => Semigroup (Event a) where
   (<>) (Event e1) (Event e2) = Event \e k -> mdo
-    -- TODO: this behaviour is unreliable and hard to predicts
-    -- (basically in situation when both events fire during same
-    -- 'Step' win the one with higher 'EventId'
     e1 e (defer eventId . k)
     e2 e (defer eventId . k)
     eventId <- nextQueueId e
@@ -447,12 +444,9 @@ instance Functor Dynamic where
 
 instance Applicative Dynamic where
   pure = constDyn
-  (<*>) df da = Dynamic
-    { dynamic_read = liftA2 ($) (dynamic_read df) (dynamic_read da)
-    , dynamic_updates = upds
-    }
-    where
-      upds = Event \e k -> mdo
+  (<*>) df da =
+    let
+      updatesEvent = Event \e k -> mdo
         let
           fire newF newA = defer eventId do
             f <- liftIO $ maybe (readDyn df) pure newF
@@ -462,6 +456,11 @@ instance Applicative Dynamic where
         unEvent (updates da) e \a -> fire Nothing (Just a)
         eventId <- nextQueueId e
         return ()
+    in
+      Dynamic
+        { dynamic_read = liftA2 ($) (dynamic_read df) (dynamic_read da)
+        , dynamic_updates = updatesEvent
+        }
 
 instance Applicative m => HasReactiveEnv (ReactiveT m) where
   askReactiveEnv = ReactiveT $ ReaderT pure
