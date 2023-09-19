@@ -47,13 +47,13 @@ parseRoute = \case
   Url [] [] -> Just HomeR
   Url ["map"] q
     | selected <- List.lookup "selected" q
-    -> Just $ CountriesMapR CountriesMapQ{..}
+    -> Just $ CountriesMapR CountriesMapQ{selected}
   Url ["list"] q
     | search <- List.lookup "search" q
     , page <- parsePage $ List.lookup "page" q
     , sort_dir <- parseSortDir $ List.lookup "sort_dir" q
     , sort_by <- parseSortBy $ List.lookup "sort_by" q
-    -> Just $ CountriesListR CountriesListQ{..}
+    -> Just $ CountriesListR CountriesListQ{search, page, sort_dir, sort_by}
   _ -> Nothing
   where
     parsePage = fromMaybe defaultCountriesListQ.page
@@ -61,25 +61,25 @@ parseRoute = \case
     parseSortDir = \case
       Just "asc" -> Asc
       Just "desc" -> Desc
-      _ -> sort_dir defaultCountriesListQ
+      _ -> defaultCountriesListQ.sort_dir
     parseSortBy = \case
       Just "title" -> SortByTitle
       Just "population" -> SortByPopulation
       Just "region" -> SortByRegion
       Just "subregion" -> SortBySubregion
-      _ -> sort_by defaultCountriesListQ
+      _ -> defaultCountriesListQ.sort_by
     parseIntQuery = readMaybe . JSS.unpack
 
 printRoute :: Route -> UrlParts
 printRoute = \case
   HomeR -> Url [] []
-  CountriesMapR CountriesMapQ{..} -> Url ["map"] $ catMaybes
-    [ ("selected",) <$> selected ]
-  CountriesListR CountriesListQ{..} -> Url ["list"] $ catMaybes
-    [ ("search",) <$> mfilter (/="") search
-    , ("page",) <$> printPage page
-    , ("sort_dir",) <$> printSortDir sort_dir
-    , ("sort_by",) <$> printSortBy sort_by
+  CountriesMapR q -> Url ["map"] $ catMaybes
+    [ ("selected",) <$> q.selected ]
+  CountriesListR q -> Url ["list"] $ catMaybes
+    [ ("search",) <$> mfilter (/="") q.search
+    , ("page",) <$> printPage q.page
+    , ("sort_dir",) <$> printSortDir q.sort_dir
+    , ("sort_by",) <$> printSortBy q.sort_by
     ]
   where
     printPage = fmap toIntQuery .

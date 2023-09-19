@@ -21,8 +21,8 @@ nullableToMaybe (Nullable jsval)
   | isNull jsval = Nothing
   | otherwise    = Just (coerce jsval)
 
-nullableFromMaybe :: Coercible v JSVal => Maybe v -> Nullable v
-nullableFromMaybe = Nullable . maybe jsNull coerce
+maybeToNullable :: Coercible v JSVal => Maybe v -> Nullable v
+maybeToNullable = Nullable . maybe jsNull coerce
 
 class FromJSVal v where fromJSVal :: JSVal -> IO (Maybe v)
 
@@ -65,7 +65,7 @@ instance ToJSVal JSVal where
   toJSVal = pure
 
 instance ToJSVal v => ToJSVal (Maybe v) where
-  toJSVal s = pure . unNullable . nullableFromMaybe =<< mapM toJSVal s
+  toJSVal s = pure . unNullable . maybeToNullable =<< mapM toJSVal s
 
 instance ToJSVal v => ToJSVal [v] where
   toJSVal s = toJSArray =<< mapM toJSVal s

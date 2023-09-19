@@ -39,24 +39,24 @@ homePage = unsafeHtml $ "\
   \  Url [] [] -> Just HomeR\n\
   \  Url [\"map\"] q\n\
   \    | selected <- List.lookup \"selected\" q\n\
-  \    -> Just $ CountriesMapR CountriesMapQ{..}\n\
+  \    -> Just $ CountriesMapR CountriesMapQ{selected}\n\
   \  Url [\"list\"] q\n\
   \    | search <- List.lookup \"search\" q\n\
   \    , page <- parsePage $ List.lookup \"page\" q\n\
   \    , sort_dir <- parseSortDir $ List.lookup \"sort_dir\" q\n\
   \    , sort_by <- parseSortBy $ List.lookup \"sort_by\" q\n\
-  \    -> Just $ CountriesListR CountriesListQ{..}"
+  \    -> Just $ CountriesListR CountriesListQ{search, page, sort_dir, sort_by}"
   <> "</pre><pre>" <> highlightHaskell "\
   \printRoute :: Route -> UrlParts\n\
   \printRoute = \\case\n\
   \  HomeR -> Url [] []\n\
-  \  CountriesMapR CountriesMapQ{..} -> Url [\"map\"] $ catMaybes\n\
-  \    [ (\"selected\",) <$> selected ]\n\
-  \  CountriesListR CountriesListQ{..} -> Url [\"list\"] $ catMaybes\n\
-  \    [ (\"search\",) <$> mfilter (/=\"\") search\n\
-  \    , (\"page\",) <$> printPage page\n\
-  \    , (\"sort_dir\",) <$> printSortDir sort_dir\n\
-  \    , (\"sort_by\",) <$> printSortBy sort_by\n\
+  \  CountriesMapR q -> Url [\"map\"] $ catMaybes\n\
+  \    [ (\"selected\",) <$> q.selected ]\n\
+  \  CountriesListR q -> Url [\"list\"] $ catMaybes\n\
+  \    [ (\"search\",) <$> mfilter (/=\"\") q.search\n\
+  \    , (\"page\",) <$> printPage q.page\n\
+  \    , (\"sort_dir\",) <$> printSortDir q.sort_dir\n\
+  \    , (\"sort_by\",) <$> printSortBy q.sort_by\n\
   \    ]"
   <>  "</pre>\
   \With help of haskell guarded pattern-match syntax it's easy to convert a \
@@ -80,15 +80,15 @@ homePage = unsafeHtml $ "\
   <> "</pre></p>"
 
 countriesListPage :: CountriesListQ -> Html ()
-countriesListPage q@CountriesListQ{..} = div_ [class_ "CountriesList"] do
+countriesListPage q = div_ [class_ "CountriesList"] do
   searchQueryRef <- newRef q
   form_ do
     onOptions "submit" (ListenerOpts True True True) \_event -> do
       newRoute <- toUrl . CountriesListR . (\s -> s{page = 1}) <$> readRef searchQueryRef
       pushUrl newRoute
     div_ [style_ "display:flex;"] do
-      input_ [type_ "text", placeholder_ "Search countries by title"
-        , autofocus_ True
+      input_
+        [ type_ "text" , placeholder_ "Search countries by title", autofocus_ True
         ] do
           dynValue $ fromMaybe "" . (.search) <$> fromRef searchQueryRef
           on "input" $ decodeEvent valueDecoder $
@@ -102,23 +102,23 @@ countriesListPage q@CountriesListQ{..} = div_ [class_ "CountriesList"] do
       thSort SortBySubregion "Subregion"
       thSort SortByPopulation "Population"
     tbody_ do
-      for_ pageResults \(n, Country{..}) -> tr_ do
+      for_ pageResults \(n, country) -> tr_ do
         td_ do text (JSS.pack (show @Int n))
         td_ do
-          a_ [href_ (mkMapLink code)] do
-            for_ flag_icon
+          a_ [href_ (mkMapLink country.code)] do
+            for_ country.flag_icon
               (img_ . (>> style_ "display:inline; margin-right: 6px"). src_)
-            text title
-        td_ do text region
-        td_ do text subregion
-        td_ do text (JSS.pack (show population))
+            text country.title
+        td_ do text country.region
+        td_ do text country.subregion
+        td_ do text (JSS.pack (show country.population))
   center_ do
-    for_ (paginate total page itemsPerPage) \case
+    for_ (paginate total q.page itemsPerPage) \case
       Nothing ->
         button_ [disabled_ True] "..."
       Just p -> a_
         [ href_ (toUrl (CountriesListR q {page = p}))] $
-        button_ [disabled_ (page == p)] $ text $ JSS.pack $ show p
+        button_ [disabled_ (q.page == p)] $ text $ JSS.pack $ show p
   dl_ do
     dt_ "Country"
     dd_ $ unsafeHtml "The word <i>country</i> comes from <a href=\"\
@@ -134,19 +134,19 @@ countriesListPage q@CountriesListQ{..} = div_ [class_ "CountriesList"] do
   where
     thSort sortBy title = th_ [style_ "cursor: pointer"] do
       text title
-      case (sort_by, sort_dir) of
+      case (q.sort_by, q.sort_dir) of
         (sortVal, Asc) | sortVal == sortBy -> text "▲"
         (sortVal, Desc) | sortVal == sortBy -> text "▼"
         otherwise -> text ""
       on_ "click" do pushUrl $ toUrl . CountriesListR . toggleSortBy sortBy $ q
 
-    toggleSortBy sortBy q@CountriesListQ{..}
-      | sort_by == sortBy = q {sort_dir = flipDir sort_dir}
+    toggleSortBy sortBy q
+      | q.sort_by == sortBy = q {sort_dir = flipDir q.sort_dir}
       | otherwise = q {sort_by = sortBy, sort_dir = Asc}
       where
         flipDir = \case Asc -> Desc; Desc -> Asc
 
-    offset = pred page * itemsPerPage
+    offset = pred q.page * itemsPerPage
     total = Prelude.length countryResults
     pageResults = Prelude.zip [offset + 1..]
       . Prelude.take itemsPerPage
@@ -155,29 +155,29 @@ countriesListPage q@CountriesListQ{..} = div_ [class_ "CountriesList"] do
     countryResults = List.sortOn countrySortDir
       . Prelude.filter countryFilter
       $ countries
-    countryFilter
-      | Just needle <- search = \Country{..} ->
-        JSS.isInfixOf (JSS.toLower needle) (JSS.toLower title)
-      | otherwise = const True
-    countrySortBy = case sort_by of
+    countryFilter country = case q.search of
+      Just needle ->
+        JSS.isInfixOf (JSS.toLower needle) (JSS.toLower country.title)
+      Nothing -> True
+    countrySortBy = case q.sort_by of
       SortByTitle -> Left . (.title)
       SortByRegion -> Right . Left . (.region)
       SortBySubregion -> Right . Right . Left . (.subregion)
       SortByPopulation -> Right . Right . Right . (.population)
-    countrySortDir = case sort_dir of
+    countrySortDir = case q.sort_dir of
       Asc -> Left . countrySortBy
       Desc -> Right . Down . countrySortBy
     itemsPerPage = 40
     mkMapLink = toUrl . CountriesMapR . CountriesMapQ . Just . JSS.toLower
 
 countriesMapPage :: CountriesMapQ -> Html ()
-countriesMapPage CountriesMapQ{..} =
+countriesMapPage q =
   div_ [class_ "CountriesMap"] $
     figure_ $ center_ do
       unsafeHtml countriesMap
       figcaption_ "political map of the planet Earth"
       centerEl <- asks html_current_element
-      liftIO $ js_selectCountry centerEl $ nullableFromMaybe $ selected
+      liftIO $ js_selectCountry centerEl $ maybeToNullable $ q.selected
       on "click" \event -> do
         mcode <- nullableToMaybe <$>
           liftIO (js_svgClickGetCountryCode event)
