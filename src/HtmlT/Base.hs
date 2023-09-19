@@ -282,7 +282,7 @@ simpleList listDyn h = do
 -- changes. Useful for SPA routing, tabbed components etc.
 --
 -- > routeRef <- newRef Home
--- > el "div"
+-- > el "div" do
 -- >   dyn $ routeRef <&> \case
 -- >     Home -> homeWidget
 -- >     Blog -> blogWidget

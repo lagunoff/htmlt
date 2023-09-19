@@ -3,6 +3,7 @@ module HtmlT.Types where
 import Control.Monad.Catch
 import Control.Monad.Reader
 import Data.Coerce
+import Data.String
 import GHC.Generics
 import HtmlT.Event
 import Control.Monad.Fix
@@ -41,9 +42,10 @@ newtype DOMElement = DOMElement {unDOMElement :: JSVal}
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event
 newtype DOMEvent = DOMEvent {unDOMEvent :: JSVal}
 
--- | Untyped for simplicity see
--- https://developer.mozilla.org/en-US/docs/Web/Events for reference
-type EventName = JSString
+-- | See https://developer.mozilla.org/en-US/docs/Web/Events for
+-- reference, what events are supported by particular elements
+newtype EventName = EventName {unEventName :: JSString}
+  deriving newtype IsString
 
 -- | Two comment nodes that define a boundary and a placeholder to
 -- insert additional nodes within the DOM.

@@ -144,10 +144,10 @@ addEventListener ListenerOpts{..} target name f = do
   hscb <- mkcallback (f . DOMEvent)
   jscb <- withopts hscb
   js_callMethod2 (coerce target) "addEventListener"
-    (unJSString name) (unsafeCoerce jscb)
+    (unJSString (unEventName name)) (unsafeCoerce jscb)
   return do
     js_callMethod2 (coerce target) "removeEventListener"
-      (unJSString name) (unsafeCoerce jscb)
+      (unJSString (unEventName name)) (unsafeCoerce jscb)
     releaseCallback hscb
   where
     mkcallback = if lo_sync_callback
