@@ -180,6 +180,15 @@ detach :: RunningApp -> IO ()
   </tbody>
 </table>
 
+
+For comparison, here are the sizes of all.js file build with GHCJS 8.6
+— 1.5M
+[htmlt-counter](https://lagunoff.github.io/htmlt-counter/),
+1.4M
+[htmlt-todomvc](https://lagunoff.github.io/htmlt-todomvc/),
+3.3M
+[htmlt-simple-routing](https://lagunoff.github.io/htmlt-simple-routing/)
+
 ## Todos
  - [x] Migrate to GHC with JavaScript backend
  - [ ] More examples and documentation
