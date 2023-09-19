@@ -6,7 +6,7 @@ focus on minimalism and simplicity
 
 To begin you would need to have [nix](https://nixos.org/download.html)
 installed in your system to follow the instructions. Alternatively,
-you can opt to install [GHC with JavaScript
+you can choose to install [GHC with JavaScript
 Backend](https://engineering.iog.io/2023-01-24-javascript-browser-tutorial/),
 and `cabal` (comes with every [GHC](https://www.haskell.org/ghc/))
 manually
@@ -58,7 +58,7 @@ main =
   void $ attachToBody app
 
 ```
-[Open the demo](https://lagunoff.github.io/htmlt-counter/)
+[Open the demo](https://lagunoff.github.io/htmlt/js-backend/htmlt-counter.jsexe/)
 
 ## Quick API summary
 
@@ -152,18 +152,30 @@ detach :: RunningApp -> IO ()
   <tbody>
     <tr>
       <td>Counter</td>
+      <td>5.6M all.js, 3.7M all.min.js</td>
       <td><a href=./examples/counter/counter.hs target=_blank>source</a></td>
-      <td><a href=https://lagunoff.github.io/htmlt-counter/ target=_blank>demo<a></td>
+      <td>
+        <a href=https://lagunoff.github.io/htmlt/js-backend/htmlt-counter.jsexe/ target=_blank>open<a> |
+        <a href=https://lagunoff.github.io/htmlt/js-backend/htmlt-counter.jsexe/min.html target=_blank>open minified<a>
+      </td>
     </tr>
     <tr>
       <td>TodoMVC</td>
+      <td>3.1M all.js, 773K all.min.js</td>
       <td><a href=./examples/todomvc/todomvc.hs target=_blank>source</a></td>
-      <td><a href=https://lagunoff.github.io/htmlt-todomvc/ target=_blank>demo<a></td>
+      <td>
+        <a href=https://lagunoff.github.io/htmlt/js-backend/htmlt-todomvc.jsexe/ target=_blank>open<a> |
+        <a href=https://lagunoff.github.io/htmlt/js-backend/htmlt-todomvc.jsexe/min.html target=_blank>open minified<a>
+      </td>
     </tr>
     <tr>
       <td>Simple Routing</td>
+      <td>11M all.js, 7.6M all.min.js</td>
       <td><a href=./examples/simple-routing/simple-routing.hs target=_blank>source</a></td>
-      <td><a href=https://lagunoff.github.io/htmlt-simple-routing/ target=_blank>demo<a></td>
+      <td>
+        <a href=https://lagunoff.github.io/htmlt/js-backend/htmlt-simple-routing.jsexe/ target=_blank>open<a> |
+        <a href=https://lagunoff.github.io/htmlt/js-backend/htmlt-simple-routing.jsexe/min.html target=_blank>open minified<a>
+      </td>
     </tr>
   </tbody>
 </table>
@@ -172,3 +184,7 @@ detach :: RunningApp -> IO ()
  - [x] Migrate to GHC with JavaScript backend
  - [ ] More examples and documentation
  - [ ] Similar library for ReactNative
+
+## Legacy GHCJS version
+The legacy version for GHCJS 8.6 and GHCJS 8.10 can still be found in
+the [ghcjs](https://github.com/lagunoff/htmlt/tree/ghcjs) branch

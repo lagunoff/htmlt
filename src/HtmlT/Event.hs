@@ -281,8 +281,8 @@ applyFinalizer ReactiveEnv{renv_subscriptions} finalizers = do
 -- | Alternative version if 'fmap' where given function will only be
 -- called once every time 'Dynamic a' value changes, whereas in 'fmap'
 -- it would be called once for each subscription per change event. As
--- a general guideline, if the function @f! is inexpensive, opt for
--- using @fmap f@. Otherwise, consider using @mapDyn f@.
+-- a general guideline, if the function @f! is inexpensive, choose
+-- @fmap f@. Otherwise, consider using @mapDyn f@.
 mapDyn
   :: MonadReactive m
   => (a -> b)
