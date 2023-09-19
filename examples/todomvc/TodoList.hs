@@ -18,9 +18,9 @@ data TodoListConfig = TodoListConfig
   }
 
 data TodoListState = TodoListState
-  { tls_title :: JSString
-  , tls_items :: [TodoItem.TodoItemState]
-  , tls_filter :: Filter
+  { title :: JSString
+  , items :: [TodoItem.TodoItemState]
+  , filter :: Filter
   } deriving (Show, Eq, Generic)
 
 data Filter = All | Active | Completed
@@ -48,35 +48,35 @@ eval = \case
     todosRef <- execReactiveT renv do
       todosRef <- newRef $ TodoListState "" todos initFilter
       subscribe (updates (fromRef urlHashRef)) $
-        modifyRef todosRef . (\v s -> s{tls_filter=v}) . parseFilter'
+        modifyRef todosRef . (\v s -> s{filter=v}) . parseFilter'
       return todosRef
     liftIO $ onBeforeUnload do
-      TodoListState{tls_items} <- readRef todosRef
-      localStorageSet $ LocalStorageTodoItems tls_items
+      TodoListState{items} <- readRef todosRef
+      localStorageSet $ LocalStorageTodoItems items
     return todosRef
   ToggleAllAction cfg isChecked ->
     modifyRef cfg.state_ref \s -> s
-      { tls_items =
-        fmap (\i -> i {TodoItem.tis_completed = isChecked}) s.tls_items
+      { items =
+        fmap (\i -> i {TodoItem.completed = isChecked}) s.items
       }
   InputAction cfg newVal -> do
-    modifyRef cfg.state_ref \s -> s {tls_title = newVal}
+    modifyRef cfg.state_ref \s -> s {title = newVal}
   CommitAction cfg -> do
-    title <- JSS.strip . (.tls_title) <$> readRef cfg.state_ref
+    title <- JSS.strip . (.title) <$> readRef cfg.state_ref
     case title of
       "" -> return ()
       t -> modifyRef cfg.state_ref \s -> s
-        { tls_items = s.tls_items <> [mkNewItem t]
-        , tls_title = ""
+        { items = s.items <> [mkNewItem t]
+        , title = ""
         }
   KeydownAction cfg key -> case key of
     13 {- Enter -} -> eval (CommitAction cfg)
     _ -> return ()
   DeleteItemAction cfg itemIx ->
-    modifyRef cfg.state_ref \s -> s {tls_items = deleteIx itemIx s.tls_items}
+    modifyRef cfg.state_ref \s -> s {items = deleteIx itemIx s.items}
   ClearCompletedAction cfg ->
     modifyRef cfg.state_ref \s -> s
-      {tls_items = (List.filter (not . TodoItem.tis_completed)) s.tls_items}
+      {items = (List.filter (not . TodoItem.completed)) s.items}
   where
     deleteIx :: Int -> [a] -> [a]
     deleteIx _ []     = []
@@ -84,7 +84,7 @@ eval = \case
       | i == 0    = as
       | otherwise = a : deleteIx (i-1) as
     mkNewItem t =
-      TodoItem.emptyTodoItemState {TodoItem.tis_title = t}
+      TodoItem.emptyTodoItemState {TodoItem.title = t}
 
 html :: TodoListConfig -> Html ()
 html cfg = do
@@ -99,7 +99,7 @@ html cfg = do
     headerWidget = header_ [class_ "header"] do
       h1_ (text "todos")
       input_ [class_ "new-todo", placeholder_ "What needs to be done?", autofocus_ True] do
-        dynValue $ (.tls_title) <$> fromRef cfg.state_ref
+        dynValue $ (.title) <$> fromRef cfg.state_ref
         on "input" $ decodeEvent valueDecoder $
           eval . InputAction cfg
         on "keydown" $ decodeEvent keyCodeDecoder $
@@ -118,7 +118,7 @@ html cfg = do
             { TodoItem.state_ref = todoRef
               { dynref_modifier = todoItemModifier cfg idx todoRef.dynref_modifier
               }
-            , TodoItem.is_hidden =
+            , TodoItem.is_hidden_dyn =
               isTodoItemHidden <$> fromRef cfg.state_ref <*> fromRef todoRef
             , TodoItem.ask_delete_item = eval (DeleteItemAction cfg idx)
             }
@@ -145,18 +145,18 @@ html cfg = do
         toggleClass "selected" $ filterSelectedDyn flt
         text $ JSS.pack (show flt)
     hiddenDyn =
-      Prelude.null . (.tls_items) <$> fromRef cfg.state_ref
+      Prelude.null . (.items) <$> fromRef cfg.state_ref
     itemsLeftDyn =
       countItemsLeft <$> fromRef cfg.state_ref
     filterSelectedDyn flt =
-      (==flt) . (.tls_filter) <$> fromRef cfg.state_ref
+      (==flt) . (.filter) <$> fromRef cfg.state_ref
     itemsDyn =
-      (.tls_items) <$> fromRef cfg.state_ref
-    countItemsLeft TodoListState{tls_items} =
-      foldl (\acc TodoItem.TodoItemState{tis_completed} ->
-        if not tis_completed then acc + 1 else acc) 0 tls_items
+      (.items) <$> fromRef cfg.state_ref
+    countItemsLeft TodoListState{items} =
+      foldl (\acc TodoItem.TodoItemState{completed} ->
+        if not completed then acc + 1 else acc) 0 items
     isTodoItemHidden listState itemState =
-      case (listState.tls_filter, itemState.tis_completed) of
+      case (listState.filter, itemState.completed) of
         (Active,    True)  -> True
         (Completed, False) -> True
         _                  -> False
@@ -175,10 +175,10 @@ todoItemModifier cfg idx elemModifier = Modifier \upd f -> do
   let
     -- When False, the update event won't be propagated into the outer
     -- widget for the sake of optimization
-    needsUpdate = upd && (old.tis_completed /= new.tis_completed)
+    needsUpdate = upd && (old.completed /= new.completed)
   -- Update the outer widget
   unModifier (dynref_modifier cfg.state_ref) needsUpdate \old ->
-    (old {tls_items = overIx idx (const new) old.tls_items}, ())
+    (old {items = overIx idx (const new) old.items}, ())
   return result
   where
     overIx :: Int -> (a -> a) -> [a] -> [a]

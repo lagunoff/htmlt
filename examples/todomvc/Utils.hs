@@ -17,17 +17,13 @@ import Unsafe.Coerce
 
 mkUrlHashRef :: MonadReactive m => m (DynRef JSString)
 mkUrlHashRef = do
-  initial <- liftIO readUrlHash
+  initial <- liftIO js_readUrlHash
   routeRef <- newRef initial
   win <- getCurrentWindow
   popStateCb <- liftIO $ asyncCallback $
-    readUrlHash >>= dynStep . writeRef routeRef
+    js_readUrlHash >>= dynStep . writeRef routeRef
   liftIO $ js_setProp (coerce win) "onpopstate" (unsafeCoerce popStateCb)
   return routeRef
-
-readUrlHash :: IO JSString
-readUrlHash =
-  js_readUrlHash
 
 localStorageSet :: forall a m. (MonadIO m, ToJSVal a, Typeable a) => a -> m ()
 localStorageSet val =
