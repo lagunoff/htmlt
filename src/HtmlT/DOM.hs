@@ -110,7 +110,7 @@ setTextValue v = js_setTextValue v
 -- does not removes siblings
 unsafeInsertHtml :: DOMElement -> Maybe DOMNode -> JSString -> IO ()
 unsafeInsertHtml parent manchor rawHtml = js_unsafeInsertHtml parent
-  (maybeToNullable manchor) rawHtml
+  (nullableFromMaybe manchor) rawHtml
 
 -- | Assuming given 'ContentBoundary' was inserted into the @parent@
 -- element remove all the content inside the boundary.

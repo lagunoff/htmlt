@@ -9,25 +9,20 @@ module JavaScript.Compat.Marshal where
 
 import Data.Bool
 import Data.Maybe
-import GHC.Exts as Exts
+import Data.Coerce
 import GHC.JS.Prim
 import JavaScript.Compat.String
 import Unsafe.Coerce
 
 newtype Nullable v = Nullable {unNullable :: JSVal}
 
-nullableToMaybe :: Nullable JSVal -> Maybe JSVal
+nullableToMaybe :: Coercible v JSVal => Nullable v -> Maybe v
 nullableToMaybe (Nullable jsval)
   | isNull jsval = Nothing
-  | otherwise    = Just jsval
+  | otherwise    = Just (coerce jsval)
 
-nullableFromMaybe :: Maybe JSVal -> Nullable JSVal
-nullableFromMaybe = Nullable . fromMaybe jsNull
-
-maybeToNullable :: Coercible v JSVal => Maybe v -> Nullable v
-maybeToNullable = \case
-  Nothing -> Nullable jsNull
-  Just v -> Nullable $ coerce v
+nullableFromMaybe :: Coercible v JSVal => Maybe v -> Nullable v
+nullableFromMaybe = Nullable . maybe jsNull coerce
 
 class FromJSVal v where fromJSVal :: JSVal -> IO (Maybe v)
 

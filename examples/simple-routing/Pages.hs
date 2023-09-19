@@ -81,18 +81,18 @@ homePage = unsafeHtml $ "\
 
 countriesListPage :: CountriesListQ -> Html ()
 countriesListPage q@CountriesListQ{..} = div_ [class_ "CountriesList"] do
-  queryRef <- newRef q
+  searchQueryRef <- newRef q
   form_ do
     onOptions "submit" (ListenerOpts True True True) \_event -> do
-      newRoute <- toUrl . CountriesListR . set #page 1 <$> readRef queryRef
+      newRoute <- toUrl . CountriesListR . (\s -> s{page = 1}) <$> readRef searchQueryRef
       pushUrl newRoute
     div_ [style_ "display:flex;"] do
       input_ [type_ "text", placeholder_ "Search countries by title"
         , autofocus_ True
         ] do
-          dynValue $ view (#search . to (fromMaybe "")) <$> fromRef queryRef
+          dynValue $ fromMaybe "" . (.search) <$> fromRef searchQueryRef
           on "input" $ decodeEvent valueDecoder $
-            modifyRef queryRef . set #search . Just
+            modifyRef searchQueryRef . (\v s -> s{search = v}) . Just
       button_ [type_ "submit"] "Search"
   table_ do
     thead_ $ tr_ do
@@ -160,10 +160,10 @@ countriesListPage q@CountriesListQ{..} = div_ [class_ "CountriesList"] do
         JSS.isInfixOf (JSS.toLower needle) (JSS.toLower title)
       | otherwise = const True
     countrySortBy = case sort_by of
-      SortByTitle -> Left . view #title
-      SortByRegion -> Right . Left . view #region
-      SortBySubregion -> Right . Right . Left . view #subregion
-      SortByPopulation -> Right . Right . Right . view #population
+      SortByTitle -> Left . (.title)
+      SortByRegion -> Right . Left . (.region)
+      SortBySubregion -> Right . Right . Left . (.subregion)
+      SortByPopulation -> Right . Right . Right . (.population)
     countrySortDir = case sort_dir of
       Asc -> Left . countrySortBy
       Desc -> Right . Down . countrySortBy
@@ -177,10 +177,9 @@ countriesMapPage CountriesMapQ{..} =
       unsafeHtml countriesMap
       figcaption_ "political map of the planet Earth"
       centerEl <- asks html_current_element
-      liftIO $ js_selectCountry centerEl $ maybeToNullable $
-        textToJSString <$> selected
+      liftIO $ js_selectCountry centerEl $ nullableFromMaybe $ selected
       on "click" \event -> do
-        mcode <- fmap textFromJSString . nullableToMaybe <$>
+        mcode <- nullableToMaybe <$>
           liftIO (js_svgClickGetCountryCode event)
         mapM_ (pushUrl . toUrl . CountriesMapR . CountriesMapQ . Just) mcode
 

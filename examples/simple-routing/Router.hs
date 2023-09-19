@@ -6,6 +6,7 @@ import Data.List qualified as List
 import Data.Maybe
 import Data.Function
 import GHC.Generics
+import Text.Read
 import JavaScript.Compat.String (JSString(..))
 import JavaScript.Compat.String qualified as JSS
 
@@ -56,7 +57,7 @@ parseRoute = \case
   _ -> Nothing
   where
     parsePage = fromMaybe defaultCountriesListQ.page
-      . (parseQueryParamMaybe =<<)
+      . (parseIntQuery =<<)
     parseSortDir = \case
       Just "asc" -> Asc
       Just "desc" -> Desc
@@ -67,6 +68,7 @@ parseRoute = \case
       Just "region" -> SortByRegion
       Just "subregion" -> SortBySubregion
       _ -> sort_by defaultCountriesListQ
+    parseIntQuery = readMaybe . JSS.unpack
 
 printRoute :: Route -> UrlParts
 printRoute = \case
@@ -80,7 +82,7 @@ printRoute = \case
     , ("sort_by",) <$> printSortBy sort_by
     ]
   where
-    printPage = fmap toQueryParam .
+    printPage = fmap toIntQuery .
       mfilter (/=defaultCountriesListQ.page) . Just
     printSortDir = fmap (\case
       Asc -> "asc"
@@ -92,6 +94,7 @@ printRoute = \case
       SortByRegion -> "region"
       SortBySubregion -> "subregion") .
       mfilter (/=defaultCountriesListQ.sort_by) . Just
+    toIntQuery = JSS.pack . show
 
 defaultCountriesListQ :: CountriesListQ
 defaultCountriesListQ = CountriesListQ
@@ -142,6 +145,3 @@ textToParts t = Url segments query
       & fmap (breakOn1 "=" . JSS.decodeURIComponent)
     breakOn1 s t =
       let (a, b) = JSS.breakOn s t in (a, JSS.drop 1 b)
-
-parseQueryParamMaybe = undefined
-toQueryParam = undefined

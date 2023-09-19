@@ -18,7 +18,12 @@ mkUrlHashRef = do
   win <- liftIO getCurrentWindow
   popStateCb <- liftIO $ asyncCallback $
     js_readUrlHash >>= dynStep . writeRef routeRef
-  liftIO $ js_setProp (coerce win) "onpopstate" (unsafeCoerce popStateCb)
+  liftIO $ js_callMethod2 (coerce win) "addEventListener"
+    (unJSString "popstate") (unsafeCoerce popStateCb)
+  installFinalizer do
+    js_callMethod2 (coerce win) "removeEventListener"
+      (unJSString "popstate") (unsafeCoerce popStateCb)
+    releaseCallback popStateCb
   return routeRef
 
 pushUrl :: MonadIO m => JSString -> m ()
@@ -40,7 +45,7 @@ foreign import javascript unsafe
       svgPaths[i].classList.add('selected');\
     }\
     svgGroup.parentElement.appendChild(svgGroup);\
-  })($1, $2)"
+  })"
   js_selectCountry :: DOMElement -> Nullable JSString -> IO ()
 
 foreign import javascript unsafe
@@ -53,11 +58,11 @@ foreign import javascript unsafe
       iter = iter.parentNode;\
     }\
     return null;\
-  })($1)"
+  })"
   js_svgClickGetCountryCode :: DOMEvent -> IO (Nullable JSString)
 
 foreign import javascript unsafe
-  "Prism.highlight($1, Prism.languages.haskell, 'haskell')"
+  "((s) => Prism.highlight(s, Prism.languages.haskell, 'haskell'))"
   js_highlightHaskell :: JSString -> JSString
 
 foreign import javascript unsafe
@@ -65,7 +70,7 @@ foreign import javascript unsafe
     var scriptEl = document.createElement('script');\
     scriptEl.innerText = script;\
     document.head.appendChild(scriptEl);\
-  })($1)"
+  })"
   js_insertScript :: JSString -> IO ()
 foreign import javascript unsafe
   "(function(){\
@@ -74,7 +79,7 @@ foreign import javascript unsafe
   js_readUrlHash :: IO JSString
 foreign import javascript unsafe
   "(function(url){\
-    return location.push(url);\
+    return location = url;\
   })"
   js_pushHref :: JSString -> IO ()
 #else

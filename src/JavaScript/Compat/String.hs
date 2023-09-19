@@ -153,7 +153,7 @@ foreign import javascript unsafe
   "((a, b) => a + b)"
   js_append :: JSVal -> JSVal -> JSVal
 foreign import javascript unsafe
-  "((str, prefix) => {\
+  "((prefix, str) => {\
     if (str.startsWith(prefix)) {\
       return str.slice(prefix.length);\
     }\
@@ -167,7 +167,7 @@ foreign import javascript unsafe
   "((sep, str) => {\
     var index = str.indexOf(sep);\
     if (index !== -1) {\
-      return [str.slice(0, index), str.slice(index + sep.length)];\
+      return [str.slice(0, index), str.slice(index)];\
     }\
     return [str, ''];\
    })"
