@@ -1,9 +1,9 @@
-import Control.Lens
 import Control.Monad
 import Control.Monad.IO.Class
 import Data.Maybe
-import Data.Text
+import Data.Functor
 import HtmlT
+import JavaScript.Compat.String (JSString(..))
 
 import "this" Pages
 import "this" Router
@@ -35,7 +35,7 @@ main = void $ attachToBody do
     CountriesListR q -> countriesListPage q
   footer_ $ p_ $ a_ [href_ "https://github.com/lagunoff"] "Vladislav Lagunov"
 
-customCss :: Text
+customCss :: JSString
 customCss = "\
   \body header, body main, body footer, body article {\
   \  max-width: 80rem;\

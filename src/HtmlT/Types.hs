@@ -1,15 +1,15 @@
 module HtmlT.Types where
 
-import Control.Applicative
 import Control.Monad.Catch
 import Control.Monad.Reader
 import Data.Coerce
-import Data.Text
+import Data.String
 import GHC.Generics
-import GHCJS.Marshal.Pure
-import GHCJS.Prim
-import GHCJS.Types
 import HtmlT.Event
+import Control.Monad.Fix
+import GHC.JS.Prim
+
+import JavaScript.Compat.String (JSString(..))
 
 -- | HtmlT is nothing more than just a newtype over ReaderT HtmlEnv
 newtype HtmlT m a = HtmlT {unHtmlT :: ReaderT HtmlEnv m a}
@@ -33,28 +33,22 @@ type Html = HtmlT IO
 -- | A newtype over JSVal which is an instance of Node
 -- https://developer.mozilla.org/en-US/docs/Web/API/Node
 newtype DOMNode = DOMNode {unDOMNode :: JSVal}
-  deriving anyclass (IsJSVal)
-  deriving newtype (PToJSVal, PFromJSVal)
 
 -- | A newtype over JSVal which is an instance of HTMLElement
 -- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement
 newtype DOMElement = DOMElement {unDOMElement :: JSVal}
-  deriving anyclass (IsJSVal)
-  deriving newtype (PToJSVal, PFromJSVal)
 
 -- | A newtype over JSVal which is an instance of Event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event
 newtype DOMEvent = DOMEvent {unDOMEvent :: JSVal}
-  deriving anyclass (IsJSVal)
-  deriving newtype (PToJSVal, PFromJSVal)
 
--- | Untyped for simplicity and because it was annoying to not find
--- some of the new Events in ghcjs-dom where these names are
--- representated by data constructors
-type EventName = Text
+-- | See https://developer.mozilla.org/en-US/docs/Web/Events for
+-- reference, what events are supported by particular elements
+newtype EventName = EventName {unEventName :: JSString}
+  deriving newtype IsString
 
--- | Two 'DOMNode's (comments) that define boundaries for another
--- DOM content
+-- | Two comment nodes that define a boundary and a placeholder to
+-- insert additional nodes within the DOM.
 data ContentBoundary = ContentBoundary
   { boundary_begin :: DOMNode
   , boundary_end :: DOMNode

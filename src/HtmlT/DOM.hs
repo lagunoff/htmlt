@@ -1,28 +1,25 @@
--- | Functions and definitions to work with DOM. This exists because
--- ghcjs-dom is too heavy, takes about an hour to compile and
--- increases size of the generated JavaScript
+{-|
+Functions and definitions to manipulate and query the DOM tree
+-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE JavaScriptFFI #-}
 module HtmlT.DOM where
 
+import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
 import Data.Coerce
-import Data.String
-import Data.Text as T
-import Data.JSString.Text
+import GHC.Exts as Exts
 import GHC.Generics
-import GHCJS.Foreign.Callback
-import GHCJS.Prim as Prim
-import GHCJS.Marshal
-import GHCJS.Types
-import GHCJS.Nullable
-import JavaScript.Object.Internal (Object(..))
-import qualified JavaScript.Object as Object
+import GHC.JS.Foreign.Callback
+import GHC.JS.Prim
+import Unsafe.Coerce
 
 import HtmlT.Types
+import JavaScript.Compat.Marshal
+import JavaScript.Compat.String (JSString(..))
 
 data ListenerOpts = ListenerOpts
   { lo_stop_propagation :: Bool
@@ -34,8 +31,7 @@ data ListenerOpts = ListenerOpts
   -- otherwise — @asyncCallback1@ this is relevant for example when
   -- listening to @BeforeUnloadEvent@
   -- https://developer.mozilla.org/en-US/docs/Web/API/BeforeUnloadEvent
-  } deriving stock (Eq, Show, Generic)
-    deriving anyclass (ToJSVal)
+  } deriving stock (Generic)
 
 defaultListenerOpts :: ListenerOpts
 defaultListenerOpts = ListenerOpts False False False
@@ -62,13 +58,13 @@ appendChild = js_appendChild
 
 -- | Element.setAttribute()
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/setAttribute
-setAttribute :: DOMElement -> Text -> Text -> IO ()
-setAttribute e k v = js_setAttribute e (textToJSString k) (textToJSString v)
+setAttribute :: DOMElement -> JSString -> JSString -> IO ()
+setAttribute e k v = js_setAttribute e k v
 
 -- | Element.removeAttribute()
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/removeAttribute
-removeAttribute :: DOMElement -> Text -> IO ()
-removeAttribute e k = js_removeAttribute e (textToJSString k)
+removeAttribute :: DOMElement -> JSString -> IO ()
+removeAttribute e k = js_removeAttribute e k
 
 -- | DOMNode.removeChild()
 -- https://developer.mozilla.org/en-US/docs/Web/API/DOMNode/removeChild
@@ -77,44 +73,44 @@ removeChild = js_removeChild
 
 -- | Document.createElement()
 -- https://developer.mozilla.org/en-US/docs/Web/API/Document/createElement
-createElement :: Text -> IO DOMElement
-createElement = js_createElement . textToJSString
+createElement :: JSString -> IO DOMElement
+createElement = js_createElement
 
 -- | Document.createElementNS()
 -- https://developer.mozilla.org/en-US/docs/Web/API/Document/createElementNS
-createElementNS :: Text -> Text -> IO DOMElement
-createElementNS n t = js_createElementNS (textToJSString n) (textToJSString t)
+createElementNS :: JSString -> JSString -> IO DOMElement
+createElementNS n t = js_createElementNS n t
 
 -- | Document.createTextNode()
 -- https://developer.mozilla.org/en-US/docs/Web/API/Document/createTextNode
-createTextNode :: Text -> IO DOMNode
-createTextNode = js_createTextNode . textToJSString
+createTextNode :: JSString -> IO DOMNode
+createTextNode = js_createTextNode
 
 -- | Document.createComment()
 -- https://developer.mozilla.org/en-US/docs/Web/API/Document/createComment
-createComment :: Text -> IO DOMNode
-createComment = js_createComment . textToJSString
+createComment :: JSString -> IO DOMNode
+createComment = js_createComment
 
 -- | Element.classList.add()
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/classList
-classListAdd :: DOMElement -> Text -> IO ()
-classListAdd e c = js_classListAdd e (textToJSString c)
+classListAdd :: DOMElement -> JSString -> IO ()
+classListAdd e c = js_classListAdd e c
 
 -- | Element.classList.remove()
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/classList
-classListRemove :: DOMElement -> Text -> IO ()
-classListRemove e c = js_classListRemove e (textToJSString c)
+classListRemove :: DOMElement -> JSString -> IO ()
+classListRemove e c = js_classListRemove e c
 
 -- | Assign text to DOMNode.nodeValue
 -- https://developer.mozilla.org/en-US/docs/Web/API/DOMNode/nodeValue
-setTextValue :: DOMNode -> Text -> IO ()
-setTextValue v = js_setTextValue v . textToJSString
+setTextValue :: DOMNode -> JSString -> IO ()
+setTextValue v = js_setTextValue v
 
 -- | Insert raw HTML code, similar to @parent.innerHTML = rawHtml@ but
 -- does not removes siblings
-unsafeInsertHtml :: DOMElement -> Maybe DOMNode -> Text -> IO ()
+unsafeInsertHtml :: DOMElement -> Maybe DOMNode -> JSString -> IO ()
 unsafeInsertHtml parent manchor rawHtml = js_unsafeInsertHtml parent
-  (maybeToNullable manchor) (textToJSString rawHtml)
+  (maybeToNullable manchor) rawHtml
 
 -- | Assuming given 'ContentBoundary' was inserted into the @parent@
 -- element remove all the content inside the boundary.
@@ -148,10 +144,10 @@ addEventListener ListenerOpts{..} target name f = do
   hscb <- mkcallback (f . DOMEvent)
   jscb <- withopts hscb
   js_callMethod2 (coerce target) "addEventListener"
-    (jsval (textToJSString name)) (jsval jscb)
+    (unJSString (unEventName name)) (unsafeCoerce jscb)
   return do
     js_callMethod2 (coerce target) "removeEventListener"
-      (jsval (textToJSString name)) (jsval jscb)
+      (unJSString (unEventName name)) (unsafeCoerce jscb)
     releaseCallback hscb
   where
     mkcallback = if lo_sync_callback
@@ -233,10 +229,10 @@ keyCodeDecoder = propDecoder "keyCode"
 -- | Collection of some useful information from KeyboardEvent
 data KeyboardEvent = KeyboardEvent
   { ke_modifiers :: KeyModifiers
-  , ke_key :: Maybe Text
+  , ke_key :: Maybe JSString
   , ke_key_code :: Int
   , ke_repeat :: Bool
-  } deriving stock (Eq, Show, Generic)
+  } deriving stock (Generic)
 
 -- | Read information from KeyboardEvent
 keyboardEventDecoder :: MonadIO m => JSVal -> MaybeT m KeyboardEvent
@@ -250,7 +246,7 @@ keyboardEventDecoder keyEvent = do
 -- | Event.target.value
 -- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
 -- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-value
-valueDecoder :: MonadIO m => JSVal -> MaybeT m Text
+valueDecoder :: MonadIO m => JSVal -> MaybeT m JSString
 valueDecoder =
   propDecoder "target" >=> propDecoder "value"
 
@@ -261,18 +257,18 @@ checkedDecoder :: MonadIO m => JSVal -> MaybeT m Bool
 checkedDecoder =
   propDecoder "target" >=> propDecoder "checked"
 
-propDecoder :: (MonadIO m, FromJSVal v) => Text -> JSVal -> MaybeT m v
+propDecoder :: (MonadIO m, FromJSVal v) => String -> JSVal -> MaybeT m v
 propDecoder k obj = do
   -- TODO: Make sure it is true that if this guard succeeds,
   -- Object.getProp will never throw an exception!
   guard $ not (isUndefined obj) && not (isNull obj)
   MaybeT $ liftIO $ fromJSVal =<<
-    Object.getProp (textToJSString k) (coerce obj)
+    getProp obj k
 
 errorGhcjsOnly :: a
 errorGhcjsOnly = error "Only GHCJS is supported"
 
-#ifndef ghcjs_HOST_OS
+#if !defined(javascript_HOST_ARCH)
 js_onBeforeUnload :: Callback a -> IO ()
 js_onBeforeUnload = errorGhcjsOnly
 
@@ -303,57 +299,58 @@ js_callMethod1 :: JSVal -> JSString -> JSVal -> IO JSVal = errorGhcjsOnly
 js_callMethod2 :: JSVal -> JSString -> JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
 js_waitDocumentLoad :: IO () = errorGhcjsOnly
 js_callbackWithOptions :: Bool -> Bool -> Callback (JSVal -> IO ()) -> IO (Callback (JSVal -> IO ())) = errorGhcjsOnly
+js_setProp :: JSVal -> JSVal -> JSVal -> IO () = errorGhcjsOnly
 #else
 foreign import javascript unsafe
-  "$1.appendChild($2)"
+  "(($1, $2) => $1.appendChild($2))"
   js_appendChild :: DOMElement -> DOMNode -> IO ()
 foreign import javascript unsafe
-  "$1.insertBefore($2, $3)"
+  "(($1, $2, $3) => $1.insertBefore($2, $3))"
   js_insertBefore :: DOMElement -> DOMNode -> DOMNode -> IO ()
 foreign import javascript unsafe
-  "$1.setAttribute($2, $3)"
+  "(($1, $2, $3) => $1.setAttribute($2, $3))"
   js_setAttribute :: DOMElement -> JSString -> JSString -> IO ()
 foreign import javascript unsafe
-  "$1.removeAttribute($2)"
+  "(($1, $2) => $1.removeAttribute($2))"
   js_removeAttribute :: DOMElement -> JSString -> IO ()
 foreign import javascript unsafe
-  "$1.removeChild($2)"
+  "(($1, $2) => $1.removeChild($2))"
   js_removeChild :: DOMElement -> DOMNode -> IO ()
 foreign import javascript unsafe
-  "$1.replaceChild($2, $3)"
+  "(($1, $2, $3) => $1.replaceChild($2, $3))"
   js_replaceChild :: DOMElement -> DOMNode -> DOMNode -> IO ()
 foreign import javascript unsafe
-  "document.createElement($1)"
+  "(($1) => document.createElement($1))"
   js_createElement :: JSString -> IO DOMElement
 foreign import javascript unsafe
-  "document.createElementNS($1, $2)"
+  "(($1, $2) => document.createElementNS($1, $2))"
   js_createElementNS :: JSString -> JSString -> IO DOMElement
 foreign import javascript unsafe
-  "document.createTextNode($1)"
+  "(($1) => document.createTextNode($1))"
   js_createTextNode :: JSString -> IO DOMNode
 foreign import javascript unsafe
-  "document.createComment($1)"
+  "(($1) => document.createComment($1))"
   js_createComment :: JSString -> IO DOMNode
 foreign import javascript unsafe
-  "$1.classList.add($2)"
+  "(($1, $2) => $1.classList.add($2))"
   js_classListAdd :: DOMElement -> JSString -> IO ()
 foreign import javascript unsafe
-  "$1.classList.remove($2)"
+  "(($1, $2) => $1.classList.remove($2))"
   js_classListRemove :: DOMElement -> JSString -> IO ()
 foreign import javascript unsafe
-  "$1.nodeValue = $2;"
+  "(($1, $2) => { $1.nodeValue = $2; })"
   js_setTextValue :: DOMNode -> JSString -> IO ()
 foreign import javascript unsafe
-  "window.addEventListener('beforeunload', $1)"
+  "(($1) => window.addEventListener('beforeunload', $1))"
   js_onBeforeUnload :: Callback a -> IO ()
 foreign import javascript unsafe
-  "(function(){ return window; })()"
+  "(function(){ return window; })"
   js_getCurrentWindow :: IO JSVal
 foreign import javascript unsafe
-  "(function(){ return window.document; })()"
+  "(function(){ return window.document; })"
   js_getCurrentDocument :: IO JSVal
 foreign import javascript unsafe
-  "(function(){ return window.document.body; })()"
+  "(function(){ return window.document.body; })"
   js_getCurrentBody :: IO JSVal
 foreign import javascript unsafe
   "(function (begin, end) {\
@@ -364,25 +361,25 @@ foreign import javascript unsafe
         ) break;\
       end.previousSibling.parentNode.removeChild(end.previousSibling);\
     }\
-  })($1, $2)"
+  })"
   js_clearBoundary :: DOMNode -> DOMNode -> IO ()
 foreign import javascript unsafe
   "(function (begin, end) {\
     if (begin.parentNode) begin.parentNode.removeChild(begin);\
     if (end.parentNode) end.parentNode.removeChild(end);\
-  })($1, $2)"
+  })"
   js_detachBoundary :: DOMNode -> DOMNode -> IO ()
-foreign import javascript unsafe "$1()"
+foreign import javascript unsafe "(($1) => $1())"
   js_call0 :: JSVal -> IO JSVal
-foreign import javascript unsafe "$1($2)"
+foreign import javascript unsafe "(($1, $2) => $1($2))"
   js_call1 :: JSVal -> JSVal -> IO JSVal
-foreign import javascript unsafe "$1($2, $3)"
+foreign import javascript unsafe "(($1, $2, $3) => $1($2, $3))"
   js_call2 :: JSVal -> JSVal -> JSVal -> IO JSVal
-foreign import javascript unsafe "$1[$2]()"
+foreign import javascript unsafe "(($1, $2) => $1[$2]())"
   js_callMethod0 :: JSVal -> JSString -> IO JSVal
-foreign import javascript unsafe "$1[$2]($3)"
+foreign import javascript unsafe "(($1, $2, $3) => $1[$2]($3))"
   js_callMethod1 :: JSVal -> JSString -> JSVal -> IO JSVal
-foreign import javascript unsafe "$1[$2]($3, $4)"
+foreign import javascript unsafe "(($1, $2, $3, $4) => $1[$2]($3, $4))"
   js_callMethod2 :: JSVal -> JSString -> JSVal -> JSVal -> IO JSVal
 foreign import javascript unsafe
   "(function(el, anchor, htmlString){\
@@ -400,14 +397,14 @@ foreign import javascript unsafe
         el.appendChild(tempChilds[j]);\
       }\
     }\
-  })($1, $2, $3)"
+  })"
   js_unsafeInsertHtml :: DOMElement -> Nullable DOMNode -> JSString -> IO ()
 foreign import javascript unsafe
-  "$r = function(e) {\
+  "(($1, $2, $3) => function(e) {\
     if ($1) e.stopPropagation();\
     if ($2) e.preventDefault();\
     return $3(e);\
-  }"
+  })"
   js_callbackWithOptions :: Bool -> Bool -> Callback (JSVal -> IO ()) -> IO (Callback (JSVal -> IO ()))
 foreign import javascript interruptible
   "if (document.readyState == 'loading') {\
@@ -416,12 +413,18 @@ foreign import javascript interruptible
     $c();\
   }"
   js_waitDocumentLoad :: IO ()
+foreign import javascript unsafe
+  "(($1, $2, $3) => { $1[$2] = $3; })"
+  js_setProp :: JSVal -> JSString -> JSVal -> IO ()
+foreign import javascript unsafe "(() => null)"
+  js_null :: JSVal
 #endif
 
 instance (a ~ (), MonadIO m) => IsString (HtmlT m a) where
   fromString s = do
     HtmlEnv{html_current_element, html_content_boundary} <- ask
-    textNode <- liftIO $ createTextNode (T.pack s)
+    let jsstr = toJSString s
+    textNode <- liftIO $ createTextNode (JSString jsstr)
     case html_content_boundary of
       Just ContentBoundary{boundary_end} -> liftIO $
         js_insertBefore html_current_element textNode boundary_end

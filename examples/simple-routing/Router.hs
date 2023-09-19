@@ -1,17 +1,18 @@
 module Router where
 
-import Control.Lens
 import Control.Monad
-import Data.List as L
+import Data.Bifunctor
+import Data.List qualified as List
 import Data.Maybe
-import Data.Text as T
+import Data.Function
 import GHC.Generics
-import Network.URI
-import Web.HttpApiData
+import Text.Read
+import JavaScript.Compat.String (JSString(..))
+import JavaScript.Compat.String qualified as JSS
 
 data UrlParts = Url
-  { partsPath :: [Text] -- ^ Path segments
-  , partsQuery :: [(Text, Text)] -- ^ GET parameters
+  { partsPath :: [JSString] -- ^ Path segments
+  , partsQuery :: [(JSString, JSString)] -- ^ GET parameters
   } deriving (Eq, Show, Generic)
 
 data Route
@@ -21,14 +22,14 @@ data Route
   deriving (Eq, Show, Generic)
 
 data CountriesListQ = CountriesListQ
-  { search :: Maybe Text
+  { search :: Maybe JSString
   , page :: Int
   , sort_by :: CountrySortBy
   , sort_dir :: SortDir
   } deriving (Eq, Show, Generic)
 
 data CountriesMapQ = CountriesMapQ
-  { selected :: Maybe Text
+  { selected :: Maybe JSString
   } deriving (Eq, Show, Generic)
 
 data SortDir = Asc | Desc
@@ -45,53 +46,55 @@ parseRoute :: UrlParts -> Maybe Route
 parseRoute = \case
   Url [] [] -> Just HomeR
   Url ["map"] q
-    | selected <- L.lookup "selected" q
-    -> Just $ CountriesMapR CountriesMapQ{..}
+    | selected <- List.lookup "selected" q
+    -> Just $ CountriesMapR CountriesMapQ{selected}
   Url ["list"] q
-    | search <- L.lookup "search" q
-    , page <- parsePage $ L.lookup "page" q
-    , sort_dir <- parseSortDir $ L.lookup "sort_dir" q
-    , sort_by <- parseSortBy $ L.lookup "sort_by" q
-    -> Just $ CountriesListR CountriesListQ{..}
+    | search <- List.lookup "search" q
+    , page <- parsePage $ List.lookup "page" q
+    , sort_dir <- parseSortDir $ List.lookup "sort_dir" q
+    , sort_by <- parseSortBy $ List.lookup "sort_by" q
+    -> Just $ CountriesListR CountriesListQ{search, page, sort_dir, sort_by}
   _ -> Nothing
   where
-    parsePage = fromMaybe (page defaultCountriesListQ)
-      . (parseQueryParamMaybe =<<)
+    parsePage = fromMaybe defaultCountriesListQ.page
+      . (parseIntQuery =<<)
     parseSortDir = \case
       Just "asc" -> Asc
       Just "desc" -> Desc
-      _ -> sort_dir defaultCountriesListQ
+      _ -> defaultCountriesListQ.sort_dir
     parseSortBy = \case
       Just "title" -> SortByTitle
       Just "population" -> SortByPopulation
       Just "region" -> SortByRegion
       Just "subregion" -> SortBySubregion
-      _ -> sort_by defaultCountriesListQ
+      _ -> defaultCountriesListQ.sort_by
+    parseIntQuery = readMaybe . JSS.unpack
 
 printRoute :: Route -> UrlParts
 printRoute = \case
   HomeR -> Url [] []
-  CountriesMapR CountriesMapQ{..} -> Url ["map"] $ catMaybes
-    [ ("selected",) <$> selected ]
-  CountriesListR CountriesListQ{..} -> Url ["list"] $ catMaybes
-    [ ("search",) <$> mfilter (/="") search
-    , ("page",) <$> printPage page
-    , ("sort_dir",) <$> printSortDir sort_dir
-    , ("sort_by",) <$> printSortBy sort_by
+  CountriesMapR q -> Url ["map"] $ catMaybes
+    [ ("selected",) <$> q.selected ]
+  CountriesListR q -> Url ["list"] $ catMaybes
+    [ ("search",) <$> mfilter (/="") q.search
+    , ("page",) <$> printPage q.page
+    , ("sort_dir",) <$> printSortDir q.sort_dir
+    , ("sort_by",) <$> printSortBy q.sort_by
     ]
   where
-    printPage = fmap toQueryParam .
-      mfilter (/=page defaultCountriesListQ) . Just
+    printPage = fmap toIntQuery .
+      mfilter (/=defaultCountriesListQ.page) . Just
     printSortDir = fmap (\case
       Asc -> "asc"
       Desc -> "desc") .
-      mfilter (/=sort_dir defaultCountriesListQ) . Just
+      mfilter (/=defaultCountriesListQ.sort_dir) . Just
     printSortBy = fmap (\case
       SortByTitle -> "title"
       SortByPopulation -> "population"
       SortByRegion -> "region"
       SortBySubregion -> "subregion") .
-      mfilter (/=sort_by defaultCountriesListQ) . Just
+      mfilter (/=defaultCountriesListQ.sort_by) . Just
+    toIntQuery = JSS.pack . show
 
 defaultCountriesListQ :: CountriesListQ
 defaultCountriesListQ = CountriesListQ
@@ -106,27 +109,39 @@ defaultCountriesMapQ = CountriesMapQ
   { selected = Nothing
   }
 
-toUrl :: Route -> Text
+toUrl :: Route -> JSString
 toUrl = ("#"<>) . partsToText . printRoute
 
-fromUrl :: Text -> Maybe Route
-fromUrl url =
-  parseRoute . textToParts . fromMaybe url . T.stripPrefix "#" $ url
+fromUrl :: JSString -> Maybe Route
+fromUrl url = url
+  & JSS.stripPrefix "#"
+  & fromMaybe url
+  & textToParts
+  & parseRoute
 
-partsToText :: UrlParts -> Text
-partsToText (Url s q) = T.intercalate "?" (segments : query) where
-  segments = T.intercalate "/" $ fmap escapeUri s
-  query = L.filter (/="") . (:[]) . T.intercalate "&" . L.filter (/="")
-    . fmap (\(k, v) -> k <> "=" <> v) $ fmap (bimap escapeUri escapeUri) q
-  escapeUri = T.pack . escapeURIString isAllowed . T.unpack where
-    isAllowed c = c `elem` (['A'..'Z'] ++ ['a'..'z'] ++ ['0'..'9'] ++ "-_.~:/,")
+partsToText :: UrlParts -> JSString
+partsToText (Url s q) = JSS.intercalate "?" (segments : query)
+  where
+    segments =
+      JSS.intercalate "/" $ fmap JSS.encodeURIComponent s
+    query = q
+      & fmap (bimap JSS.encodeURIComponent JSS.encodeURIComponent)
+      & fmap (\(k, v) -> k <> "=" <> v)
+      & List.filter (not . JSS.null)
+      & JSS.intercalate "&"
+      & List.filter (not . JSS.null) . (:[])
 
-textToParts :: Text -> UrlParts
-textToParts t = Url segments query where
-  (segmentsText, queryText) = breakOn1 "?" t
-  segments = fmap unEscapeUri . L.filter (/="") . T.splitOn "/" $
-    segmentsText
-  query = fmap (breakOn1 "=" . unEscapeUri) . L.filter (/="") . T.splitOn "&" $
-    queryText
-  breakOn1 s t = let (a, b) = T.breakOn s t in (a, T.drop 1 b)
-  unEscapeUri = T.pack . unEscapeString . T.unpack
+textToParts :: JSString -> UrlParts
+textToParts t = Url segments query
+  where
+    (segmentsStr, queryStr) = breakOn1 "?" t
+    segments = segmentsStr
+      & JSS.splitOn "/"
+      & List.filter (not . JSS.null)
+      & fmap JSS.decodeURIComponent
+    query = queryStr
+      & JSS.splitOn "&"
+      & List.filter (not . JSS.null)
+      & fmap (breakOn1 "=" . JSS.decodeURIComponent)
+    breakOn1 s t =
+      let (a, b) = JSS.breakOn s t in (a, JSS.drop 1 b)

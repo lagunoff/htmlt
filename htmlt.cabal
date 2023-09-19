@@ -1,4 +1,4 @@
-cabal-version: 2.4
+cabal-version: 3.4
 
 name:                htmlt
 version:             0.1.0.0
@@ -29,10 +29,7 @@ common htmlt-common
     -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches
     -Wno-unused-do-bind
   if flag(production)
-    if impl(ghcjs)
-      ghc-options: -O2 -dedupe
-    else
-      ghc-options: -O2
+    ghc-options: -O2
   default-extensions:
     AllowAmbiguousTypes
     BangPatterns
@@ -55,9 +52,11 @@ common htmlt-common
     GADTs
     GeneralizedNewtypeDeriving
     ImplicitParams
+    ImportQualifiedPost
     LambdaCase
     NamedFieldPuns
     OverloadedLabels
+    OverloadedRecordDot
     OverloadedStrings
     PackageImports
     PartialTypeSignatures
@@ -70,7 +69,6 @@ common htmlt-common
     ScopedTypeVariables
     StandaloneDeriving
     StrictData
-    TemplateHaskell
     TupleSections
     TypeApplications
     TypeFamilies
@@ -91,18 +89,16 @@ library
     HtmlT.Main
     HtmlT.Property
     HtmlT.Types
+    JavaScript.Compat.String
+    JavaScript.Compat.Marshal
   other-modules: Paths_htmlt
   build-depends:
     base,
-    ghcjs-base,
     containers,
     exceptions,
     mtl,
     text,
-    transformers
-  if impl(ghcjs)
-    build-depends:
-      ghcjs-prim,
+    transformers,
 
 executable htmlt-counter
   import: htmlt-common         
@@ -111,7 +107,6 @@ executable htmlt-counter
   build-depends:
     base,
     htmlt,
-    text,
     transformers,
   if !flag(examples)
     buildable: False
@@ -126,13 +121,8 @@ executable htmlt-todomvc
     Utils
   build-depends:
     base,
-    bytestring,
-    lens,
-    generic-lens,
-    mtl,
-    ghcjs-base,
     htmlt,
-    text,
+    mtl,
   if !flag(examples)
     buildable: False
   
@@ -148,14 +138,8 @@ executable htmlt-simple-routing
   build-depends:
     base,
     bytestring,
-    lens,
-    generic-lens,
     mtl,
-    ghcjs-base,
-    network-uri,
-    http-api-data,
     htmlt,
-    text,
   if !flag(examples)
     buildable: False
   
@@ -168,6 +152,6 @@ executable htmlt-benchmarks
     htmlt,
     text,
     gauge,
-  if !flag(benchmarks)
-    buildable: False
+  -- Fails to build with javascript-backend
+  buildable: False
   

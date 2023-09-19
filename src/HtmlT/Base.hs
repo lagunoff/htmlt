@@ -1,23 +1,22 @@
--- | Most essential public definions
+{-|
+Most essential public definions
+-}
 module HtmlT.Base where
 
+import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
-import Data.Coerce
 import Data.Foldable
 import Data.IORef
-import Data.JSString.Text as JSS
-import Data.Text as T hiding (index)
-import GHCJS.Marshal
-import GHCJS.Types
-import JavaScript.Object as Object
-import JavaScript.Object.Internal
-import qualified Data.Map as Map
+import Data.Map qualified as Map
+import GHC.JS.Prim
 
 import HtmlT.DOM
 import HtmlT.Event
 import HtmlT.Internal
 import HtmlT.Types
+import JavaScript.Compat.Marshal
+import JavaScript.Compat.String (JSString(..))
 
 -- | Create a DOM element with a given tag name and attach it to
 -- 'html_current_element'. Attributes, properties and children nodes can
@@ -26,7 +25,7 @@ import HtmlT.Types
 -- > el "div" do
 -- >   prop "className" "container"
 -- >   el "span" $ text "Lorem Ipsum"
-el :: Text -> Html a -> Html a
+el :: JSString -> Html a -> Html a
 el tag child = do
   newRootEl <- liftIO (createElement tag)
   appendHtmlT newRootEl child
@@ -39,19 +38,19 @@ el tag child = do
 -- >   prop "width" "400"
 -- >   elns "http://www.w3.org/2000/svg" "path" do
 -- >     prop "d" "M150 0 L75 200 L225 200 Z"
-elns :: Text -> Text -> Html a -> Html a
+elns :: JSString -> JSString -> Html a -> Html a
 elns ns tag child = do
   newRootEl <- liftIO (createElementNS ns tag)
   appendHtmlT newRootEl child
 
 -- | Create a TextNode and attach it to 'html_current_element'
-text :: Text -> Html ()
+text :: JSString -> Html ()
 text txt = do
   textNode <- liftIO (createTextNode txt)
   insertNode textNode
 
 -- | Create a TextNode with dynamic content
-dynText :: Dynamic Text -> Html ()
+dynText :: Dynamic JSString -> Html ()
 dynText d = do
   txt <- readDyn d
   textNode <- liftIO (createTextNode txt)
@@ -62,36 +61,35 @@ dynText d = do
 -- | Assign a property to 'html_current_element'. Don't confuse
 -- attributes and properties
 -- https://stackoverflow.com/questions/6003819/what-is-the-difference-between-properties-and-attributes-in-html
-prop :: ToJSVal v => Text -> v -> Html ()
-prop (JSS.textToJSString -> key) val = do
+prop :: ToJSVal v => JSString -> v -> Html ()
+prop key val = do
   rootEl <- asks html_current_element
   v <- liftIO $ toJSVal val
-  liftIO $ Object.setProp key v (coerce rootEl)
+  liftIO $ js_setProp (unDOMElement rootEl) key v
 
 -- | Assign a property with dynamic content to the root element
 dynProp
-  :: (ToJSVal v, FromJSVal v, Eq v)
-  => Text
+  :: (ToJSVal v, FromJSVal v)
+  => JSString
   -> Dynamic v
   -> Html ()
-dynProp textKey dyn = do
+dynProp jsKey dyn = do
   el <- asks html_current_element
   performDyn $ liftIO . setup el <$> dyn
   where
     setup el t = toJSVal t
-      >>= flip (unsafeSetProp jsKey) (coerce el)
-    jsKey = JSS.textToJSString textKey
+      >>= js_setProp (unDOMElement el) jsKey
 
 -- | Assign an attribute to the root element. Don't confuse attributes
 -- and properties
 -- https://stackoverflow.com/questions/6003819/what-is-the-difference-between-properties-and-attributes-in-html
-attr :: Text -> Text -> Html ()
+attr :: JSString -> JSString -> Html ()
 attr k v = do
   el <- asks html_current_element
   liftIO $ setAttribute el k v
 
 -- | Assign an attribute with dynamic content to the root element
-dynAttr :: Text -> Dynamic Text -> Html ()
+dynAttr :: JSString -> Dynamic JSString -> Html ()
 dynAttr k d = do
   el <- asks html_current_element
   performDyn $ liftIO . setAttribute el k <$> d
@@ -155,10 +153,10 @@ onGlobalEvent opts target name f = do
 -- > el "div" do
 -- >   classes "container row"
 -- >   classes "mt-1 mb-2"
-classes :: Text -> Html ()
-classes cs = do
-  rootEl <- asks html_current_element
-  for_ (T.splitOn " " cs) $ liftIO . classListAdd rootEl
+-- classes :: JSString -> Html ()
+-- classes cs = do
+--   rootEl <- asks html_current_element
+--   for_ (T.splitOn " " cs) $ liftIO . classListAdd rootEl
 
 -- | Assign a single CSS class dynamically based on the value held by
 -- the given Dynamic
@@ -169,7 +167,7 @@ classes cs = do
 -- > el "button" do
 -- >   on_ "click" $ modifyRef showRef not
 -- >   text "Toggle visibility"
-toggleClass :: Text -> Dynamic Bool -> Html ()
+toggleClass :: JSString -> Dynamic Bool -> Html ()
 toggleClass cs dyn = do
   rootEl <- asks html_current_element
   performDyn $ liftIO . setup rootEl cs <$> dyn
@@ -187,7 +185,7 @@ toggleClass cs dyn = do
 -- > el "button" do
 -- >   on_ "click" $ modifyRef hiddenRef not
 -- >   text "Toggle visibility"
-toggleAttr :: Text -> Dynamic Bool -> Html ()
+toggleAttr :: JSString -> Dynamic Bool -> Html ()
 toggleAttr att dyn = do
   rootEl <- asks html_current_element
   performDyn $ liftIO . setup rootEl att <$> dyn
@@ -204,16 +202,15 @@ toggleAttr att dyn = do
 -- >   dynStyle "background" $ bool "initial" "red" <$> fromRef colorRef
 -- >   on_ "click" $ modifyRef colorRef not
 -- >   text "Toggle background color"
-dynStyle :: Text -> Dynamic Text -> Html ()
+dynStyle :: JSString -> Dynamic JSString -> Html ()
 dynStyle cssProp dyn = do
   rootEl <- asks html_current_element
   performDyn $ liftIO . setup rootEl <$> dyn
   where
     setup el t = do
-      styleVal <- Object.getProp "style" (coerce el)
+      styleVal <- getProp (unDOMElement el) "style"
       cssVal <- toJSVal t
-      unsafeSetProp jsCssProp cssVal (coerce styleVal)
-    jsCssProp = JSS.textToJSString cssProp
+      js_setProp styleVal cssProp cssVal
 
 -- | Alias for @pure ()@, useful when some Html action is expected.
 blank :: Applicative m => m ()
@@ -287,7 +284,7 @@ simpleList listDyn h = do
 -- changes. Useful for SPA routing, tabbed components etc.
 --
 -- > routeRef <- newRef Home
--- > el "div"
+-- > el "div" do
 -- >   dyn $ routeRef <&> \case
 -- >     Home -> homeWidget
 -- >     Blog -> blogWidget
@@ -325,10 +322,10 @@ dyn d = do
 -- | Run an action before the current node is detached from the DOM
 installFinalizer :: MonadReactive m => IO () -> m FinalizerKey
 installFinalizer fin = do
-  renv@ReactiveEnv{renv_finalizers} <- askReactiveEnv
+  renv <- askReactiveEnv
   finalizerId <- liftIO $ nextQueueId renv
   let finalizerKey = FinalizerQueueId finalizerId
-  liftIO $ modifyIORef renv_finalizers $
+  liftIO $ modifyIORef renv.renv_finalizers $
     Map.insert finalizerKey $ CustomFinalizer fin
   return finalizerKey
 
@@ -359,9 +356,9 @@ portal newRootEl html = do
 -- >   unsafeHtml "<svg viewBox="0 0 100 100">\
 -- >     \<circle cx="50" cy="50" r="50"/>\
 -- >     \</svg>"
-unsafeHtml :: MonadIO m => Text -> HtmlT m ()
+unsafeHtml :: MonadIO m => JSString -> HtmlT m ()
 unsafeHtml htmlText = do
-  HtmlEnv{html_content_boundary, html_current_element} <- ask
-  let anchor = fmap boundary_end html_content_boundary
-  liftIO $ unsafeInsertHtml html_current_element anchor
+  henv <- ask
+  let anchor = fmap boundary_end henv.html_content_boundary
+  liftIO $ unsafeInsertHtml henv.html_current_element anchor
     htmlText

@@ -1,9 +1,11 @@
--- | Shortcuts for most common HTML5 elements
+{-|
+Shortcuts for most common HTML5 elements
+-}
 module HtmlT.Element where
 
-import Data.Text as T
 import HtmlT.Base
 import HtmlT.Types
+import JavaScript.Compat.String (JSString(..))
 
 -- | This typeclass allows for tag constructors to have variable
 -- length arguments. Each tag constructor like 'div_' defined below
@@ -12,11 +14,11 @@ import HtmlT.Types
 -- > div_ $ text "A Div without attributes"
 -- > div_ [class_ "wrapper"] $ text "A Div with a class"
 --
--- Unceremoniously copied from the great @lucid@ library, see
+-- Unceremoniously copied from the amazing @lucid@ library, see
 -- https://github.com/chrisdone/lucid/blob/fb3b0e7c189c2acd8d88838d4a13923f24542ee8/src/Lucid/Base.hs#L272
 class Term arg result | result -> arg where
   term
-    :: Text -- ^ Name.
+    :: JSString -- ^ Name.
     -> arg -- ^ Some argument.
     -> result -- ^ Result: either an element or an attribute.
 
