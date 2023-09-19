@@ -181,7 +181,7 @@ detach :: RunningApp -> IO ()
 </table>
 
 
-For comparison, here are the sizes of all.js file build with GHCJS 8.6
+For comparison, here are the sizes of all.js files build with GHCJS 8.6
 — 1.5M
 [htmlt-counter](https://lagunoff.github.io/htmlt-counter/),
 1.4M

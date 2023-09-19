@@ -9,13 +9,13 @@ import Control.Monad.Trans.Maybe
 import Data.Foldable
 import Data.IORef
 import Data.Map qualified as Map
-import GHC.JS.Prim
 
 import HtmlT.DOM
 import HtmlT.Event
 import HtmlT.Internal
 import HtmlT.Types
 import JavaScript.Compat.Marshal
+import JavaScript.Compat.Prim
 import JavaScript.Compat.String (JSString(..))
 
 -- | Create a DOM element with a given tag name and attach it to

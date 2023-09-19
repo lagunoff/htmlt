@@ -7,10 +7,10 @@ import Control.Monad
 import Control.Monad.Reader
 import Data.Coerce
 import Data.Typeable
-import GHC.JS.Foreign.Callback
-import GHC.JS.Prim
 import HtmlT
+import JavaScript.Compat.Foreign.Callback
 import JavaScript.Compat.Marshal
+import JavaScript.Compat.Prim
 import JavaScript.Compat.String (JSString(..))
 import JavaScript.Compat.String qualified as JSS
 import Unsafe.Coerce

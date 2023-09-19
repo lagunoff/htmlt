@@ -8,9 +8,9 @@ the standard library at some point in the future.
 module JavaScript.Compat.String where
 
 import GHC.Exts as Exts
-import GHC.JS.Prim
-import Unsafe.Coerce
+import JavaScript.Compat.Prim
 import System.IO.Unsafe
+import Unsafe.Coerce
 
 newtype JSString = JSString {unJSString :: JSVal}
 
@@ -122,7 +122,7 @@ isInfixOf (JSString substr) (JSString str) =
 {-# INLINE isInfixOf #-}
 
 null :: JSString -> Bool
-null = (=="")
+null = (==empty)
 {-# INLINE null #-}
 
 #if !defined(javascript_HOST_ARCH)
