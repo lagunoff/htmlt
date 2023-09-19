@@ -1,6 +1,6 @@
--- | Functions and definitions to work with DOM. This exists because
--- ghcjs-dom is too heavy, takes about an hour to compile and
--- increases size of the generated JavaScript
+{-|
+Functions and definitions to manipulate and query the DOM tree
+-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ForeignFunctionInterface #-}

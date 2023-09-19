@@ -1,4 +1,6 @@
--- | Shortcuts for common HTML5 attributes and properties
+{-|
+Shortcuts for common HTML5 attributes and properties
+-}
 module HtmlT.Property where
 
 import HtmlT.Base

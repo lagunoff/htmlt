@@ -1,4 +1,6 @@
--- | Most essential public definions
+{-|
+Most essential public definions
+-}
 module HtmlT.Base where
 
 import Control.Monad
@@ -6,8 +8,8 @@ import Control.Monad.Reader
 import Control.Monad.Trans.Maybe
 import Data.Foldable
 import Data.IORef
+import Data.Map qualified as Map
 import GHC.JS.Prim
-import qualified Data.Map as Map
 
 import HtmlT.DOM
 import HtmlT.Event
