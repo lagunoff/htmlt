@@ -8,9 +8,9 @@ the standard library at some point in the future.
 module JavaScript.Compat.Marshal where
 
 import Data.Bool
-import Data.Maybe
 import Data.Coerce
-import GHC.JS.Prim
+import Data.Maybe
+import JavaScript.Compat.Prim
 import JavaScript.Compat.String
 import Unsafe.Coerce
 

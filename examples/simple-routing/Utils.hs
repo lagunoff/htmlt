@@ -5,8 +5,8 @@ module Utils where
 
 import Control.Monad.IO.Class
 import Data.Coerce
-import GHC.JS.Foreign.Callback
 import HtmlT
+import JavaScript.Compat.Foreign.Callback
 import JavaScript.Compat.Marshal
 import JavaScript.Compat.String (JSString(..))
 import Unsafe.Coerce

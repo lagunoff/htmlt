@@ -89,8 +89,11 @@ library
     HtmlT.Main
     HtmlT.Property
     HtmlT.Types
-    JavaScript.Compat.String
+    JavaScript.Compat.Foreign.Callback
     JavaScript.Compat.Marshal
+    JavaScript.Compat.Prim
+    JavaScript.Compat.String
+    
   other-modules: Paths_htmlt
   build-depends:
     base,
@@ -99,6 +102,9 @@ library
     mtl,
     text,
     transformers,
+  if !arch(javascript)
+    build-depends:
+      ghc-prim,
 
 executable htmlt-counter
   import: htmlt-common         

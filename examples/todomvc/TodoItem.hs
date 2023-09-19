@@ -3,9 +3,9 @@ module TodoItem where
 import Control.Monad.State
 import Data.Maybe
 import GHC.Generics (Generic)
-import GHC.JS.Prim
 import HtmlT
 import JavaScript.Compat.Marshal
+import JavaScript.Compat.Prim
 import JavaScript.Compat.String (JSString(..))
 
 import "this" Utils

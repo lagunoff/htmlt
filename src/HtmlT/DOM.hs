@@ -13,12 +13,12 @@ import Control.Monad.Trans.Maybe
 import Data.Coerce
 import GHC.Exts as Exts
 import GHC.Generics
-import GHC.JS.Foreign.Callback
-import GHC.JS.Prim
 import Unsafe.Coerce
 
 import HtmlT.Types
+import JavaScript.Compat.Foreign.Callback
 import JavaScript.Compat.Marshal
+import JavaScript.Compat.Prim
 import JavaScript.Compat.String (JSString(..))
 
 data ListenerOpts = ListenerOpts
@@ -299,7 +299,7 @@ js_callMethod1 :: JSVal -> JSString -> JSVal -> IO JSVal = errorGhcjsOnly
 js_callMethod2 :: JSVal -> JSString -> JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
 js_waitDocumentLoad :: IO () = errorGhcjsOnly
 js_callbackWithOptions :: Bool -> Bool -> Callback (JSVal -> IO ()) -> IO (Callback (JSVal -> IO ())) = errorGhcjsOnly
-js_setProp :: JSVal -> JSVal -> JSVal -> IO () = errorGhcjsOnly
+js_setProp :: JSVal -> JSString -> JSVal -> IO () = errorGhcjsOnly
 #else
 foreign import javascript unsafe
   "(($1, $2) => $1.appendChild($2))"

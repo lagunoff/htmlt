@@ -7,8 +7,8 @@ import Data.String
 import GHC.Generics
 import HtmlT.Event
 import Control.Monad.Fix
-import GHC.JS.Prim
 
+import JavaScript.Compat.Prim
 import JavaScript.Compat.String (JSString(..))
 
 -- | HtmlT is nothing more than just a newtype over ReaderT HtmlEnv
