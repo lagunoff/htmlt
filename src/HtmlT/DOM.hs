@@ -19,7 +19,8 @@ import HtmlT.Types
 import JavaScript.Compat.Foreign.Callback
 import JavaScript.Compat.Marshal
 import JavaScript.Compat.Prim
-import JavaScript.Compat.String (JSString(..))
+import JavaScript.Compat.String (JSString)
+import JavaScript.Compat.String qualified as JSS
 
 data ListenerOpts = ListenerOpts
   { lo_stop_propagation :: Bool
@@ -144,10 +145,10 @@ addEventListener ListenerOpts{..} target name f = do
   hscb <- mkcallback (f . DOMEvent)
   jscb <- withopts hscb
   js_callMethod2 (coerce target) "addEventListener"
-    (unJSString (unEventName name)) (unsafeCoerce jscb)
+    (JSS.toJSValPure (unEventName name)) (unsafeCoerce jscb)
   return do
     js_callMethod2 (coerce target) "removeEventListener"
-      (unJSString (unEventName name)) (unsafeCoerce jscb)
+      (JSS.toJSValPure (unEventName name)) (unsafeCoerce jscb)
     releaseCallback hscb
   where
     mkcallback = if lo_sync_callback
@@ -424,7 +425,7 @@ instance (a ~ (), MonadIO m) => IsString (HtmlT m a) where
   fromString s = do
     HtmlEnv{html_current_element, html_content_boundary} <- ask
     let jsstr = toJSString s
-    textNode <- liftIO $ createTextNode (JSString jsstr)
+    textNode <- liftIO $ createTextNode (JSS.fromJSValPure jsstr)
     case html_content_boundary of
       Just ContentBoundary{boundary_end} -> liftIO $
         js_insertBefore html_current_element textNode boundary_end

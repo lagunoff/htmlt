@@ -6,7 +6,8 @@ import GHC.Generics (Generic)
 import HtmlT
 import JavaScript.Compat.Marshal
 import JavaScript.Compat.Prim
-import JavaScript.Compat.String (JSString(..))
+import JavaScript.Compat.String (JSString)
+import JavaScript.Compat.String qualified as JSS
 
 import "this" Utils
 
@@ -92,9 +93,9 @@ instance ToJSVal TodoItemState where
     completed <- toJSVal s.completed
     editing <- toJSVal s.editing
     return $ js_buildObjectI3
-      (unJSString "title") title
-      (unJSString "completed") completed
-      (unJSString "editing") editing
+      (JSS.toJSValPure "title") title
+      (JSS.toJSValPure "completed") completed
+      (JSS.toJSValPure "editing") editing
 
 instance FromJSVal TodoItemState where
   fromJSVal j = do

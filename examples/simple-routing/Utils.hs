@@ -8,7 +8,9 @@ import Data.Coerce
 import HtmlT
 import JavaScript.Compat.Foreign.Callback
 import JavaScript.Compat.Marshal
-import JavaScript.Compat.String (JSString(..))
+import JavaScript.Compat.Prim
+import JavaScript.Compat.String (JSString)
+import JavaScript.Compat.String qualified as JSS
 import Unsafe.Coerce
 
 mkUrlHashRef :: MonadReactive m => m (DynRef JSString)
@@ -19,10 +21,10 @@ mkUrlHashRef = do
   popStateCb <- liftIO $ asyncCallback $
     js_readUrlHash >>= dynStep . writeRef routeRef
   liftIO $ js_callMethod2 (coerce win) "addEventListener"
-    (unJSString "popstate") (unsafeCoerce popStateCb)
+    (JSS.toJSValPure "popstate") (unsafeCoerce popStateCb)
   installFinalizer do
     js_callMethod2 (coerce win) "removeEventListener"
-      (unJSString "popstate") (unsafeCoerce popStateCb)
+      (JSS.toJSValPure "popstate") (unsafeCoerce popStateCb)
     releaseCallback popStateCb
   return routeRef
 
@@ -46,7 +48,7 @@ foreign import javascript unsafe
     }\
     svgGroup.parentElement.appendChild(svgGroup);\
   })"
-  js_selectCountry :: DOMElement -> Nullable JSString -> IO ()
+  js_selectCountry :: DOMElement -> Nullable JSVal -> IO ()
 
 foreign import javascript unsafe
   "(function(event){\
@@ -59,7 +61,7 @@ foreign import javascript unsafe
     }\
     return null;\
   })"
-  js_svgClickGetCountryCode :: DOMEvent -> IO (Nullable JSString)
+  js_svgClickGetCountryCode :: DOMEvent -> IO (Nullable JSVal)
 
 foreign import javascript unsafe
   "((s) => Prism.highlight(s, Prism.languages.haskell, 'haskell'))"
@@ -83,8 +85,8 @@ foreign import javascript unsafe
   })"
   js_pushHref :: JSString -> IO ()
 #else
-js_selectCountry :: DOMElement -> Nullable JSString -> IO () = errorGhcjsOnly
-js_svgClickGetCountryCode :: DOMEvent -> IO (Nullable JSString) = errorGhcjsOnly
+js_selectCountry :: DOMElement -> Nullable JSVal -> IO () = errorGhcjsOnly
+js_svgClickGetCountryCode :: DOMEvent -> IO (Nullable JSVal) = errorGhcjsOnly
 js_highlightHaskell :: JSString -> JSString = errorGhcjsOnly
 js_insertScript :: JSString -> IO () = errorGhcjsOnly
 js_readUrlHash :: IO JSString = errorGhcjsOnly

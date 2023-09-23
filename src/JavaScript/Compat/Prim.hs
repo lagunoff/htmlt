@@ -46,13 +46,10 @@ module JavaScript.Compat.Prim ( JSVal(..), JSVal#
                   ) where
 
 import           Data.Typeable (Typeable)
-import           Unsafe.Coerce (unsafeCoerce)
 
 import           GHC.Prim
 import qualified GHC.Exception as Ex
 import qualified GHC.Exts as Exts
-import qualified GHC.CString as GHC
-import           GHC.IO
 
 {-
   JSVal is a boxed type that can be used as FFI
@@ -142,23 +139,9 @@ unsafeGetProp' = undefined
 getProp# :: JSVal -> Addr# -> IO JSVal
 getProp# = undefined
 
--- | only safe on immutable Addr#
-getPropUtf8# :: JSVal -> Addr# -> IO JSVal
-getPropUtf8# = undefined
-
-getPropUtf8## :: JSVal# -> Addr# -> State# s -> (# State# s, JSVal# #)
-getPropUtf8## = undefined
-
 -- | only safe on immutable Addr# and JSVal
 unsafeGetProp# :: JSVal -> Addr# -> JSVal
 unsafeGetProp# = undefined
-
--- | only safe on immutable Addr# and JSVal
-unsafeGetPropUtf8# :: JSVal -> Addr# -> JSVal
-unsafeGetPropUtf8# = undefined
-
-unsafeGetPropUtf8## :: JSVal# -> Addr# -> JSVal#
-unsafeGetPropUtf8## = undefined
 
 unpackJSString# :: Addr# -> IO JSVal
 unpackJSString# = undefined
