@@ -26,19 +26,8 @@ maybeToNullable = Nullable . maybe jsNull coerce
 
 class FromJSVal v where fromJSVal :: JSVal -> IO (Maybe v)
 
-instance FromJSVal JSString where
-  fromJSVal jsval = do
-    let
-      isString = unsafeCoerce $
-        js_bool (unsafeCoerce False) (unsafeCoerce True) (js_isString jsval)
-    return $ if isString then Just (JSString jsval) else Nothing
-
 instance FromJSVal Int where
   fromJSVal = pure . Just . fromJSInt
-
-instance FromJSVal Bool where
-  fromJSVal = pure . Just . unsafeCoerce .
-    js_bool (unsafeCoerce False) (unsafeCoerce True)
 
 instance FromJSVal JSVal where
   fromJSVal = pure . Just
@@ -51,9 +40,6 @@ instance FromJSVal v => FromJSVal [v] where
   fromJSVal s = fmap (Just . catMaybes) . mapM fromJSVal =<< fromJSArray s
 
 class ToJSVal v where toJSVal :: v -> IO JSVal
-
-instance ToJSVal JSString where
-  toJSVal = pure . unJSString
 
 instance ToJSVal Int where
   toJSVal = pure . toJSInt
@@ -71,10 +57,31 @@ instance ToJSVal v => ToJSVal [v] where
   toJSVal s = toJSArray =<< mapM toJSVal s
 
 #if !defined(javascript_HOST_ARCH)
+instance FromJSVal JSString where fromJSVal = undefined
+
+instance ToJSVal JSString where toJSVal = undefined
+
+instance FromJSVal Bool where fromJSVal = undefined
+
 js_true :: JSVal = undefined
 js_false :: JSVal = undefined
 js_isString :: JSVal -> JSVal = undefined
 #else
+
+instance FromJSVal JSString where
+  fromJSVal jsval = do
+    let
+      isString = unsafeCoerce $
+        js_bool (unsafeCoerce False) (unsafeCoerce True) (js_isString jsval)
+    return $ if isString then Just (JSString jsval) else Nothing
+
+instance ToJSVal JSString where
+  toJSVal = pure . unJSString
+
+instance FromJSVal Bool where
+  fromJSVal = pure . Just . unsafeCoerce .
+    js_bool (unsafeCoerce False) (unsafeCoerce True)
+
 foreign import javascript unsafe
   "(() => true)" js_true :: JSVal
 foreign import javascript unsafe

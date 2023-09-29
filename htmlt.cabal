@@ -105,6 +105,11 @@ library
   if !arch(javascript)
     build-depends:
       ghc-prim,
+    other-modules:
+      JavaScript.Compat.String.Native
+  else
+    other-modules:
+      JavaScript.Compat.String.JavaScript
 
 executable htmlt-counter
   import: htmlt-common         

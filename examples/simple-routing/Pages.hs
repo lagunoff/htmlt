@@ -8,7 +8,7 @@ import Data.Maybe
 import Data.Ord
 import HtmlT
 import JavaScript.Compat.Marshal
-import JavaScript.Compat.String (JSString(..))
+import JavaScript.Compat.String (JSString)
 import JavaScript.Compat.String qualified as JSS
 
 import "this" Assets
@@ -177,9 +177,10 @@ countriesMapPage q =
       unsafeHtml countriesMap
       figcaption_ "political map of the planet Earth"
       centerEl <- asks html_current_element
-      liftIO $ js_selectCountry centerEl $ maybeToNullable $ q.selected
+      liftIO $ js_selectCountry centerEl $ maybeToNullable $
+        fmap JSS.toJSValPure q.selected
       on "click" \event -> do
-        mcode <- nullableToMaybe <$>
+        mcode <- fmap JSS.fromJSValPure . nullableToMaybe <$>
           liftIO (js_svgClickGetCountryCode event)
         mapM_ (pushUrl . toUrl . CountriesMapR . CountriesMapQ . Just) mcode
 
