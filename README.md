@@ -4,12 +4,11 @@ focus on minimalism and simplicity
 
 ## Getting started
 
-To begin you would need to have [nix](https://nixos.org/download.html)
-installed in your system to follow the instructions. Alternatively,
-you can choose to install [GHC with JavaScript
+To follow the instructions, you would need to have [nix](https://nixos.org/download.html)
+installed in your system. Alternatively,
+you can choose to install manually [GHC with JavaScript
 Backend](https://engineering.iog.io/2023-01-24-javascript-browser-tutorial/),
-and `cabal` (comes with every [GHC](https://www.haskell.org/ghc/))
-manually
+and `cabal` (comes with every [GHC](https://www.haskell.org/ghc/) installation)
 
 How to build library and the examples:
 ```sh
@@ -21,7 +20,7 @@ nix-shell
 # Build examples with cabal
 cabal --with-ghc=javascript-unknown-ghcjs-ghc --with-ghc-pkg=javascript-unknown-ghcjs-ghc-pkg build -f examples
 ```
-Once `cabal build` is successful you can find js executables in
+Once `cabal build` is successful, you can find js executables in
 `./dist-newstyle/build/javascript-ghcjs/ghc-9.7.20230527/htmlt-0.1.0.0/x` and run them by opening `index.html` in browser
 
 ### Minimal example
@@ -61,7 +60,9 @@ main =
 [Open the demo](https://lagunoff.github.io/htmlt/js-backend/htmlt-counter.jsexe/)
 
 ## Quick API summary
-
+<details>
+  <summary>Expand to see simplified definitions</summary>
+  
 ```hs
 -- Constructing DOM
 el :: JSString -> Html a -> Html a
@@ -145,6 +146,8 @@ attachTo :: DOMElement -> Html a -> IO (a, RunningApp)
 attachToBody :: Html a -> IO (a, RunningApp)
 detach :: RunningApp -> IO ()
 ```
+
+</details>
 
 ## Other examples
 
