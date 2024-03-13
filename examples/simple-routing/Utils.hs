@@ -6,26 +6,18 @@ module Utils where
 import Control.Monad.IO.Class
 import Data.Coerce
 import HtmlT
-import JavaScript.Compat.Foreign.Callback
-import JavaScript.Compat.Marshal
-import JavaScript.Compat.Prim
-import JavaScript.Compat.String (JSString)
-import JavaScript.Compat.String qualified as JSS
+import Wasm.Compat.Prim
+import Wasm.Compat.Marshal
 import Unsafe.Coerce
 
 mkUrlHashRef :: MonadReactive m => m (DynRef JSString)
 mkUrlHashRef = do
   initial <- liftIO js_readUrlHash
   routeRef <- newRef initial
-  win <- liftIO getCurrentWindow
-  popStateCb <- liftIO $ asyncCallback $
+  win <- getCurrentWindow
+  popStateCb <- liftIO $ js_dynExport1 \_ ->
     js_readUrlHash >>= dynStep . writeRef routeRef
-  liftIO $ js_callMethod2 (coerce win) "addEventListener"
-    (JSS.toJSValPure "popstate") (unsafeCoerce popStateCb)
-  installFinalizer do
-    js_callMethod2 (coerce win) "removeEventListener"
-      (JSS.toJSValPure "popstate") (unsafeCoerce popStateCb)
-    releaseCallback popStateCb
+  liftIO $ js_addEventListener win ((\(JSString j) -> j) $ toJSString "onpopstate") popStateCb
   return routeRef
 
 pushUrl :: MonadIO m => JSString -> m ()
@@ -37,7 +29,7 @@ highlightHaskell = js_highlightHaskell
 insertScript :: JSString -> IO ()
 insertScript = js_insertScript
 
-#if defined(javascript_HOST_ARCH)
+#if defined(wasm32_HOST_ARCH)
 foreign import javascript unsafe
   "(function(el, code){\
     if (!code) return;\
@@ -47,7 +39,7 @@ foreign import javascript unsafe
       svgPaths[i].classList.add('selected');\
     }\
     svgGroup.parentElement.appendChild(svgGroup);\
-  })"
+  })($1,$2)"
   js_selectCountry :: DOMElement -> Nullable JSVal -> IO ()
 
 foreign import javascript unsafe
@@ -60,11 +52,11 @@ foreign import javascript unsafe
       iter = iter.parentNode;\
     }\
     return null;\
-  })"
+  })($1)"
   js_svgClickGetCountryCode :: DOMEvent -> IO (Nullable JSVal)
 
 foreign import javascript unsafe
-  "((s) => Prism.highlight(s, Prism.languages.haskell, 'haskell'))"
+  "Prism.highlight($1, Prism.languages.haskell, 'haskell')"
   js_highlightHaskell :: JSString -> JSString
 
 foreign import javascript unsafe
@@ -72,17 +64,13 @@ foreign import javascript unsafe
     var scriptEl = document.createElement('script');\
     scriptEl.innerText = script;\
     document.head.appendChild(scriptEl);\
-  })"
+  })($1)"
   js_insertScript :: JSString -> IO ()
 foreign import javascript unsafe
-  "(function(){\
-    return location.hash;\
-  })"
+  "location.hash"
   js_readUrlHash :: IO JSString
 foreign import javascript unsafe
-  "(function(url){\
-    return location = url;\
-  })"
+  "location = $1;"
   js_pushHref :: JSString -> IO ()
 #else
 js_selectCountry :: DOMElement -> Nullable JSVal -> IO () = errorGhcjsOnly

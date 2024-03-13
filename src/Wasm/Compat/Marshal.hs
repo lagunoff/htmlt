@@ -2,6 +2,8 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE JavaScriptFFI #-}
+{-# LANGUAGE MagicHash #-}
+{-# LANGUAGE UnboxedTuples #-}
 module Wasm.Compat.Marshal where
 
 import Control.Monad
@@ -9,6 +11,13 @@ import Data.Maybe
 import Data.String
 import Data.Coerce
 import Wasm.Compat.Prim
+import GHC.Prim
+import GHC.Ptr
+import GHC.Int
+import GHC.IO
+import Data.Text.Internal
+import Data.Array.Byte
+import Data.Word
 
 newtype Nullable v = Nullable {unNullable :: JSVal}
 
@@ -47,6 +56,10 @@ instance FromJSValPure v => FromJSValPure (Maybe v) where
     = maybe (Just Nothing) fromJSValPure
     $ nullableToMaybe (Nullable j)
 
+instance FromJSVal v => FromJSVal (Maybe v) where
+  fromJSVal j = maybe (pure (Just Nothing)) fromJSVal $
+    nullableToMaybe (Nullable j)
+
 instance FromJSValPure JSVal where fromJSValPure = Just
 
 instance FromJSValPure JSString where
@@ -67,6 +80,11 @@ instance FromJSVal v => FromJSVal [v] where
       return $ Just $ catMaybes xs
     _ -> return Nothing
 
+instance FromJSVal Text where
+  fromJSVal j = case js_typeOf j of
+    TypeString -> fmap Just $ textFromJSString $ JSString j
+    _ -> pure Nothing
+
 class ToJSVal v where toJSVal :: v -> IO JSVal
 
 class ToJSValPure v where toJSValPure :: v -> JSVal
@@ -82,6 +100,9 @@ instance ToJSValPure JSVal where toJSValPure j = j
 
 instance ToJSValPure JSString where toJSValPure (JSString j) = j
 
+instance ToJSVal v => ToJSVal (Maybe v) where
+  toJSVal = fmap (unNullable . maybeToNullable) . mapM toJSVal
+
 instance ToJSValPure v => ToJSValPure (Maybe v) where
   toJSValPure = unNullable . maybeToNullable . fmap toJSValPure
 
@@ -90,6 +111,9 @@ instance ToJSVal v => ToJSVal [v] where
     arr <- js_newEmptyArray
     forM_ s $ toJSVal >=> js_arrayPush arr
     return arr
+
+instance ToJSVal Text where
+  toJSVal = fmap (\(JSString j) -> j) . textToJSString
 
 instance IsString JSString where fromString = toJSString
 
@@ -102,6 +126,19 @@ instance Eq JSString where (==) a b = fromJSString a == fromJSString b
 instance Show JSString where show = show . fromJSString
 
 instance Ord JSString where compare a b = fromJSString a `compare` fromJSString b
+
+textToJSString :: Text -> IO JSString
+textToJSString (Text (ByteArray arr) off len) = do
+  let addr = byteArrayContents# arr
+  js_decodeUtf8 (Ptr addr `plusPtr` off) len
+
+textFromJSString :: JSString -> IO Text
+textFromJSString j = IO \s0 ->
+  let (# s1, len@(I# len#) #) = unIO (js_stringLength j) s0
+      (# s2, marr #) = newByteArray# (len# *# 3#) s1
+      (# s3, tlen #) = unIO (js_encodeUtf8 j (Ptr (mutableByteArrayContents# marr)) len) s2
+      (# s4, arr #) = unsafeFreezeByteArray# marr s3
+  in  (# s4, (Text (ByteArray arr) 0 tlen) #)
 
 #if !defined(wasm32_HOST_ARCH)
 
@@ -122,6 +159,9 @@ js_newEmptyArray :: IO JSVal = undefined
 js_arrayPush :: JSVal -> JSVal -> IO () = undefined
 js_arrayLength :: JSVal -> IO Int = undefined
 js_arrayIndex :: JSVal -> Int -> IO JSVal = undefined
+js_decodeUtf8 :: Ptr Word8 -> Int -> IO JSString = undefined
+js_encodeUtf8 :: JSString -> Ptr Word8 -> Int -> IO () = undefined
+js_stringLength :: JSString -> IO Int = undefined
 
 #else
 
@@ -164,4 +204,13 @@ foreign import javascript unsafe
   "$1.length" js_arrayLength :: JSVal -> IO Int
 foreign import javascript unsafe
   "$1[$2]" js_arrayIndex :: JSVal -> Int -> IO JSVal
+foreign import javascript unsafe
+  "(new TextDecoder('utf8').decode(new Uint8Array(__exports.memory.buffer, $1, $2)))"
+  js_decodeUtf8 :: Ptr Word8 -> Int -> IO JSString
+foreign import javascript unsafe
+  "(new TextEncoder()).encodeInto($1, new Uint8Array(__exports.memory.buffer, $2, $3)).written"
+  js_encodeUtf8 :: JSString -> Ptr Word8 -> Int -> IO Int
+foreign import javascript unsafe
+  "$1.length"
+  js_stringLength :: JSString -> IO Int
 #endif

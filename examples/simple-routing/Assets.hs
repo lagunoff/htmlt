@@ -1,7 +1,7 @@
 module Assets where
 
 import GHC.Generics
-import JavaScript.Compat.String (JSString(..))
+import Wasm.Compat.Prim
 
 data Country = Country
   { title :: JSString

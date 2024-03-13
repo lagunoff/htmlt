@@ -37,8 +37,8 @@ insertNode n = do
 -- dynamic content.
 insertBoundary :: MonadIO m => HtmlT m ContentBoundary
 insertBoundary = do
-  boundary_begin <- liftIO $ createComment $ toJSString "ContentBoundary {{"
-  boundary_end <- liftIO $ createComment $ toJSString "}}"
+  boundary_begin <- liftIO $ createComment "ContentBoundary {{"
+  boundary_end <- liftIO $ createComment "}}"
   insertNode boundary_begin
   insertNode boundary_end
   return ContentBoundary {boundary_begin, boundary_end}

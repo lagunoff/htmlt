@@ -29,7 +29,7 @@ common htmlt-common
     -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches
     -Wno-unused-do-bind
   if flag(production)
-    ghc-options: -O2
+    ghc-options: -O3
   default-extensions:
     AllowAmbiguousTypes
     BangPatterns
@@ -101,6 +101,7 @@ library
     text,
     transformers,
     ghc-experimental,
+    ghc-prim,
 
 -- executable htmlt-counter
 --   import: htmlt-common         
@@ -127,6 +128,7 @@ executable htmlt-todomvc
   build-depends:
     base,
     htmlt,
+    text,
     mtl,
   if !flag(examples)
     buildable: False
@@ -135,6 +137,9 @@ executable htmlt-todomvc
 --   import: htmlt-common         
 --   main-is: simple-routing.hs
 --   hs-source-dirs: ./examples/simple-routing
+--   ghc-options:
+--     -no-hs-main -optl-mexec-model=reactor
+--     -optl-Wl,--export=hs_init,--export=wasm_main
 --   other-modules:
 --     Assets
 --     Router

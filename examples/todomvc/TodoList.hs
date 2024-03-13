@@ -8,6 +8,8 @@ import GHC.Generics (Generic)
 import HtmlT
 import Wasm.Compat.Marshal
 import Wasm.Compat.Prim
+import Data.Text (Text)
+import Data.Text qualified as Text
 
 import "this" TodoItem qualified as TodoItem
 import "this" Utils
@@ -17,7 +19,7 @@ data TodoListConfig = TodoListConfig
   }
 
 data TodoListState = TodoListState
-  { title :: JSString
+  { title :: Text
   , items :: [TodoItem.TodoItemState]
   , filter :: Filter
   } deriving (Show, Eq, Generic)
@@ -30,9 +32,9 @@ newtype LocalStorageTodoItems = LocalStorageTodoItems
   } deriving newtype (ToJSVal, FromJSVal)
 
 data TodoListAction a where
-  InitAction :: ReactiveEnv -> DynRef JSString -> TodoListAction (DynRef TodoListState)
+  InitAction :: ReactiveEnv -> DynRef Text -> TodoListAction (DynRef TodoListState)
   ToggleAllAction :: TodoListConfig -> Bool -> TodoListAction ()
-  InputAction :: TodoListConfig -> JSString -> TodoListAction ()
+  InputAction :: TodoListConfig -> Text -> TodoListAction ()
   CommitAction :: TodoListConfig -> TodoListAction ()
   KeydownAction :: TodoListConfig -> Int -> TodoListAction ()
   DeleteItemAction :: TodoListConfig -> Int -> TodoListAction ()
@@ -122,7 +124,7 @@ html cfg = do
     footerWidget = footer_ [class_ "footer"] do
       toggleClass "hidden" hiddenDyn
       span_ [class_ "todo-count"] do
-        strong_ $ dynText $ toJSString . show <$> itemsLeftDyn
+        strong_ $ dynText $ Text.pack . show <$> itemsLeftDyn
         dynText $ pluralize " item left" " items left" <$> itemsLeftDyn
       ul_ [class_ "filters"] do
         for_ [All, Active, Completed] filterWidget
@@ -140,7 +142,7 @@ html cfg = do
     filterWidget flt = li_ do
       a_ [href_ (printFilter flt)] do
         toggleClass "selected" $ filterSelectedDyn flt
-        text $ toJSString (show flt)
+        text $ Text.pack $ show flt
     hiddenDyn =
       Prelude.null . (.items) <$> fromRef cfg.state_ref
     itemsLeftDyn =
@@ -183,24 +185,24 @@ todoItemModifier cfg idx elemModifier = Modifier \upd f -> do
     overIx n f (x:xs) = x : overIx (pred n) f xs
     overIx n _ [] = []
 
-pluralize :: JSString -> JSString -> Int -> JSString
+pluralize :: Text -> Text -> Int -> Text
 pluralize singular plural 0 = singular
 pluralize singular plural _ = plural
 
-parseFilter :: JSString -> Maybe Filter
+parseFilter :: Text -> Maybe Filter
 parseFilter =  \case
   "#/"          -> Just All
   "#/active"    -> Just Active
   "#/completed" -> Just Completed
   _             -> Nothing
 
-printFilter :: Filter -> JSString
+printFilter :: Filter -> Text
 printFilter =  \case
   All       -> "#/"
   Active    -> "#/active"
   Completed -> "#/completed"
 
-styles :: JSString
+styles :: Text
 styles = "\
   \body {\
   \  margin: 0;\

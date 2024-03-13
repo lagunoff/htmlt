@@ -7,8 +7,8 @@ import Data.Maybe
 import Data.Function
 import GHC.Generics
 import Text.Read
-import JavaScript.Compat.String (JSString(..))
-import JavaScript.Compat.String qualified as JSS
+import Wasm.Compat.Prim
+import Wasm.Compat.Marshal
 
 data UrlParts = Url
   { partsPath :: [JSString] -- ^ Path segments
@@ -68,7 +68,7 @@ parseRoute = \case
       Just "region" -> SortByRegion
       Just "subregion" -> SortBySubregion
       _ -> defaultCountriesListQ.sort_by
-    parseIntQuery = readMaybe . JSS.unpack
+    parseIntQuery = readMaybe . fromJSString
 
 printRoute :: Route -> UrlParts
 printRoute = \case

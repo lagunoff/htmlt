@@ -7,16 +7,17 @@ import Control.Monad
 import Control.Monad.Reader
 import Data.Typeable
 import HtmlT
+import Data.Text (Text)
 import Wasm.Compat.Prim
 import Wasm.Compat.Marshal
 
-mkUrlHashRef :: MonadReactive m => m (DynRef JSString)
+mkUrlHashRef :: MonadReactive m => m (DynRef Text)
 mkUrlHashRef = do
-  initial <- liftIO js_readUrlHash
+  initial <- liftIO $ textFromJSString =<< js_readUrlHash
   routeRef <- newRef initial
   win <- getCurrentWindow
   popStateCb <- liftIO $ js_dynExport1 \_ ->
-    js_readUrlHash >>= dynStep . writeRef routeRef
+    js_readUrlHash >>= textFromJSString >>= dynStep . writeRef routeRef
   liftIO $ js_addEventListener win ((\(JSString j) -> j) $ toJSString "onpopstate") popStateCb
   return routeRef
 

@@ -9,6 +9,7 @@ import Control.Monad.Trans.Maybe
 import Data.Foldable
 import Data.IORef
 import Data.Map qualified as Map
+import Data.Text
 
 import HtmlT.DOM
 import HtmlT.Event
@@ -24,7 +25,7 @@ import Wasm.Compat.Prim
 -- > el "div" do
 -- >   prop "className" "container"
 -- >   el "span" $ text "Lorem Ipsum"
-el :: JSString -> Html a -> Html a
+el :: Text -> Html a -> Html a
 el tag child = do
   newRootEl <- liftIO (createElement tag)
   appendHtmlT newRootEl child
@@ -37,19 +38,19 @@ el tag child = do
 -- >   prop "width" "400"
 -- >   elns "http://www.w3.org/2000/svg" "path" do
 -- >     prop "d" "M150 0 L75 200 L225 200 Z"
-elns :: JSString -> JSString -> Html a -> Html a
+elns :: Text -> Text -> Html a -> Html a
 elns ns tag child = do
   newRootEl <- liftIO (createElementNS ns tag)
   appendHtmlT newRootEl child
 
 -- | Create a TextNode and attach it to 'html_current_element'
-text :: JSString -> Html ()
+text :: Text -> Html ()
 text txt = do
   textNode <- liftIO (createTextNode txt)
   insertNode textNode
 
 -- | Create a TextNode with dynamic content
-dynText :: Dynamic JSString -> Html ()
+dynText :: Dynamic Text -> Html ()
 dynText d = do
   txt <- readDyn d
   textNode <- liftIO (createTextNode txt)
@@ -60,35 +61,35 @@ dynText d = do
 -- | Assign a property to 'html_current_element'. Don't confuse
 -- attributes and properties
 -- https://stackoverflow.com/questions/6003819/what-is-the-difference-between-properties-and-attributes-in-html
-prop :: ToJSVal v => JSString -> v -> Html ()
+prop :: ToJSVal v => Text -> v -> Html ()
 prop key val = do
   rootEl <- asks html_current_element
-  v <- liftIO $ toJSVal val
-  liftIO $ js_setProp (unDOMElement rootEl) key v
+  jkey <- liftIO $ textToJSString key
+  jval <- liftIO $ toJSVal val
+  liftIO $ js_setProp rootEl.unDOMElement jkey jval
 
 -- | Assign a property with dynamic content to the root element
 dynProp
   :: (ToJSVal v, FromJSVal v)
-  => JSString
+  => Text
   -> Dynamic v
   -> Html ()
-dynProp jsKey dyn = do
+dynProp key dyn = do
+  jKey <- liftIO $ textToJSString key
   el <- asks html_current_element
+  let setup el t = toJSVal t >>= js_setProp el.unDOMElement jKey
   performDyn $ liftIO . setup el <$> dyn
-  where
-    setup el t = toJSVal t
-      >>= js_setProp (unDOMElement el) jsKey
 
 -- | Assign an attribute to the root element. Don't confuse attributes
 -- and properties
 -- https://stackoverflow.com/questions/6003819/what-is-the-difference-between-properties-and-attributes-in-html
-attr :: JSString -> JSString -> Html ()
+attr :: Text -> Text -> Html ()
 attr k v = do
   el <- asks html_current_element
   liftIO $ setAttribute el k v
 
 -- | Assign an attribute with dynamic content to the root element
-dynAttr :: JSString -> Dynamic JSString -> Html ()
+dynAttr :: Text -> Dynamic Text -> Html ()
 dynAttr k d = do
   el <- asks html_current_element
   performDyn $ liftIO . setAttribute el k <$> d
@@ -99,7 +100,7 @@ dynAttr k d = do
 -- > el "div" do
 -- >   classes "container row"
 -- >   classes "mt-1 mb-2"
--- classes :: JSString -> Html ()
+-- classes :: Text -> Html ()
 -- classes cs = do
 --   rootEl <- asks html_current_element
 --   for_ (T.splitOn " " cs) $ liftIO . classListAdd rootEl
@@ -113,7 +114,7 @@ dynAttr k d = do
 -- > el "button" do
 -- >   on_ "click" $ modifyRef showRef not
 -- >   text "Toggle visibility"
-toggleClass :: JSString -> Dynamic Bool -> Html ()
+toggleClass :: Text -> Dynamic Bool -> Html ()
 toggleClass cs dyn = do
   rootEl <- asks html_current_element
   performDyn $ liftIO . setup rootEl cs <$> dyn
@@ -131,13 +132,13 @@ toggleClass cs dyn = do
 -- > el "button" do
 -- >   on_ "click" $ modifyRef hiddenRef not
 -- >   text "Toggle visibility"
-toggleAttr :: JSString -> Dynamic Bool -> Html ()
+toggleAttr :: Text -> Dynamic Bool -> Html ()
 toggleAttr att dyn = do
   rootEl <- asks html_current_element
   performDyn $ liftIO . setup rootEl att <$> dyn
   where
     setup rootEl name = \case
-      True -> setAttribute rootEl name $ toJSString "on"
+      True -> setAttribute rootEl name "on"
       False -> removeAttribute rootEl name
 
 -- | Assign a CSS property to the root dynamically based on the value
@@ -148,15 +149,16 @@ toggleAttr att dyn = do
 -- >   dynStyle "background" $ bool "initial" "red" <$> fromRef colorRef
 -- >   on_ "click" $ modifyRef colorRef not
 -- >   text "Toggle background color"
-dynStyle :: JSString -> Dynamic JSString -> Html ()
+dynStyle :: Text -> Dynamic Text -> Html ()
 dynStyle cssProp dyn = do
   rootEl <- asks html_current_element
-  performDyn $ liftIO . setup rootEl <$> dyn
+  jCssProp <- liftIO $ textToJSString cssProp
+  performDyn $ liftIO . setup jCssProp rootEl <$> dyn
   where
-    setup el t = do
+    setup jCssProp el t = do
       styleVal <- js_getProp el.unDOMElement $ toJSString "style"
       cssVal <- toJSVal t
-      js_setProp styleVal cssProp cssVal
+      js_setProp styleVal jCssProp cssVal
 
 -- | Alias for @pure ()@, useful when some Html action is expected.
 blank :: Applicative m => m ()
@@ -302,7 +304,7 @@ portal newRootEl html = do
 -- >   unsafeHtml "<svg viewBox="0 0 100 100">\
 -- >     \<circle cx="50" cy="50" r="50"/>\
 -- >     \</svg>"
-unsafeHtml :: MonadIO m => JSString -> HtmlT m ()
+unsafeHtml :: MonadIO m => Text -> HtmlT m ()
 unsafeHtml htmlText = do
   henv <- ask
   let anchor = fmap boundary_end henv.html_content_boundary

@@ -3,7 +3,8 @@ import Control.Monad.IO.Class
 import Data.Maybe
 import Data.Functor
 import HtmlT
-import JavaScript.Compat.String (JSString(..))
+import Wasm.Compat.Prim
+import Wasm.Compat.Marshal
 
 import "this" Pages
 import "this" Router
@@ -11,7 +12,10 @@ import "this" Utils
 import "this" Assets
 
 main :: IO ()
-main = void $ attachToBody do
+main = return ()
+
+foreign export ccall wasm_main :: IO ()
+wasm_main = void $ attachToBody do
   liftIO $ insertScript prismJs
   el "style" (text awsmCss)
   el "style" (text customCss)

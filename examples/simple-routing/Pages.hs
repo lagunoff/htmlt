@@ -7,9 +7,8 @@ import Data.List qualified as List
 import Data.Maybe
 import Data.Ord
 import HtmlT
-import JavaScript.Compat.Marshal
-import JavaScript.Compat.String (JSString)
-import JavaScript.Compat.String qualified as JSS
+import Wasm.Compat.Marshal
+import Wasm.Compat.Prim
 
 import "this" Assets
 import "this" Router

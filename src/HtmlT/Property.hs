@@ -6,6 +6,7 @@ module HtmlT.Property where
 import HtmlT.Base
 import HtmlT.Event
 import HtmlT.Types
+import Data.Text
 import Wasm.Compat.Prim
 
 
@@ -14,15 +15,15 @@ import Wasm.Compat.Prim
 -- set the CSS color for an element, essentially no other CSS property
 -- can be applied to this element, as they will be overwritten by
 -- 'dynStyles'.
-dynStyles :: Dynamic JSString -> Html ()
+dynStyles :: Dynamic Text -> Html ()
 dynStyles = dynProp "style"
 {-# INLINE dynStyles #-}
 
-dynValue :: Dynamic JSString -> Html ()
+dynValue :: Dynamic Text -> Html ()
 dynValue = dynProp "value"
 {-# INLINE dynValue #-}
 
-dynClass :: Dynamic JSString -> Html ()
+dynClass :: Dynamic Text -> Html ()
 dynClass = dynProp "className"
 {-# INLINE dynClass #-}
 
@@ -34,7 +35,7 @@ dynDisabled :: Dynamic Bool -> Html ()
 dynDisabled = dynProp "disabled"
 {-# INLINE dynDisabled #-}
 
-title_ :: JSString -> Html ()
+title_ :: Text -> Html ()
 title_ = prop "title"
 {-# INLINE title_ #-}
 
@@ -46,31 +47,31 @@ hidden_ :: Bool -> Html ()
 hidden_ = prop "hidden"
 {-# INLINE hidden_ #-}
 
-value_ :: JSString -> Html ()
+value_ :: Text -> Html ()
 value_ = prop "value"
 {-# INLINE value_ #-}
 
-defaultValue_ :: JSString -> Html ()
+defaultValue_ :: Text -> Html ()
 defaultValue_ = prop "defaultValue"
 {-# INLINE defaultValue_ #-}
 
-accept_ :: JSString -> Html ()
+accept_ :: Text -> Html ()
 accept_ = prop "accept"
 {-# INLINE accept_ #-}
 
-acceptCharset_ :: JSString -> Html ()
+acceptCharset_ :: Text -> Html ()
 acceptCharset_ = prop "acceptCharset"
 {-# INLINE acceptCharset_ #-}
 
-action_ :: JSString -> Html ()
+action_ :: Text -> Html ()
 action_ = prop "action"
 {-# INLINE action_ #-}
 
 autocomplete_ :: Bool -> Html ()
-autocomplete_ b = prop @JSString "autocomplete" (if b then "on" else "off")
+autocomplete_ b = prop @Text "autocomplete" (if b then "on" else "off")
 {-# INLINE autocomplete_ #-}
 
-autosave_ :: JSString -> Html ()
+autosave_ :: Text -> Html ()
 autosave_ = prop "autosave"
 {-# INLINE autosave_ #-}
 
@@ -78,27 +79,27 @@ disabled_ :: Bool -> Html ()
 disabled_ = prop "disabled"
 {-# INLINE disabled_ #-}
 
-enctype_ :: JSString -> Html ()
+enctype_ :: Text -> Html ()
 enctype_ = prop "enctype"
 {-# INLINE enctype_ #-}
 
-formation_ :: JSString -> Html ()
+formation_ :: Text -> Html ()
 formation_ = prop "formation"
 {-# INLINE formation_ #-}
 
-list_ :: JSString -> Html ()
+list_ :: Text -> Html ()
 list_ = prop "list"
 {-# INLINE list_ #-}
 
-maxlength_ :: JSString -> Html ()
+maxlength_ :: Text -> Html ()
 maxlength_ = prop "maxlength"
 {-# INLINE maxlength_ #-}
 
-minlength_ :: JSString -> Html ()
+minlength_ :: Text -> Html ()
 minlength_ = prop "minlength"
 {-# INLINE minlength_ #-}
 
-method_ :: JSString -> Html ()
+method_ :: Text -> Html ()
 method_ = prop "method"
 {-# INLINE method_ #-}
 
@@ -110,7 +111,7 @@ novalidate_ :: Bool -> Html ()
 novalidate_ = prop "noValidate"
 {-# INLINE novalidate_ #-}
 
-pattern_ :: JSString -> Html ()
+pattern_ :: Text -> Html ()
 pattern_ = prop "pattern"
 {-# INLINE pattern_ #-}
 
@@ -122,103 +123,103 @@ required_ :: Bool -> Html ()
 required_ = prop "required"
 {-# INLINE required_ #-}
 
-size_ :: JSString -> Html ()
+size_ :: Text -> Html ()
 size_ = prop "size"
 {-# INLINE size_ #-}
 
-forProp_ :: JSString -> Html ()
+forProp_ :: Text -> Html ()
 forProp_ = prop "for"
 {-# INLINE forProp_ #-}
 
-ref_ :: JSString -> Html ()
+ref_ :: Text -> Html ()
 ref_ = prop "ref"
 {-# INLINE ref_ #-}
 
-formProp_ :: JSString -> Html ()
+formProp_ :: Text -> Html ()
 formProp_ = prop "form"
 {-# INLINE formProp_ #-}
 
-max_ :: JSString -> Html ()
+max_ :: Text -> Html ()
 max_ = prop "max"
 {-# INLINE max_ #-}
 
-min_ :: JSString -> Html ()
+min_ :: Text -> Html ()
 min_ = prop "min"
 {-# INLINE min_ #-}
 
-step_ :: JSString -> Html ()
+step_ :: Text -> Html ()
 step_ = prop "step"
 {-# INLINE step_ #-}
 
-cols_ :: JSString -> Html ()
+cols_ :: Text -> Html ()
 cols_ = prop "cols"
 {-# INLINE cols_ #-}
 
-rows_ :: JSString -> Html ()
+rows_ :: Text -> Html ()
 rows_ = prop "rows"
 {-# INLINE rows_ #-}
 
-wrap_ :: JSString -> Html ()
+wrap_ :: Text -> Html ()
 wrap_ = prop "wrap"
 {-# INLINE wrap_ #-}
 
-target_ :: JSString -> Html ()
+target_ :: Text -> Html ()
 target_ = prop "target"
 {-# INLINE target_ #-}
 
-download_ :: JSString -> Html ()
+download_ :: Text -> Html ()
 download_ = prop "download"
 {-# INLINE download_ #-}
 
-downloadAs_ :: JSString -> Html ()
+downloadAs_ :: Text -> Html ()
 downloadAs_ = prop "downloadAs"
 {-# INLINE downloadAs_ #-}
 
-hreflang_ :: JSString -> Html ()
+hreflang_ :: Text -> Html ()
 hreflang_ = prop "hreflang"
 {-# INLINE hreflang_ #-}
 
-media_ :: JSString -> Html ()
+media_ :: Text -> Html ()
 media_ = prop "media"
 {-# INLINE media_ #-}
 
-ping_ :: JSString -> Html ()
+ping_ :: Text -> Html ()
 ping_ = prop "ping"
 {-# INLINE ping_ #-}
 
-rel_ :: JSString -> Html ()
+rel_ :: Text -> Html ()
 rel_ = prop "rel"
 {-# INLINE rel_ #-}
 
-ismap_ :: JSString -> Html ()
+ismap_ :: Text -> Html ()
 ismap_ = prop "ismap"
 {-# INLINE ismap_ #-}
 
-usemap_ :: JSString -> Html ()
+usemap_ :: Text -> Html ()
 usemap_ = prop "usemap"
 {-# INLINE usemap_ #-}
 
-shape_ :: JSString -> Html ()
+shape_ :: Text -> Html ()
 shape_ = prop "shape"
 {-# INLINE shape_ #-}
 
-coords_ :: JSString -> Html ()
+coords_ :: Text -> Html ()
 coords_ = prop "coords"
 {-# INLINE coords_ #-}
 
-src_ :: JSString -> Html ()
+src_ :: Text -> Html ()
 src_ = prop "src"
 {-# INLINE src_ #-}
 
-height_ :: JSString -> Html ()
+height_ :: Text -> Html ()
 height_ = prop "height"
 {-# INLINE height_ #-}
 
-width_ :: JSString -> Html ()
+width_ :: Text -> Html ()
 width_ = prop "width"
 {-# INLINE width_ #-}
 
-alt_ :: JSString -> Html ()
+alt_ :: Text -> Html ()
 alt_ = prop "alt"
 {-# INLINE alt_ #-}
 
@@ -234,11 +235,11 @@ loop_ :: Bool -> Html ()
 loop_ = prop "loop"
 {-# INLINE loop_ #-}
 
-preload_ :: JSString -> Html ()
+preload_ :: Text -> Html ()
 preload_ = prop "preload"
 {-# INLINE preload_ #-}
 
-poster_ :: JSString -> Html ()
+poster_ :: Text -> Html ()
 poster_ = prop "poster"
 {-# INLINE poster_ #-}
 
@@ -246,99 +247,99 @@ default_ :: Bool -> Html ()
 default_ = prop "default"
 {-# INLINE default_ #-}
 
-kind_ :: JSString -> Html ()
+kind_ :: Text -> Html ()
 kind_ = prop "kind"
 {-# INLINE kind_ #-}
 
-srclang_ :: JSString -> Html ()
+srclang_ :: Text -> Html ()
 srclang_ = prop "srclang"
 {-# INLINE srclang_ #-}
 
-sandbox_ :: JSString -> Html ()
+sandbox_ :: Text -> Html ()
 sandbox_ = prop "sandbox"
 {-# INLINE sandbox_ #-}
 
-seamless_ :: JSString -> Html ()
+seamless_ :: Text -> Html ()
 seamless_ = prop "seamless"
 {-# INLINE seamless_ #-}
 
-srcdoc_ :: JSString -> Html ()
+srcdoc_ :: Text -> Html ()
 srcdoc_ = prop "srcdoc"
 {-# INLINE srcdoc_ #-}
 
-reversed_ :: JSString -> Html ()
+reversed_ :: Text -> Html ()
 reversed_ = prop "reversed"
 {-# INLINE reversed_ #-}
 
-start_ :: JSString -> Html ()
+start_ :: Text -> Html ()
 start_ = prop "start"
 {-# INLINE start_ #-}
 
-align_ :: JSString -> Html ()
+align_ :: Text -> Html ()
 align_ = prop "align"
 {-# INLINE align_ #-}
 
-colspan_ :: JSString -> Html ()
+colspan_ :: Text -> Html ()
 colspan_ = attr "colspan"
 {-# INLINE colspan_ #-}
 
-rowspan_ :: JSString -> Html ()
+rowspan_ :: Text -> Html ()
 rowspan_ = attr "rowspan"
 {-# INLINE rowspan_ #-}
 
-headers_ :: JSString -> Html ()
+headers_ :: Text -> Html ()
 headers_ = prop "headers"
 {-# INLINE headers_ #-}
 
-scope_ :: JSString -> Html ()
+scope_ :: Text -> Html ()
 scope_ = prop "scope"
 {-# INLINE scope_ #-}
 
-async_ :: JSString -> Html ()
+async_ :: Text -> Html ()
 async_ = prop "async"
 {-# INLINE async_ #-}
 
-charset_ :: JSString -> Html ()
+charset_ :: Text -> Html ()
 charset_ = prop "charset"
 {-# INLINE charset_ #-}
 
-content_ :: JSString -> Html ()
+content_ :: Text -> Html ()
 content_ = prop "content"
 {-# INLINE content_ #-}
 
-defer_ :: JSString -> Html ()
+defer_ :: Text -> Html ()
 defer_ = prop "defer"
 {-# INLINE defer_ #-}
 
-httpEquiv_ :: JSString -> Html ()
+httpEquiv_ :: Text -> Html ()
 httpEquiv_ = prop "httpEquiv"
 {-# INLINE httpEquiv_ #-}
 
-language_ :: JSString -> Html ()
+language_ :: Text -> Html ()
 language_ = prop "language"
 {-# INLINE language_ #-}
 
-scoped_ :: JSString -> Html ()
+scoped_ :: Text -> Html ()
 scoped_ = prop "scoped"
 {-# INLINE scoped_ #-}
 
-type_ :: JSString -> Html ()
+type_ :: Text -> Html ()
 type_ = prop "type"
 {-# INLINE type_ #-}
 
-name_ :: JSString -> Html ()
+name_ :: Text -> Html ()
 name_ = prop "name"
 {-# INLINE name_ #-}
 
-href_ :: JSString -> Html ()
+href_ :: Text -> Html ()
 href_ = prop "href"
 {-# INLINE href_ #-}
 
-id_ :: JSString -> Html ()
+id_ :: Text -> Html ()
 id_ = prop "id"
 {-# INLINE id_ #-}
 
-placeholder_ :: JSString -> Html ()
+placeholder_ :: Text -> Html ()
 placeholder_ = prop "placeholder"
 {-# INLINE placeholder_ #-}
 
@@ -350,18 +351,18 @@ autofocus_ :: Bool -> Html ()
 autofocus_ = prop "autofocus"
 {-# INLINE autofocus_ #-}
 
-class_ :: JSString -> Html ()
+class_ :: Text -> Html ()
 class_ = prop "className"
 {-# INLINE class_ #-}
 
-data_ :: JSString -> JSString -> Html ()
-data_ k v = prop @JSString ("data-" <> k) v
+data_ :: Text -> Text -> Html ()
+data_ k v = prop @Text ("data-" <> k) v
 {-# INLINE data_ #-}
 
-role_ :: JSString -> Html ()
+role_ :: Text -> Html ()
 role_ = attr "role"
 {-# INLINE role_ #-}
 
-style_ :: JSString -> Html ()
+style_ :: Text -> Html ()
 style_ = prop "style"
 {-# INLINE style_ #-}

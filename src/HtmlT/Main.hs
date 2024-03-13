@@ -40,8 +40,8 @@ attachOptions StartOpts{..} render = mdo
   -- TODO: doesn't work with javascript-backend
   -- when startopts_wait_document_load
   --   js_waitDocumentLoad
-  begin <- createComment $ toJSString "ContentBoundary {{"
-  end <- createComment $ toJSString "}}"
+  begin <- createComment "ContentBoundary {{"
+  end <- createComment "}}"
   appendChild startopts_root_element begin
   appendChild startopts_root_element end
   let

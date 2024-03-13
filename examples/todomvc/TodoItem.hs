@@ -4,6 +4,7 @@ import Control.Monad.State
 import Data.Maybe
 import GHC.Generics (Generic)
 import HtmlT
+import Data.Text
 import Wasm.Compat.Marshal
 import Wasm.Compat.Prim
 
@@ -16,15 +17,15 @@ data TodoItemConfig = TodoItemConfig
   }
 
 data TodoItemState = TodoItemState
-  { title :: JSString
+  { title :: Text
   , completed :: Bool
-  , editing :: Maybe JSString
+  , editing :: Maybe Text
   } deriving stock (Show, Eq, Generic)
 
 data TodoItemAction a where
   CancelAction :: TodoItemConfig -> TodoItemAction ()
   CommitAction :: TodoItemConfig -> TodoItemAction ()
-  InputAction :: TodoItemConfig -> JSString -> TodoItemAction ()
+  InputAction :: TodoItemConfig -> Text -> TodoItemAction ()
   DoubleClickAction :: TodoItemConfig -> JSVal -> TodoItemAction ()
   CheckedAction :: TodoItemConfig -> Bool -> TodoItemAction ()
   KeydownAction :: TodoItemConfig -> Int -> TodoItemAction ()

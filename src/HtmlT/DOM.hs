@@ -18,6 +18,7 @@ import Wasm.Compat.Prim
 import Wasm.Compat.Marshal
 import HtmlT.Types
 import HtmlT.Event
+import Data.Text
 
 import Data.Kind
 
@@ -36,15 +37,12 @@ on :: forall eventName. IsEventName eventName => EventListenerCb eventName -> Ht
 on k = addEventListener (addEventListenerArgs @eventName) k
 
 data AddEventListenerArgs callback = AddEventListenerArgs
-  { event_name :: JSString
+  { event_name :: Text
   , listener_options :: EventListenerOptions
   , mk_callback :: callback -> JSVal -> Step ()
   } deriving (Generic)
 
-addEventListener
-  :: AddEventListenerArgs callback
-  -> callback
-  -> Html ()
+addEventListener :: AddEventListenerArgs callback -> callback -> Html ()
 addEventListener args k = do
   el <- asks (.html_current_element)
   addEventListenerTarget el.unDOMElement args k
@@ -59,14 +57,13 @@ addEventListenerTarget
   -> m ()
 addEventListenerTarget target args k = do
   cb <- liftIO $ js_dynExport1 $ dynStep . args.mk_callback k
+  jEventName <- liftIO $ toJSVal args.event_name
   -- jscb <- withopts hscb
-  liftIO $ js_addEventListener target
-    (toJSValPure args.event_name) cb
+  liftIO $ js_addEventListener target jEventName cb
   let reactiveScope = 1::Int
       installFinalizer _ _ = return ()
   installFinalizer reactiveScope do
-    js_addEventListener target
-      (toJSValPure args.event_name) cb
+    js_addEventListener target jEventName cb
     freeJSVal cb
 
 class IsEventName eventName where
@@ -94,7 +91,7 @@ instance IsEventName "submit" where
   addEventListenerArgs = submitEventArgs
 
 instance IsEventName "input" where
-  type EventListenerCb "input" = JSString -> Step ()
+  type EventListenerCb "input" = Text -> Step ()
   addEventListenerArgs = inputEventArgs
 
 instance IsEventName "keydown" where
@@ -114,11 +111,11 @@ instance IsEventName "blur" where
   addEventListenerArgs = pointerEventArgs "blur"
 
 instance IsEventName "input/blur" where
-  type EventListenerCb "input/blur" = JSString -> Step ()
+  type EventListenerCb "input/blur" = Text -> Step ()
   addEventListenerArgs = inputEventArgs {event_name = "blur"}
 
 instance IsEventName "input/focus" where
-  type EventListenerCb "input/focus" = JSString -> Step ()
+  type EventListenerCb "input/focus" = Text -> Step ()
   addEventListenerArgs = inputEventArgs {event_name = "focus"}
 
 instance IsEventName "checkbox/change" where
@@ -126,11 +123,11 @@ instance IsEventName "checkbox/change" where
   addEventListenerArgs = checkboxChangeEventArgs
 
 instance IsEventName "select/change" where
-  type EventListenerCb "select/change" = JSString -> Step ()
+  type EventListenerCb "select/change" = Text -> Step ()
   addEventListenerArgs = selectChangeEventArgs
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/click_event
-pointerEventArgs :: JSString -> AddEventListenerArgs (Step ())
+pointerEventArgs :: Text -> AddEventListenerArgs (Step ())
 pointerEventArgs event_name = AddEventListenerArgs
   { event_name
   , listener_options = defaultEventListenerOptions
@@ -148,7 +145,7 @@ submitEventArgs = AddEventListenerArgs
     defaultSubmitOptions = EventListenerOptions True True
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/input_event
-inputEventArgs :: AddEventListenerArgs (JSString -> Step ())
+inputEventArgs :: AddEventListenerArgs (Text -> Step ())
 inputEventArgs = AddEventListenerArgs
   { event_name = "input"
   , listener_options = defaultEventListenerOptions
@@ -160,7 +157,7 @@ inputEventArgs = AddEventListenerArgs
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/keydown_event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/keyup_event
-keyboardEventArgs :: JSString -> AddEventListenerArgs (Int -> Step ())
+keyboardEventArgs :: Text -> AddEventListenerArgs (Int -> Step ())
 keyboardEventArgs event_name = AddEventListenerArgs
   { event_name
   , listener_options = defaultEventListenerOptions
@@ -173,14 +170,11 @@ keyboardEventArgs event_name = AddEventListenerArgs
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/blur_event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/focusin_event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/focusout_event
-focusEventArgs :: JSString -> AddEventListenerArgs (Step ())
+focusEventArgs :: Text -> AddEventListenerArgs (Step ())
 focusEventArgs event_name = AddEventListenerArgs
   { event_name
   , listener_options = defaultEventListenerOptions
-  , mk_callback = undefined
-  -- , mk_hs_callback = \k _ -> k
-  -- , mk_js_callback = \opts callbackId ->
-  --   Lam $ RevSeq $ TriggerEvent callbackId NullE : applyListenerOptions opts
+  , mk_callback = \k _ -> k
   }
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/change_event
@@ -195,7 +189,7 @@ checkboxChangeEventArgs = AddEventListenerArgs
   }
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/change_event
-selectChangeEventArgs :: AddEventListenerArgs (JSString -> Step ())
+selectChangeEventArgs :: AddEventListenerArgs (Text -> Step ())
 selectChangeEventArgs = AddEventListenerArgs
   { event_name = "change"
   , listener_options = defaultEventListenerOptions
@@ -206,20 +200,20 @@ selectChangeEventArgs = AddEventListenerArgs
   }
 
 data Location = Location
-  { protocol :: JSString
+  { protocol :: Text
   -- ^ A string containing the protocol scheme of the URL, including
   -- the final ':'
-  , hostname :: JSString
+  , hostname :: Text
   -- ^ A string containing the domain of the URL.
-  , port :: JSString
+  , port :: Text
   -- ^ A string containing the port number of the URL.
-  , pathname :: JSString
+  , pathname :: Text
   -- ^ A string containing an initial '/' followed by the path of the
   -- URL, not including the query string or fragment.
-  , search :: JSString
+  , search :: Text
   -- ^ A string containing a '?' followed by the parameters or
   -- "querystring" of the URL
-  , hash :: JSString
+  , hash :: Text
   -- ^ A string containing a '#' followed by the fragment identifier
   -- of the URL.
   } deriving stock (Show, Eq, Generic)
@@ -270,13 +264,18 @@ appendChild = js_appendChild
 
 -- | Element.setAttribute()
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/setAttribute
-setAttribute :: DOMElement -> JSString -> JSString -> IO ()
-setAttribute e k v = js_setAttribute e k v
+setAttribute :: DOMElement -> Text -> Text -> IO ()
+setAttribute e k v = do
+  jk <- textToJSString k
+  jv <- textToJSString v
+  js_setAttribute e jk jv
 
 -- | Element.removeAttribute()
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/removeAttribute
-removeAttribute :: DOMElement -> JSString -> IO ()
-removeAttribute e k = js_removeAttribute e k
+removeAttribute :: DOMElement -> Text -> IO ()
+removeAttribute e k = do
+  jk <- textToJSString k
+  js_removeAttribute e jk
 
 -- | DOMNode.removeChild()
 -- https://developer.mozilla.org/en-US/docs/Web/API/DOMNode/removeChild
@@ -285,44 +284,60 @@ removeChild = js_removeChild
 
 -- | Document.createElement()
 -- https://developer.mozilla.org/en-US/docs/Web/API/Document/createElement
-createElement :: JSString -> IO DOMElement
-createElement = js_createElement
+createElement :: Text -> IO DOMElement
+createElement tagName = do
+  jTagName <- textToJSString tagName
+  js_createElement jTagName
 
 -- | Document.createElementNS()
 -- https://developer.mozilla.org/en-US/docs/Web/API/Document/createElementNS
-createElementNS :: JSString -> JSString -> IO DOMElement
-createElementNS n t = js_createElementNS n t
+createElementNS :: Text -> Text -> IO DOMElement
+createElementNS ns tagName = do
+  jNs <- textToJSString ns
+  jTagName <- textToJSString tagName
+  js_createElementNS jNs jTagName
 
 -- | Document.createTextNode()
 -- https://developer.mozilla.org/en-US/docs/Web/API/Document/createTextNode
-createTextNode :: JSString -> IO DOMNode
-createTextNode = js_createTextNode
+createTextNode :: Text -> IO DOMNode
+createTextNode t = do
+  jt <- textToJSString t
+  js_createTextNode jt
 
 -- | Document.createComment()
 -- https://developer.mozilla.org/en-US/docs/Web/API/Document/createComment
-createComment :: JSString -> IO DOMNode
-createComment = js_createComment
+createComment :: Text -> IO DOMNode
+createComment c = do
+  jc <- textToJSString c
+  js_createComment jc
 
 -- | Element.classList.add()
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/classList
-classListAdd :: DOMElement -> JSString -> IO ()
-classListAdd e c = js_classListAdd e c
+classListAdd :: DOMElement -> Text -> IO ()
+classListAdd e c = do
+  jc <- textToJSString c
+  js_classListAdd e jc
 
 -- | Element.classList.remove()
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/classList
-classListRemove :: DOMElement -> JSString -> IO ()
-classListRemove e c = js_classListRemove e c
+classListRemove :: DOMElement -> Text -> IO ()
+classListRemove e c = do
+  jc <- textToJSString c
+  js_classListRemove e jc
 
 -- | Assign text to DOMNode.nodeValue
 -- https://developer.mozilla.org/en-US/docs/Web/API/DOMNode/nodeValue
-setTextValue :: DOMNode -> JSString -> IO ()
-setTextValue v = js_setTextValue v
+setTextValue :: DOMNode -> Text -> IO ()
+setTextValue n v = do
+  jv <- textToJSString v
+  js_setTextValue n jv
 
 -- | Insert raw HTML code, similar to @parent.innerHTML = rawHtml@ but
 -- does not removes siblings
-unsafeInsertHtml :: DOMElement -> Maybe DOMNode -> JSString -> IO ()
-unsafeInsertHtml parent manchor rawHtml = js_unsafeInsertHtml parent
-  (maybeToNullable manchor) rawHtml
+unsafeInsertHtml :: DOMElement -> Maybe DOMNode -> Text -> IO ()
+unsafeInsertHtml parent manchor rawHtml = do
+  jRawHtml <- textToJSString rawHtml
+  js_unsafeInsertHtml parent (maybeToNullable manchor) jRawHtml
 
 -- | Assuming given 'ContentBoundary' was inserted into the @parent@
 -- element remove all the content inside the boundary.
@@ -570,7 +585,7 @@ instance (a ~ (), MonadIO m) => IsString (HtmlT m a) where
   fromString s = do
     HtmlEnv{html_current_element, html_content_boundary} <- ask
     let jsstr = toJSString s
-    textNode <- liftIO $ createTextNode jsstr
+    textNode <- liftIO $ js_createTextNode jsstr
     case html_content_boundary of
       Just b -> liftIO $
         js_insertBefore html_current_element textNode b.boundary_end
