@@ -6,7 +6,7 @@ module HtmlT.Property where
 import HtmlT.Base
 import HtmlT.Event
 import HtmlT.Types
-import JavaScript.Compat.String (JSString(..))
+import Wasm.Compat.Prim
 
 
 -- TODO: Real-world usage has demonstrated that 'dynStyles' not

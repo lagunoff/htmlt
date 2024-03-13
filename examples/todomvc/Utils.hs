@@ -5,63 +5,58 @@ module Utils where
 
 import Control.Monad
 import Control.Monad.Reader
-import Data.Coerce
 import Data.Typeable
 import HtmlT
-import JavaScript.Compat.Foreign.Callback
-import JavaScript.Compat.Marshal
-import JavaScript.Compat.Prim
-import JavaScript.Compat.String (JSString(..))
-import JavaScript.Compat.String qualified as JSS
-import Unsafe.Coerce
+import Wasm.Compat.Prim
+import Wasm.Compat.Marshal
 
 mkUrlHashRef :: MonadReactive m => m (DynRef JSString)
 mkUrlHashRef = do
   initial <- liftIO js_readUrlHash
   routeRef <- newRef initial
   win <- getCurrentWindow
-  popStateCb <- liftIO $ asyncCallback $
+  popStateCb <- liftIO $ js_dynExport1 \_ ->
     js_readUrlHash >>= dynStep . writeRef routeRef
-  liftIO $ js_setProp (coerce win) "onpopstate" (unsafeCoerce popStateCb)
+  liftIO $ js_addEventListener win ((\(JSString j) -> j) $ toJSString "onpopstate") popStateCb
   return routeRef
 
 localStorageSet :: forall a m. (MonadIO m, ToJSVal a, Typeable a) => a -> m ()
 localStorageSet val =
   liftIO (toJSVal val >>= js_setItem key)
   where
-    key = JSS.pack . show $ typeRepFingerprint $ typeRep (Proxy @a)
+    key = toJSString . show $ typeRepFingerprint $ typeRep (Proxy @a)
 
 localStorageGet :: forall a m. (MonadIO m, FromJSVal a, Typeable a) => m (Maybe a)
 localStorageGet = liftIO do
   mval <- nullableToMaybe <$> (js_getItem key)
+  liftIO $ js_consoleLog . (.unNullable) =<< js_getItem key
   join <$> forM mval fromJSVal
   where
-    key = JSS.pack . show . typeRepFingerprint $ typeRep (Proxy @a)
+    key = toJSString . show . typeRepFingerprint $ typeRep (Proxy @a)
 
-#if defined(javascript_HOST_ARCH)
+#if defined(wasm32_HOST_ARCH)
 foreign import javascript unsafe
-  "(($1) => { setTimeout(function() {\
+  "setTimeout(function() {\
     var inputEl = $1.parentNode.parentNode.querySelector('input.edit');\
     inputEl.focus();\
-  }, 0); })"
+  }, 0)"
   js_todoItemInputFocus :: JSVal -> IO ()
 
 foreign import javascript unsafe
-  "(function(key, val){\
-    localStorage.setItem(key, JSON.stringify(val));\
-  })"
+  "localStorage.setItem($1, JSON.stringify($2));"
   js_setItem :: JSString -> JSVal -> IO ()
 
 foreign import javascript unsafe
-  "(function(key){\
-    var itemText = localStorage.getItem(key);\
-    return itemText ? JSON.parse(itemText) : null;\
-  })"
-  js_getItem :: JSString -> IO (Nullable JSVal)
+  "console.log($1)"
+  js_consoleLog :: JSVal -> IO ()
+
 foreign import javascript unsafe
-  "(function(){\
-    return location.hash;\
-  })"
+  "var itemText = localStorage.getItem($1);\
+   return itemText ? JSON.parse(itemText) : null;"
+  js_getItem :: JSString -> IO (Nullable JSVal)
+
+foreign import javascript unsafe
+  "location.hash"
   js_readUrlHash :: IO JSString
 
 -- Need this because GHC.JS.Prim.Internal.Build buildObjectI3 is
@@ -72,7 +67,7 @@ foreign import javascript unsafe
     var res = {};\
     res[k1] = v1; res[k2] = v2; res[k3] = v3;\
     return res;\
-  })"
+  })($1,$2,$3,$4,$5,$6)"
   js_buildObjectI3 :: JSVal -> JSVal -> JSVal -> JSVal -> JSVal -> JSVal -> JSVal
 #else
 js_todoItemInputFocus :: JSVal -> IO () = errorGhcjsOnly

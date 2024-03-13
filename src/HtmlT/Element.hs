@@ -5,7 +5,7 @@ module HtmlT.Element where
 
 import HtmlT.Base
 import HtmlT.Types
-import JavaScript.Compat.String (JSString(..))
+import Wasm.Compat.Prim
 
 -- | This typeclass allows for tag constructors to have variable
 -- length arguments. Each tag constructor like 'div_' defined below

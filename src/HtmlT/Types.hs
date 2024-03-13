@@ -8,13 +8,14 @@ import GHC.Generics
 import HtmlT.Event
 import Control.Monad.Fix
 
-import JavaScript.Compat.Prim
-import JavaScript.Compat.String (JSString(..))
+import Wasm.Compat.Prim
 
 -- | HtmlT is nothing more than just a newtype over ReaderT HtmlEnv
 newtype HtmlT m a = HtmlT {unHtmlT :: ReaderT HtmlEnv m a}
-  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadReader HtmlEnv
-    , MonadFix, MonadCatch, MonadThrow, MonadMask, MonadTrans)
+  deriving newtype (
+    Functor, Applicative, Monad, MonadIO, MonadReader HtmlEnv,
+    MonadFix, MonadCatch, MonadThrow, MonadMask, MonadTrans
+  )
 
 data HtmlEnv = HtmlEnv
   { html_current_element :: DOMElement
@@ -45,7 +46,8 @@ newtype DOMEvent = DOMEvent {unDOMEvent :: JSVal}
 -- | See https://developer.mozilla.org/en-US/docs/Web/Events for
 -- reference, what events are supported by particular elements
 newtype EventName = EventName {unEventName :: JSString}
-  deriving newtype IsString
+
+instance IsString EventName where fromString = EventName . toJSString
 
 -- | Two comment nodes that define a boundary and a placeholder to
 -- insert additional nodes within the DOM.

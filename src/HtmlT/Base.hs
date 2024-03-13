@@ -14,9 +14,8 @@ import HtmlT.DOM
 import HtmlT.Event
 import HtmlT.Internal
 import HtmlT.Types
-import JavaScript.Compat.Marshal
-import JavaScript.Compat.Prim
-import JavaScript.Compat.String (JSString(..))
+import Wasm.Compat.Marshal
+import Wasm.Compat.Prim
 
 -- | Create a DOM element with a given tag name and attach it to
 -- 'html_current_element'. Attributes, properties and children nodes can
@@ -94,59 +93,6 @@ dynAttr k d = do
   el <- asks html_current_element
   performDyn $ liftIO . setAttribute el k <$> d
 
--- | Attach listener to the root element. First agument is the name
--- of the DOM event to listen. Second is the callback that accepts the fired
--- DOM event object
---
--- > el "button" do
--- >   on "click" \_event -> do
--- >     liftIO $ putStrLn "Clicked!"
--- >   text "Click here"
-on :: EventName -> (DOMEvent -> Step ()) -> Html ()
-on name k = do
-  el <- asks html_current_element
-  onGlobalEvent defaultListenerOpts (nodeFromElement el) name k
-
--- | Same as 'on' but ignores 'DOMEvent' inside the callback
-on_ :: EventName -> Step () -> Html ()
-on_ name = on name . const
-
--- | Same as 'on' but allows to specify 'ListenerOpts'
-onOptions :: EventName -> ListenerOpts -> (DOMEvent -> Step ()) -> Html ()
-onOptions name opts k = do
-  el <- asks html_current_element
-  onGlobalEvent opts (nodeFromElement el) name k
-
-decodeEvent :: (JSVal -> MaybeT Step a) -> (a -> Step ()) -> DOMEvent -> Step ()
-decodeEvent dec act (DOMEvent jsevent) =
-  runMaybeT (dec jsevent) >>= maybe (pure ()) act
-
--- | Attach a listener to arbitrary target, not just the current root
--- element (usually that would be @window@, @document@ or @body@
--- objects)
-onGlobalEvent
-  :: MonadReactive m
-  => ListenerOpts
-  -- ^ Specify whether to call @event.stopPropagation()@ and
-  -- @event.preventDefault()@ on the fired event
-  -> DOMNode
-  -- ^ Event target
-  -> EventName
-  -- ^ Event name
-  -> (DOMEvent -> Step ())
-  -- ^ Callback that accepts reference to the DOM event
-  -> m ()
-onGlobalEvent opts target name f = do
-  ReactiveEnv{renv_finalizers} <- askReactiveEnv
-  let
-    event = Event \re cb -> liftIO do
-      finalizerId <- nextQueueId re
-      unlisten <- addEventListener opts target name $
-        dynStep . cb . f
-      modifyIORef' renv_finalizers $ Map.insert
-        (FinalizerQueueId finalizerId) (CustomFinalizer unlisten)
-  subscribe event id
-
 -- | Assign CSS classes to the current root element. Compared to @prop
 -- "className"@ can be used multiple times for the same root
 --
@@ -191,7 +137,7 @@ toggleAttr att dyn = do
   performDyn $ liftIO . setup rootEl att <$> dyn
   where
     setup rootEl name = \case
-      True -> setAttribute rootEl name "on"
+      True -> setAttribute rootEl name $ toJSString "on"
       False -> removeAttribute rootEl name
 
 -- | Assign a CSS property to the root dynamically based on the value
@@ -208,7 +154,7 @@ dynStyle cssProp dyn = do
   performDyn $ liftIO . setup rootEl <$> dyn
   where
     setup el t = do
-      styleVal <- getProp (unDOMElement el) "style"
+      styleVal <- js_getProp el.unDOMElement $ toJSString "style"
       cssVal <- toJSVal t
       js_setProp styleVal cssProp cssVal
 

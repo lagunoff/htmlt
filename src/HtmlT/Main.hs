@@ -4,6 +4,7 @@ module HtmlT.Main where
 import Control.Monad
 import Data.IORef
 import GHC.Generics
+import Wasm.Compat.Prim
 
 import HtmlT.DOM
 import HtmlT.Event
@@ -39,8 +40,8 @@ attachOptions StartOpts{..} render = mdo
   -- TODO: doesn't work with javascript-backend
   -- when startopts_wait_document_load
   --   js_waitDocumentLoad
-  begin <- createComment "ContentBoundary {{"
-  end <- createComment "}}"
+  begin <- createComment $ toJSString "ContentBoundary {{"
+  end <- createComment $ toJSString "}}"
   appendChild startopts_root_element begin
   appendChild startopts_root_element end
   let
@@ -71,8 +72,7 @@ attachToBody html = do
 
 -- | Run finalizers and detach created elements from the DOM
 detach :: RunningApp -> IO ()
-detach RunningApp{..} = do
-  finalizers <- readIORef . renv_finalizers . html_reactive_env $
-    runapp_html_env
-  applyFinalizer (html_reactive_env runapp_html_env) finalizers
-  removeBoundary runapp_boundary
+detach app = do
+  finalizers <- readIORef app.runapp_html_env.html_reactive_env.renv_finalizers
+  applyFinalizer app.runapp_html_env.html_reactive_env finalizers
+  removeBoundary app.runapp_boundary

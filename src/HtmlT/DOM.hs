@@ -14,28 +14,239 @@ import Data.Coerce
 import GHC.Exts as Exts
 import GHC.Generics
 import Unsafe.Coerce
-
+import Wasm.Compat.Prim
+import Wasm.Compat.Marshal
 import HtmlT.Types
-import JavaScript.Compat.Foreign.Callback
-import JavaScript.Compat.Marshal
-import JavaScript.Compat.Prim
-import JavaScript.Compat.String (JSString)
-import JavaScript.Compat.String qualified as JSS
+import HtmlT.Event
 
-data ListenerOpts = ListenerOpts
-  { lo_stop_propagation :: Bool
-  -- ^ If true call @event.stopPropagation()@
-  , lo_prevent_default :: Bool
-  -- ^ If true call @event.preventDefault()@
-  , lo_sync_callback :: Bool
-  -- ^ If true create callback with @syncCallback1 ThrowWouldBlock@
-  -- otherwise — @asyncCallback1@ this is relevant for example when
-  -- listening to @BeforeUnloadEvent@
-  -- https://developer.mozilla.org/en-US/docs/Web/API/BeforeUnloadEvent
-  } deriving stock (Generic)
+import Data.Kind
 
-defaultListenerOpts :: ListenerOpts
-defaultListenerOpts = ListenerOpts False False False
+data EventListenerOptions = EventListenerOptions
+  { prevent_default :: Bool
+  , stop_propagation :: Bool
+  } deriving stock (Generic, Show, Eq)
+
+defaultEventListenerOptions :: EventListenerOptions
+defaultEventListenerOptions = EventListenerOptions
+  { prevent_default = False
+  , stop_propagation = False
+  }
+
+on :: forall eventName. IsEventName eventName => EventListenerCb eventName -> Html ()
+on k = addEventListener (addEventListenerArgs @eventName) k
+
+data AddEventListenerArgs callback = AddEventListenerArgs
+  { event_name :: JSString
+  , listener_options :: EventListenerOptions
+  , mk_callback :: callback -> JSVal -> Step ()
+  } deriving (Generic)
+
+addEventListener
+  :: AddEventListenerArgs callback
+  -> callback
+  -> Html ()
+addEventListener args k = do
+  el <- asks (.html_current_element)
+  addEventListenerTarget el.unDOMElement args k
+
+-- | EventTarget.addEventListener()
+-- https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener
+addEventListenerTarget
+  :: MonadIO m
+  => JSVal
+  -> AddEventListenerArgs callback
+  -> callback
+  -> m ()
+addEventListenerTarget target args k = do
+  cb <- liftIO $ js_dynExport1 $ dynStep . args.mk_callback k
+  -- jscb <- withopts hscb
+  liftIO $ js_addEventListener target
+    (toJSValPure args.event_name) cb
+  let reactiveScope = 1::Int
+      installFinalizer _ _ = return ()
+  installFinalizer reactiveScope do
+    js_addEventListener target
+      (toJSValPure args.event_name) cb
+    freeJSVal cb
+
+class IsEventName eventName where
+  type EventListenerCb eventName :: Type
+  addEventListenerArgs :: AddEventListenerArgs (EventListenerCb eventName)
+
+instance IsEventName "click" where
+  type EventListenerCb "click" = Step ()
+  addEventListenerArgs = pointerEventArgs "click"
+
+instance IsEventName "mousedown" where
+  type EventListenerCb "mousedown" = Step ()
+  addEventListenerArgs = pointerEventArgs "mousedown"
+
+instance IsEventName "mouseup" where
+  type EventListenerCb "mouseup" = Step ()
+  addEventListenerArgs = pointerEventArgs "mouseup"
+
+instance IsEventName "dblclick" where
+  type EventListenerCb "dblclick" = Step ()
+  addEventListenerArgs = pointerEventArgs "dblclick"
+
+instance IsEventName "submit" where
+  type EventListenerCb "submit" = Step ()
+  addEventListenerArgs = submitEventArgs
+
+instance IsEventName "input" where
+  type EventListenerCb "input" = JSString -> Step ()
+  addEventListenerArgs = inputEventArgs
+
+instance IsEventName "keydown" where
+  type EventListenerCb "keydown" = Int -> Step ()
+  addEventListenerArgs = keyboardEventArgs "keydown"
+
+instance IsEventName "keyup" where
+  type EventListenerCb "keyup" = Int -> Step ()
+  addEventListenerArgs = keyboardEventArgs "keyup"
+
+instance IsEventName "focus" where
+  type EventListenerCb "focus" = Step ()
+  addEventListenerArgs = pointerEventArgs "focus"
+
+instance IsEventName "blur" where
+  type EventListenerCb "blur" = Step ()
+  addEventListenerArgs = pointerEventArgs "blur"
+
+instance IsEventName "input/blur" where
+  type EventListenerCb "input/blur" = JSString -> Step ()
+  addEventListenerArgs = inputEventArgs {event_name = "blur"}
+
+instance IsEventName "input/focus" where
+  type EventListenerCb "input/focus" = JSString -> Step ()
+  addEventListenerArgs = inputEventArgs {event_name = "focus"}
+
+instance IsEventName "checkbox/change" where
+  type EventListenerCb "checkbox/change" = Bool -> Step ()
+  addEventListenerArgs = checkboxChangeEventArgs
+
+instance IsEventName "select/change" where
+  type EventListenerCb "select/change" = JSString -> Step ()
+  addEventListenerArgs = selectChangeEventArgs
+
+-- https://developer.mozilla.org/en-US/docs/Web/API/Element/click_event
+pointerEventArgs :: JSString -> AddEventListenerArgs (Step ())
+pointerEventArgs event_name = AddEventListenerArgs
+  { event_name
+  , listener_options = defaultEventListenerOptions
+  , mk_callback = \k _ -> k
+  }
+
+-- https://developer.mozilla.org/en-US/docs/Web/API/HTMLFormElement/submit_event
+submitEventArgs :: AddEventListenerArgs (Step ())
+submitEventArgs = AddEventListenerArgs
+  { event_name = "submit"
+  , listener_options = defaultSubmitOptions
+  , mk_callback = \k _ -> k
+  }
+  where
+    defaultSubmitOptions = EventListenerOptions True True
+
+-- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/input_event
+inputEventArgs :: AddEventListenerArgs (JSString -> Step ())
+inputEventArgs = AddEventListenerArgs
+  { event_name = "input"
+  , listener_options = defaultEventListenerOptions
+  , mk_callback = \k event -> do
+    target <- liftIO $ js_getProp event "target"
+    value <- liftIO $ js_getProp target "value"
+    liftIO (fromJSVal value) >>= mapM_ k
+  }
+
+-- https://developer.mozilla.org/en-US/docs/Web/API/Element/keydown_event
+-- https://developer.mozilla.org/en-US/docs/Web/API/Element/keyup_event
+keyboardEventArgs :: JSString -> AddEventListenerArgs (Int -> Step ())
+keyboardEventArgs event_name = AddEventListenerArgs
+  { event_name
+  , listener_options = defaultEventListenerOptions
+  , mk_callback = \k event -> do
+    keyCode <- liftIO $ js_getProp event "keyCode"
+    liftIO (fromJSVal keyCode) >>= mapM_ k
+  }
+
+-- https://developer.mozilla.org/en-US/docs/Web/API/Element/focus_event
+-- https://developer.mozilla.org/en-US/docs/Web/API/Element/blur_event
+-- https://developer.mozilla.org/en-US/docs/Web/API/Element/focusin_event
+-- https://developer.mozilla.org/en-US/docs/Web/API/Element/focusout_event
+focusEventArgs :: JSString -> AddEventListenerArgs (Step ())
+focusEventArgs event_name = AddEventListenerArgs
+  { event_name
+  , listener_options = defaultEventListenerOptions
+  , mk_callback = undefined
+  -- , mk_hs_callback = \k _ -> k
+  -- , mk_js_callback = \opts callbackId ->
+  --   Lam $ RevSeq $ TriggerEvent callbackId NullE : applyListenerOptions opts
+  }
+
+-- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/change_event
+checkboxChangeEventArgs :: AddEventListenerArgs (Bool -> Step ())
+checkboxChangeEventArgs = AddEventListenerArgs
+  { event_name = "change"
+  , listener_options = defaultEventListenerOptions
+  , mk_callback = \k event -> do
+    target <- liftIO $ js_getProp event "target"
+    checked <- liftIO $ js_getProp target "checked"
+    liftIO (fromJSVal checked) >>= mapM_ k
+  }
+
+-- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/change_event
+selectChangeEventArgs :: AddEventListenerArgs (JSString -> Step ())
+selectChangeEventArgs = AddEventListenerArgs
+  { event_name = "change"
+  , listener_options = defaultEventListenerOptions
+  , mk_callback = \k event -> do
+    target <- liftIO $ js_getProp event "target"
+    value <- liftIO $ js_getProp target "value"
+    liftIO (fromJSVal value) >>= mapM_ k
+  }
+
+data Location = Location
+  { protocol :: JSString
+  -- ^ A string containing the protocol scheme of the URL, including
+  -- the final ':'
+  , hostname :: JSString
+  -- ^ A string containing the domain of the URL.
+  , port :: JSString
+  -- ^ A string containing the port number of the URL.
+  , pathname :: JSString
+  -- ^ A string containing an initial '/' followed by the path of the
+  -- URL, not including the query string or fragment.
+  , search :: JSString
+  -- ^ A string containing a '?' followed by the parameters or
+  -- "querystring" of the URL
+  , hash :: JSString
+  -- ^ A string containing a '#' followed by the fragment identifier
+  -- of the URL.
+  } deriving stock (Show, Eq, Generic)
+
+-- https://developer.mozilla.org/en-US/docs/Web/API/Window/popstate_event
+popstateEventArgs :: AddEventListenerArgs (Location -> Step ())
+popstateEventArgs = AddEventListenerArgs
+  { event_name = "popstate"
+  , listener_options = defaultEventListenerOptions
+  , mk_callback =  \k _event -> do
+    win <- liftIO js_getCurrentWindow
+    loc <- liftIO $ js_getProp win "location"
+    mprotocol <- liftIO $ fromJSVal =<< js_getProp loc "protocol"
+    mhostname <- liftIO $ fromJSVal =<< js_getProp loc "hostname"
+    mport <- liftIO $ fromJSVal =<< js_getProp loc "port"
+    mpathname <- liftIO $ fromJSVal =<< js_getProp loc "pathname"
+    msearch <- liftIO $ fromJSVal =<< js_getProp loc "search"
+    mhash <- liftIO $ fromJSVal =<< js_getProp loc "hash"
+    mapM_ k do
+      protocol <- mprotocol
+      hostname <- mhostname
+      port <- mport
+      pathname <- mpathname
+      search <- msearch
+      hash <- mhash
+      return Location {..}
+  }
 
 -- | Get global Window object @window@
 -- https://developer.mozilla.org/en-US/docs/Web/API/Window
@@ -116,45 +327,23 @@ unsafeInsertHtml parent manchor rawHtml = js_unsafeInsertHtml parent
 -- | Assuming given 'ContentBoundary' was inserted into the @parent@
 -- element remove all the content inside the boundary.
 clearBoundary :: ContentBoundary -> IO ()
-clearBoundary ContentBoundary{..} =
-  js_clearBoundary boundary_begin boundary_end
+clearBoundary b =
+  js_clearBoundary b.boundary_begin b.boundary_end
 
 -- | Detach 'ContentBoundary' from the DOM and everything inside the
 -- boundary.
 removeBoundary :: ContentBoundary -> IO ()
-removeBoundary ContentBoundary{..} = do
-  js_clearBoundary boundary_begin boundary_end
-  js_detachBoundary boundary_begin boundary_end
+removeBoundary b = do
+  js_clearBoundary b.boundary_begin b.boundary_end
+  js_detachBoundary b.boundary_begin b.boundary_end
 
 -- | Run a given callback on BeforeUnloadEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/BeforeUnloadEvent
 onBeforeUnload :: IO () -> IO ()
 onBeforeUnload cb = do
-  syncCb <- syncCallback ThrowWouldBlock cb
-  js_onBeforeUnload syncCb
-
--- | EventTarget.addEventListener()
--- https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener
-addEventListener
-  :: ListenerOpts
-  -> DOMNode
-  -> EventName
-  -> (DOMEvent -> IO ())
-  -> IO (IO ())
-addEventListener ListenerOpts{..} target name f = do
-  hscb <- mkcallback (f . DOMEvent)
-  jscb <- withopts hscb
-  js_callMethod2 (coerce target) "addEventListener"
-    (JSS.toJSValPure (unEventName name)) (unsafeCoerce jscb)
-  return do
-    js_callMethod2 (coerce target) "removeEventListener"
-      (JSS.toJSValPure (unEventName name)) (unsafeCoerce jscb)
-    releaseCallback hscb
-  where
-    mkcallback = if lo_sync_callback
-      then syncCallback1 ThrowWouldBlock
-      else asyncCallback1
-    withopts = js_callbackWithOptions lo_stop_propagation lo_prevent_default
+  jscb <- js_dynExport1 (const cb)
+  js_onBeforeUnload jscb
+  return ()
 
 -- | Collection of deltaX, deltaY and deltaZ properties from WheelEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/WheelEvent
@@ -164,12 +353,12 @@ data MouseDelta = MouseDelta
   , md_delta_z :: Int
   } deriving stock (Eq, Show, Generic)
 
-mouseDeltaDecoder :: MonadIO m => JSVal -> MaybeT m MouseDelta
-mouseDeltaDecoder mouseEvent = do
-  md_delta_x <- propDecoder "deltaX" mouseEvent
-  md_delta_y <- propDecoder "deltaY" mouseEvent
-  md_delta_z <- propDecoder "deltaZ" mouseEvent
-  return MouseDelta {..}
+-- mouseDeltaDecoder :: MonadIO m => JSVal -> MaybeT m MouseDelta
+-- mouseDeltaDecoder mouseEvent = do
+--   md_delta_x <- propDecoder "deltaX" mouseEvent
+--   md_delta_y <- propDecoder "deltaY" mouseEvent
+--   md_delta_z <- propDecoder "deltaZ" mouseEvent
+--   return MouseDelta {..}
 
 -- | Pair of two values, might denote either a size or coordinates in
 -- different contexts
@@ -178,99 +367,77 @@ data Point a = Point
   , pt_y :: a
   } deriving stock (Eq, Show, Ord, Functor, Generic)
 
--- | Read clientX and clientY properties from MouseEvent
--- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
-clientXYDecoder :: MonadIO m => JSVal -> MaybeT m (Point Int)
-clientXYDecoder mouseEvent = do
-  pt_x <- propDecoder "clientX" mouseEvent
-  pt_y <- propDecoder "clientY" mouseEvent
-  return Point {..}
+-- -- | Read clientX and clientY properties from MouseEvent
+-- -- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
+-- clientXYDecoder :: MonadIO m => JSVal -> MaybeT m (Point Int)
+-- clientXYDecoder mouseEvent = do
+--   pt_x <- propDecoder "clientX" mouseEvent
+--   pt_y <- propDecoder "clientY" mouseEvent
+--   return Point {..}
 
--- | Read offsetX and offsetY properties from MouseEvent
--- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
-offsetXYDecoder :: MonadIO m => JSVal -> MaybeT m (Point Int)
-offsetXYDecoder mouseEvent = do
-  pt_x <- propDecoder "offsetX" mouseEvent
-  pt_y <- propDecoder "offsetY" mouseEvent
-  return Point {..}
+-- -- | Read offsetX and offsetY properties from MouseEvent
+-- -- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
+-- offsetXYDecoder :: MonadIO m => JSVal -> MaybeT m (Point Int)
+-- offsetXYDecoder mouseEvent = do
+--   pt_x <- propDecoder "offsetX" mouseEvent
+--   pt_y <- propDecoder "offsetY" mouseEvent
+--   return Point {..}
 
--- | Read pageX and pageY properties from MouseEvent
--- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
-pageXYDecoder :: MonadIO m => JSVal -> MaybeT m (Point Int)
-pageXYDecoder mouseEvent = do
-  pt_x <- propDecoder "pageX" mouseEvent
-  pt_y <- propDecoder "pageY" mouseEvent
-  return Point {..}
+-- -- | Read pageX and pageY properties from MouseEvent
+-- -- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
+-- pageXYDecoder :: MonadIO m => JSVal -> MaybeT m (Point Int)
+-- pageXYDecoder mouseEvent = do
+--   pt_x <- propDecoder "pageX" mouseEvent
+--   pt_y <- propDecoder "pageY" mouseEvent
+--   return Point {..}
 
--- | Collection of altKey, ctrlKey, metaKey and shiftKey properties
--- from KeyboardEvent
-data KeyModifiers = KeyModifiers
-  { kmod_alt_key :: Bool
-  , kmod_ctrl_key :: Bool
-  , kmod_meta_key :: Bool
-  , kmod_shift_key :: Bool
-  } deriving stock (Eq, Show, Generic)
+-- -- | Collection of altKey, ctrlKey, metaKey and shiftKey properties
+-- -- from KeyboardEvent
+-- data KeyModifiers = KeyModifiers
+--   { kmod_alt_key :: Bool
+--   , kmod_ctrl_key :: Bool
+--   , kmod_meta_key :: Bool
+--   , kmod_shift_key :: Bool
+--   } deriving stock (Eq, Show, Generic)
 
--- | Read altKey, ctrlKey, metaKey and shiftKey properties from
--- KeyboardEvent
--- https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent
-keyModifiersDecoder :: MonadIO m => JSVal -> MaybeT m KeyModifiers
-keyModifiersDecoder keyEvent = do
-  kmod_alt_key <- propDecoder "altKey" keyEvent
-  kmod_ctrl_key <- propDecoder "ctrlKey" keyEvent
-  kmod_meta_key <- propDecoder "metaKey" keyEvent
-  kmod_shift_key <- propDecoder "shiftKey" keyEvent
-  return KeyModifiers {..}
+-- -- | Read altKey, ctrlKey, metaKey and shiftKey properties from
+-- -- KeyboardEvent
+-- -- https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent
+-- keyModifiersDecoder :: MonadIO m => JSVal -> MaybeT m KeyModifiers
+-- keyModifiersDecoder keyEvent = do
+--   kmod_alt_key <- propDecoder "altKey" keyEvent
+--   kmod_ctrl_key <- propDecoder "ctrlKey" keyEvent
+--   kmod_meta_key <- propDecoder "metaKey" keyEvent
+--   kmod_shift_key <- propDecoder "shiftKey" keyEvent
+--   return KeyModifiers {..}
 
--- | Read keyCode properties from KeyboardEvent
--- https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/keyCode
-keyCodeDecoder :: MonadIO m => JSVal -> MaybeT m Int
-keyCodeDecoder = propDecoder "keyCode"
+-- -- | Read keyCode properties from KeyboardEvent
+-- -- https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/keyCode
+-- keyCodeDecoder :: MonadIO m => JSVal -> MaybeT m Int
+-- keyCodeDecoder = propDecoder "keyCode"
 
--- | Collection of some useful information from KeyboardEvent
-data KeyboardEvent = KeyboardEvent
-  { ke_modifiers :: KeyModifiers
-  , ke_key :: Maybe JSString
-  , ke_key_code :: Int
-  , ke_repeat :: Bool
-  } deriving stock (Generic)
+-- -- | Collection of some useful information from KeyboardEvent
+-- data KeyboardEvent = KeyboardEvent
+--   { ke_modifiers :: KeyModifiers
+--   , ke_key :: Maybe JSString
+--   , ke_key_code :: Int
+--   , ke_repeat :: Bool
+--   } deriving stock (Generic)
 
--- | Read information from KeyboardEvent
-keyboardEventDecoder :: MonadIO m => JSVal -> MaybeT m KeyboardEvent
-keyboardEventDecoder keyEvent = do
-  ke_modifiers <- keyModifiersDecoder keyEvent
-  ke_key <- propDecoder "key" keyEvent
-  ke_key_code <- propDecoder "keyCode" keyEvent
-  ke_repeat <- propDecoder "repeat" keyEvent
-  return KeyboardEvent {..}
-
--- | Event.target.value
--- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
--- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input#attr-value
-valueDecoder :: MonadIO m => JSVal -> MaybeT m JSString
-valueDecoder =
-  propDecoder "target" >=> propDecoder "value"
-
--- | Event.target.checked
--- https://developer.mozilla.org/en-US/docs/Web/API/Event/target
--- https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input/checkbox#checked
-checkedDecoder :: MonadIO m => JSVal -> MaybeT m Bool
-checkedDecoder =
-  propDecoder "target" >=> propDecoder "checked"
-
-propDecoder :: (MonadIO m, FromJSVal v) => String -> JSVal -> MaybeT m v
-propDecoder k obj = do
-  -- TODO: Make sure it is true that if this guard succeeds,
-  -- Object.getProp will never throw an exception!
-  guard $ not (isUndefined obj) && not (isNull obj)
-  MaybeT $ liftIO $ fromJSVal =<<
-    getProp obj k
+-- -- | Read information from KeyboardEvent
+-- keyboardEventDecoder :: MonadIO m => JSVal -> MaybeT m KeyboardEvent
+-- keyboardEventDecoder keyEvent = do
+--   ke_modifiers <- keyModifiersDecoder keyEvent
+--   ke_key <- propDecoder "key" keyEvent
+--   ke_key_code <- propDecoder "keyCode" keyEvent
+--   ke_repeat <- propDecoder "repeat" keyEvent
+--   return KeyboardEvent {..}
 
 errorGhcjsOnly :: a
 errorGhcjsOnly = error "Only GHCJS is supported"
 
-#if !defined(javascript_HOST_ARCH)
-js_onBeforeUnload :: Callback a -> IO ()
+#if !defined(wasm32_HOST_ARCH)
+js_onBeforeUnload :: JSVal {-Callback a-} -> IO ()
 js_onBeforeUnload = errorGhcjsOnly
 
 js_appendChild :: DOMElement -> DOMNode -> IO () = errorGhcjsOnly
@@ -292,121 +459,93 @@ js_getCurrentWindow :: IO JSVal  = errorGhcjsOnly
 js_getCurrentDocument :: IO JSVal  = errorGhcjsOnly
 js_getCurrentBody :: IO JSVal = errorGhcjsOnly
 js_unsafeInsertHtml :: DOMElement -> Nullable DOMNode -> JSString -> IO () = errorGhcjsOnly
-js_call0 :: JSVal -> IO JSVal = errorGhcjsOnly
-js_call1 :: JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
-js_call2 :: JSVal -> JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
-js_callMethod0 :: JSVal -> JSString -> IO JSVal = errorGhcjsOnly
-js_callMethod1 :: JSVal -> JSString -> JSVal -> IO JSVal = errorGhcjsOnly
-js_callMethod2 :: JSVal -> JSString -> JSVal -> JSVal -> IO JSVal = errorGhcjsOnly
 js_waitDocumentLoad :: IO () = errorGhcjsOnly
-js_callbackWithOptions :: Bool -> Bool -> Callback (JSVal -> IO ()) -> IO (Callback (JSVal -> IO ())) = errorGhcjsOnly
+js_callbackWithOptions :: Bool -> Bool -> JSVal {-Callback (JSVal -> IO ())-} -> IO JSVal {-(Callback (JSVal -> IO ()))-} = errorGhcjsOnly
 js_setProp :: JSVal -> JSString -> JSVal -> IO () = errorGhcjsOnly
+js_dynExport1 :: (JSVal -> IO ()) -> IO JSVal = errorGhcjsOnly
+js_addEventListener :: JSVal -> JSVal -> JSVal -> IO () = errorGhcjsOnly
+js_removeEventListener :: JSVal -> JSVal -> JSVal -> IO () = errorGhcjsOnly
+
 #else
 foreign import javascript unsafe
-  "(($1, $2) => $1.appendChild($2))"
+  "$1.appendChild($2)"
   js_appendChild :: DOMElement -> DOMNode -> IO ()
 foreign import javascript unsafe
-  "(($1, $2, $3) => $1.insertBefore($2, $3))"
+  "$1.insertBefore($2, $3)"
   js_insertBefore :: DOMElement -> DOMNode -> DOMNode -> IO ()
 foreign import javascript unsafe
-  "(($1, $2, $3) => $1.setAttribute($2, $3))"
+  "$1.setAttribute($2, $3)"
   js_setAttribute :: DOMElement -> JSString -> JSString -> IO ()
 foreign import javascript unsafe
-  "(($1, $2) => $1.removeAttribute($2))"
+  "$1.removeAttribute($2)"
   js_removeAttribute :: DOMElement -> JSString -> IO ()
 foreign import javascript unsafe
-  "(($1, $2) => $1.removeChild($2))"
+  "$1.removeChild($2)"
   js_removeChild :: DOMElement -> DOMNode -> IO ()
 foreign import javascript unsafe
-  "(($1, $2, $3) => $1.replaceChild($2, $3))"
+  "$1.replaceChild($2, $3)"
   js_replaceChild :: DOMElement -> DOMNode -> DOMNode -> IO ()
 foreign import javascript unsafe
-  "(($1) => document.createElement($1))"
+  "document.createElement($1)"
   js_createElement :: JSString -> IO DOMElement
 foreign import javascript unsafe
-  "(($1, $2) => document.createElementNS($1, $2))"
+  "document.createElementNS($1, $2)"
   js_createElementNS :: JSString -> JSString -> IO DOMElement
 foreign import javascript unsafe
-  "(($1) => document.createTextNode($1))"
+  "document.createTextNode($1)"
   js_createTextNode :: JSString -> IO DOMNode
 foreign import javascript unsafe
-  "(($1) => document.createComment($1))"
+  "document.createComment($1)"
   js_createComment :: JSString -> IO DOMNode
 foreign import javascript unsafe
-  "(($1, $2) => $1.classList.add($2))"
+  "$1.classList.add($2);"
   js_classListAdd :: DOMElement -> JSString -> IO ()
 foreign import javascript unsafe
-  "(($1, $2) => $1.classList.remove($2))"
+  "$1.classList.remove($2);"
   js_classListRemove :: DOMElement -> JSString -> IO ()
 foreign import javascript unsafe
-  "(($1, $2) => { $1.nodeValue = $2; })"
+  "$1.nodeValue = $2;"
   js_setTextValue :: DOMNode -> JSString -> IO ()
+foreign import javascript safe
+  "window.addEventListener('beforeunload', $1)"
+  js_onBeforeUnload :: JSVal -> IO ()
 foreign import javascript unsafe
-  "(($1) => window.addEventListener('beforeunload', $1))"
-  js_onBeforeUnload :: Callback a -> IO ()
-foreign import javascript unsafe
-  "(function(){ return window; })"
+  "return window"
   js_getCurrentWindow :: IO JSVal
 foreign import javascript unsafe
-  "(function(){ return window.document; })"
+  "window.document"
   js_getCurrentDocument :: IO JSVal
 foreign import javascript unsafe
-  "(function(){ return window.document.body; })"
+  "window.document.body"
   js_getCurrentBody :: IO JSVal
 foreign import javascript unsafe
-  "(function (begin, end) {\
-    for (;;){\
-      if (!end.previousSibling\
-        || !end.previousSibling.parentNode\
-        || end.previousSibling === begin\
-        ) break;\
-      end.previousSibling.parentNode.removeChild(end.previousSibling);\
-    }\
-  })"
+  "for (;;){\
+    if (!$2.previousSibling\
+      || !$2.previousSibling.parentNode\
+      || $2.previousSibling === $1\
+      ) break;\
+    $2.previousSibling.parentNode.removeChild($2.previousSibling);\
+  }"
   js_clearBoundary :: DOMNode -> DOMNode -> IO ()
 foreign import javascript unsafe
-  "(function (begin, end) {\
-    if (begin.parentNode) begin.parentNode.removeChild(begin);\
-    if (end.parentNode) end.parentNode.removeChild(end);\
-  })"
+  "if ($1.parentNode) $1.parentNode.removeChild($1);\
+   if ($2.parentNode) $2.parentNode.removeChild($2);"
   js_detachBoundary :: DOMNode -> DOMNode -> IO ()
-foreign import javascript unsafe "(($1) => $1())"
-  js_call0 :: JSVal -> IO JSVal
-foreign import javascript unsafe "(($1, $2) => $1($2))"
-  js_call1 :: JSVal -> JSVal -> IO JSVal
-foreign import javascript unsafe "(($1, $2, $3) => $1($2, $3))"
-  js_call2 :: JSVal -> JSVal -> JSVal -> IO JSVal
-foreign import javascript unsafe "(($1, $2) => $1[$2]())"
-  js_callMethod0 :: JSVal -> JSString -> IO JSVal
-foreign import javascript unsafe "(($1, $2, $3) => $1[$2]($3))"
-  js_callMethod1 :: JSVal -> JSString -> JSVal -> IO JSVal
-foreign import javascript unsafe "(($1, $2, $3, $4) => $1[$2]($3, $4))"
-  js_callMethod2 :: JSVal -> JSString -> JSVal -> JSVal -> IO JSVal
 foreign import javascript unsafe
-  "(function(el, anchor, htmlString){\
-    var div = document.createElement('div');\
-    div.innerHTML = htmlString;\
-    var tempChilds = [];\
-    for (var i = 0; i < div.childNodes.length; i++) {\
-      tempChilds.push(div.childNodes[i]);\
-    }\
-    for (var j = 0; j < tempChilds.length; j++) {\
-      div.removeChild(tempChilds[j]);\
-      if (anchor) {\
-        el.insertBefore(tempChilds[j], anchor);\
-      } else{\
-        el.appendChild(tempChilds[j]);\
-      }\
-    }\
-  })"
+  "div.innerHTML = $3;\
+   var tempChilds = [];\
+   for (var i = 0; i < div.childNodes.length; i++) {\
+     tempChilds.push(div.childNodes[i]);\
+   }\
+   for (var j = 0; j < tempChilds.length; j++) {\
+     div.removeChild(tempChilds[j]);\
+     if ($2) {\
+       $1.insertBefore(tempChilds[j], $2);\
+     } else{\
+       $1.appendChild(tempChilds[j]);\
+     }\
+   }"
   js_unsafeInsertHtml :: DOMElement -> Nullable DOMNode -> JSString -> IO ()
-foreign import javascript unsafe
-  "(($1, $2, $3) => function(e) {\
-    if ($1) e.stopPropagation();\
-    if ($2) e.preventDefault();\
-    return $3(e);\
-  })"
-  js_callbackWithOptions :: Bool -> Bool -> Callback (JSVal -> IO ()) -> IO (Callback (JSVal -> IO ()))
 foreign import javascript interruptible
   "if (document.readyState == 'loading') {\
     addEventListener('DOMContentLoaded', $c);\
@@ -415,19 +554,25 @@ foreign import javascript interruptible
   }"
   js_waitDocumentLoad :: IO ()
 foreign import javascript unsafe
-  "(($1, $2, $3) => { $1[$2] = $3; })"
+  "$1[$2] = $3;"
   js_setProp :: JSVal -> JSString -> JSVal -> IO ()
-foreign import javascript unsafe "(() => null)"
-  js_null :: JSVal
+foreign import javascript "wrapper"
+  js_dynExport1 :: (JSVal -> IO ()) -> IO JSVal
+foreign import javascript safe
+  "$1.addEventListener($2, $3)"
+  js_addEventListener :: JSVal -> JSVal -> JSVal -> IO ()
+foreign import javascript safe
+  "$1.removeEventListener($2, $3)"
+  js_removeEventListener :: JSVal -> JSVal -> JSVal -> IO ()
 #endif
 
 instance (a ~ (), MonadIO m) => IsString (HtmlT m a) where
   fromString s = do
     HtmlEnv{html_current_element, html_content_boundary} <- ask
     let jsstr = toJSString s
-    textNode <- liftIO $ createTextNode (JSS.fromJSValPure jsstr)
+    textNode <- liftIO $ createTextNode jsstr
     case html_content_boundary of
-      Just ContentBoundary{boundary_end} -> liftIO $
-        js_insertBefore html_current_element textNode boundary_end
+      Just b -> liftIO $
+        js_insertBefore html_current_element textNode b.boundary_end
       Nothing -> liftIO $ appendChild html_current_element textNode
   {-# INLINE fromString #-}

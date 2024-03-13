@@ -89,10 +89,8 @@ library
     HtmlT.Main
     HtmlT.Property
     HtmlT.Types
-    JavaScript.Compat.Foreign.Callback
-    JavaScript.Compat.Marshal
-    JavaScript.Compat.Prim
-    JavaScript.Compat.String
+    Wasm.Compat.Prim
+    Wasm.Compat.Marshal
     
   other-modules: Paths_htmlt
   build-depends:
@@ -102,30 +100,26 @@ library
     mtl,
     text,
     transformers,
-  if !arch(javascript)
-    build-depends:
-      ghc-prim,
-    other-modules:
-      JavaScript.Compat.String.Native
-  else
-    other-modules:
-      JavaScript.Compat.String.JavaScript
+    ghc-experimental,
 
-executable htmlt-counter
-  import: htmlt-common         
-  main-is: counter.hs
-  hs-source-dirs: ./examples/counter
-  build-depends:
-    base,
-    htmlt,
-    transformers,
-  if !flag(examples)
-    buildable: False
+-- executable htmlt-counter
+--   import: htmlt-common         
+--   main-is: counter.hs
+--   hs-source-dirs: ./examples/counter
+--   build-depends:
+--     base,
+--     htmlt,
+--     transformers,
+--   if !flag(examples)
+--     buildable: False
 
 executable htmlt-todomvc
   import: htmlt-common         
   main-is: todomvc.hs
   hs-source-dirs: ./examples/todomvc
+  ghc-options:
+    -no-hs-main -optl-mexec-model=reactor
+    -optl-Wl,--export=hs_init,--export=wasm_main
   other-modules:
     TodoItem
     TodoList
@@ -137,32 +131,32 @@ executable htmlt-todomvc
   if !flag(examples)
     buildable: False
   
-executable htmlt-simple-routing
-  import: htmlt-common         
-  main-is: simple-routing.hs
-  hs-source-dirs: ./examples/simple-routing
-  other-modules:
-    Assets
-    Router
-    Pages
-    Utils
-  build-depends:
-    base,
-    bytestring,
-    mtl,
-    htmlt,
-  if !flag(examples)
-    buildable: False
+-- executable htmlt-simple-routing
+--   import: htmlt-common         
+--   main-is: simple-routing.hs
+--   hs-source-dirs: ./examples/simple-routing
+--   other-modules:
+--     Assets
+--     Router
+--     Pages
+--     Utils
+--   build-depends:
+--     base,
+--     bytestring,
+--     mtl,
+--     htmlt,
+--   if !flag(examples)
+--     buildable: False
   
-executable htmlt-benchmarks
-  import: htmlt-common         
-  main-is: benchmarks.hs
-  hs-source-dirs: ./benchmarks/
-  build-depends:
-    base,
-    htmlt,
-    text,
-    gauge,
-  -- Fails to build with javascript-backend
-  buildable: False
+-- executable htmlt-benchmarks
+--   import: htmlt-common         
+--   main-is: benchmarks.hs
+--   hs-source-dirs: ./benchmarks/
+--   build-depends:
+--     base,
+--     htmlt,
+--     text,
+--     gauge,
+--   -- Fails to build with javascript-backend
+--   buildable: False
   

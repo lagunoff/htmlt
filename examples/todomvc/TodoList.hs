@@ -6,9 +6,8 @@ import Data.List qualified as List
 import Data.Maybe
 import GHC.Generics (Generic)
 import HtmlT
-import JavaScript.Compat.Marshal
-import JavaScript.Compat.String (JSString(..))
-import JavaScript.Compat.String qualified as JSS
+import Wasm.Compat.Marshal
+import Wasm.Compat.Prim
 
 import "this" TodoItem qualified as TodoItem
 import "this" Utils
@@ -62,7 +61,7 @@ eval = \case
   InputAction cfg newVal -> do
     modifyRef cfg.state_ref \s -> s {title = newVal}
   CommitAction cfg -> do
-    title <- JSS.strip . (.title) <$> readRef cfg.state_ref
+    title <- {- JSS.strip . -} (.title) <$> readRef cfg.state_ref
     case title of
       "" -> return ()
       t -> modifyRef cfg.state_ref \s -> s
@@ -100,15 +99,13 @@ html cfg = do
       h1_ (text "todos")
       input_ [class_ "new-todo", placeholder_ "What needs to be done?", autofocus_ True] do
         dynValue $ (.title) <$> fromRef cfg.state_ref
-        on "input" $ decodeEvent valueDecoder $
-          eval . InputAction cfg
-        on "keydown" $ decodeEvent keyCodeDecoder $
-          eval . KeydownAction cfg
+        on @"input" $ eval . InputAction cfg
+        on @"keydown" $ eval . KeydownAction cfg
     mainWidget = section_ [class_ "main"] do
       toggleClass "hidden" hiddenDyn
       input_ [id_ "toggle-all", class_ "toggle-all", type_ "checkbox"] do
-        on "click" $ decodeEvent checkedDecoder $
-          eval . ToggleAllAction cfg
+        on @"checkbox/change" $ eval . ToggleAllAction cfg
+        return ()
       label_ do
         attr "for" "toggle-all"
         text "Mark all as completed"
@@ -125,12 +122,12 @@ html cfg = do
     footerWidget = footer_ [class_ "footer"] do
       toggleClass "hidden" hiddenDyn
       span_ [class_ "todo-count"] do
-        strong_ $ dynText $ JSS.pack . show <$> itemsLeftDyn
+        strong_ $ dynText $ toJSString . show <$> itemsLeftDyn
         dynText $ pluralize " item left" " items left" <$> itemsLeftDyn
       ul_ [class_ "filters"] do
         for_ [All, Active, Completed] filterWidget
       button_ [class_ "clear-completed"] do
-        on_ "click" $ eval (ClearCompletedAction cfg)
+        on @"click" $ eval (ClearCompletedAction cfg)
         text "Clear completed"
     footerInfoWidget = footer_ [class_ "info"] do
       p_ "Double-click to edit a todo"
@@ -143,7 +140,7 @@ html cfg = do
     filterWidget flt = li_ do
       a_ [href_ (printFilter flt)] do
         toggleClass "selected" $ filterSelectedDyn flt
-        text $ JSS.pack (show flt)
+        text $ toJSString (show flt)
     hiddenDyn =
       Prelude.null . (.items) <$> fromRef cfg.state_ref
     itemsLeftDyn =

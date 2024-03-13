@@ -6,7 +6,10 @@ import "this" TodoList qualified as TodoList
 import "this" Utils
 
 main :: IO ()
-main = void $ attachToBody do
+main = return ()
+
+foreign export ccall wasm_main :: IO ()
+wasm_main = void $ attachToBody do
   renv <- asks (.html_reactive_env)
   urlHashRef <- mkUrlHashRef
   todosRef <- dynStep $ TodoList.eval (TodoList.InitAction renv urlHashRef)

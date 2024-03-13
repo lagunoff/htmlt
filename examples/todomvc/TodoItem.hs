@@ -4,10 +4,8 @@ import Control.Monad.State
 import Data.Maybe
 import GHC.Generics (Generic)
 import HtmlT
-import JavaScript.Compat.Marshal
-import JavaScript.Compat.Prim
-import JavaScript.Compat.String (JSString)
-import JavaScript.Compat.String qualified as JSS
+import Wasm.Compat.Marshal
+import Wasm.Compat.Prim
 
 import "this" Utils
 
@@ -66,23 +64,18 @@ html cfg = li_ do
   toggleClass "editing" editingDyn
   toggleClass "hidden" cfg.is_hidden_dyn
   div_ [class_ "view"] do
-    on "dblclick" $ decodeEvent (propDecoder "target") $
-      eval . DoubleClickAction cfg
+    on @DblClickWithTarget $ eval . DoubleClickAction cfg
     input_ [class_ "toggle", type_ "checkbox"] do
       dynChecked $ (.completed) <$> fromRef cfg.state_ref
-      on "change" $ decodeEvent checkedDecoder $
-        eval . CheckedAction cfg
+      on @"checkbox/change" $ eval . CheckedAction cfg
     label_ $ dynText $ (.title) <$> fromRef cfg.state_ref
     button_ [class_ "destroy"] do
-      on_ "click" cfg.ask_delete_item
+      on @"click" cfg.ask_delete_item
   input_ [class_ "edit", type_ "text"] do
     dynValue valueDyn
-    on "input" $ decodeEvent valueDecoder $
-      eval . InputAction cfg
-    on "keydown" $ decodeEvent keyCodeDecoder $
-      eval . KeydownAction cfg
-    on_ "blur" $
-      eval (CommitAction cfg)
+    on @"input" $ eval . InputAction cfg
+    on @"keydown" $ eval . KeydownAction cfg
+    on @"input/blur" $ const $ eval (CommitAction cfg)
 
 emptyTodoItemState :: TodoItemState
 emptyTodoItemState = TodoItemState "" False Nothing
@@ -93,17 +86,27 @@ instance ToJSVal TodoItemState where
     completed <- toJSVal s.completed
     editing <- toJSVal s.editing
     return $ js_buildObjectI3
-      (JSS.toJSValPure "title") title
-      (JSS.toJSValPure "completed") completed
-      (JSS.toJSValPure "editing") editing
+      (toJSValPure @JSString "title") title
+      (toJSValPure @JSString "completed") completed
+      (toJSValPure @JSString "editing") editing
 
 instance FromJSVal TodoItemState where
   fromJSVal j = do
-    mtitle <- fromJSVal =<< getProp j "title"
-    mcompleted <- fromJSVal =<< getProp j "completed"
-    mediting <- fromJSVal =<< getProp j "editing"
+    mtitle <- fromJSVal =<< js_getProp j "title"
+    mcompleted <- fromJSVal =<< js_getProp j "completed"
+    mediting <- fromJSVal =<< js_getProp j "editing"
     return do
       title <- mtitle
       completed <- mcompleted
       editing <- mediting
       return TodoItemState {..}
+
+data DblClickWithTarget
+
+instance IsEventName DblClickWithTarget where
+  type EventListenerCb DblClickWithTarget = JSVal -> Step ()
+  addEventListenerArgs = AddEventListenerArgs
+    { event_name = "dblclick"
+    , listener_options = defaultEventListenerOptions
+    , mk_callback = \k j -> liftIO (js_getProp j "target") >>= k
+    }
