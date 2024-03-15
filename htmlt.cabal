@@ -133,26 +133,26 @@ executable htmlt-todomvc
   if !flag(examples)
     buildable: False
   
-executable htmlt-simple-routing
-  import: htmlt-common         
-  main-is: simple-routing.hs
-  hs-source-dirs: ./examples/simple-routing
-  ghc-options:
-    -no-hs-main -optl-mexec-model=reactor
-    -optl-Wl,--export=hs_init,--export=wasm_main
-  other-modules:
-    Assets
-    Router
-    Pages
-    Utils
-  build-depends:
-    base,
-    bytestring,
-    mtl,
-    htmlt,
-    text,
-  if !flag(examples)
-    buildable: False
+-- executable htmlt-simple-routing
+--   import: htmlt-common         
+--   main-is: simple-routing.hs
+--   hs-source-dirs: ./examples/simple-routing
+--   ghc-options:
+--     -no-hs-main -optl-mexec-model=reactor
+--     -optl-Wl,--export=hs_init,--export=wasm_main
+--   other-modules:
+--     Assets
+--     Router
+--     Pages
+--     Utils
+--   build-depends:
+--     base,
+--     bytestring,
+--     mtl,
+--     htmlt,
+--     text,
+--   if !flag(examples)
+--     buildable: False
   
 -- executable htmlt-benchmarks
 --   import: htmlt-common         

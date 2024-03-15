@@ -11,14 +11,15 @@ import Data.Text (Text)
 import Wasm.Compat.Prim
 import Wasm.Compat.Marshal
 
-mkUrlHashRef :: MonadReactive m => m (DynRef Text)
+mkUrlHashRef :: RX (DynRef Text)
 mkUrlHashRef = do
+  reactiveEnv <- ask
   initial <- liftIO $ textFromJSString =<< js_readUrlHash
   routeRef <- newRef initial
   win <- getCurrentWindow
   popStateCb <- liftIO $ js_dynExport1 \_ ->
-    js_readUrlHash >>= textFromJSString >>= dynStep . writeRef routeRef
-  liftIO $ js_addEventListener win ((\(JSString j) -> j) $ toJSString "onpopstate") popStateCb
+    js_readUrlHash >>= textFromJSString >>= launchReactiveT reactiveEnv . writeRef routeRef
+  liftIO $ js_addEventListener win ((\(JSString j) -> j) $ toJSString "popstate") popStateCb
   return routeRef
 
 localStorageSet :: forall a m. (MonadIO m, ToJSVal a, Typeable a) => a -> m ()

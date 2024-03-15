@@ -5,11 +5,9 @@ module HtmlT.Base where
 
 import Control.Monad
 import Control.Monad.Reader
-import Control.Monad.Trans.Maybe
-import Data.Foldable
-import Data.IORef
-import Data.Map qualified as Map
 import Data.Text
+import Data.IORef
+import Data.Foldable
 
 import HtmlT.DOM
 import HtmlT.Event
@@ -54,7 +52,7 @@ dynText :: Dynamic Text -> Html ()
 dynText d = do
   txt <- readDyn d
   textNode <- liftIO (createTextNode txt)
-  void $ subscribe (updates d) \new -> void $ liftIO do
+  lift $ d.updates.subscribe \new -> void $ liftIO do
     setTextValue textNode new
   insertNode textNode
 
@@ -78,7 +76,7 @@ dynProp key dyn = do
   jKey <- liftIO $ textToJSString key
   el <- asks html_current_element
   let setup el t = toJSVal t >>= js_setProp el.unDOMElement jKey
-  performDyn $ liftIO . setup el <$> dyn
+  lift $ performDyn $ liftIO . setup el <$> dyn
 
 -- | Assign an attribute to the root element. Don't confuse attributes
 -- and properties
@@ -92,7 +90,7 @@ attr k v = do
 dynAttr :: Text -> Dynamic Text -> Html ()
 dynAttr k d = do
   el <- asks html_current_element
-  performDyn $ liftIO . setAttribute el k <$> d
+  lift $ performDyn $ liftIO . setAttribute el k <$> d
 
 -- | Assign CSS classes to the current root element. Compared to @prop
 -- "className"@ can be used multiple times for the same root
@@ -117,7 +115,7 @@ dynAttr k d = do
 toggleClass :: Text -> Dynamic Bool -> Html ()
 toggleClass cs dyn = do
   rootEl <- asks html_current_element
-  performDyn $ liftIO . setup rootEl cs <$> dyn
+  lift $ performDyn $ liftIO . setup rootEl cs <$> dyn
   where
     setup rootEl cs = \case
       True -> classListAdd rootEl cs
@@ -135,7 +133,7 @@ toggleClass cs dyn = do
 toggleAttr :: Text -> Dynamic Bool -> Html ()
 toggleAttr att dyn = do
   rootEl <- asks html_current_element
-  performDyn $ liftIO . setup rootEl att <$> dyn
+  lift $ performDyn $ liftIO . setup rootEl att <$> dyn
   where
     setup rootEl name = \case
       True -> setAttribute rootEl name "on"
@@ -153,7 +151,7 @@ dynStyle :: Text -> Dynamic Text -> Html ()
 dynStyle cssProp dyn = do
   rootEl <- asks html_current_element
   jCssProp <- liftIO $ textToJSString cssProp
-  performDyn $ liftIO . setup jCssProp rootEl <$> dyn
+  lift $ performDyn $ liftIO . setup jCssProp rootEl <$> dyn
   where
     setup jCssProp el t = do
       styleVal <- js_getProp el.unDOMElement $ toJSString "style"
@@ -182,50 +180,56 @@ simpleList
   -- collection and dynamic data for that particular element
   -> Html ()
 simpleList listDyn h = do
-  boundary <- insertBoundary
-  htmlEnv <- asks \h -> h {html_content_boundary = Just boundary}
+  outerBoundary <- insertBoundary
+  htmlEnv <- asks \h -> h {html_content_boundary = Just outerBoundary}
+  outerReactiveEnv <- lift ask
   prevValue <- liftIO $ newIORef []
   elemEnvsRef <- liftIO $ newIORef ([] :: [ElemEnv a])
   let
-    setup :: Int -> [a] -> [ElemEnv a] -> Step [ElemEnv a]
+    exec :: ElemEnv a -> Html x -> RX x
+    exec e = local (const e.ee_reactive_env) .
+      execHtmlT e.ee_html_env
+    setup :: Int -> [a] -> [ElemEnv a] -> RX [ElemEnv a]
     setup idx new existing = case (existing, new) of
       ([], []) -> return []
       -- New list is longer, append new elements
       ([], x:xs) -> do
-        finalizers <- liftIO $ newIORef Map.empty
-        elementRef <- liftIO $ execReactiveT (html_reactive_env htmlEnv) $ newRef x
-        boundary <- liftIO $ execHtmlT htmlEnv insertBoundary
+        elementScope <- newReactiveScope
+        elementRef <- newRef x
+        elementBoundary <- execHtmlT htmlEnv insertBoundary
         let
-          elementEnv = htmlEnv
-            { html_reactive_env = (html_reactive_env htmlEnv)
-              { renv_finalizers = finalizers }
-            , html_content_boundary = Just boundary
+          elementHtmlEnv = htmlEnv
+            { html_content_boundary = Just elementBoundary
             }
-        liftIO $ execHtmlT elementEnv $ h idx elementRef
-        let newElem = ElemEnv elementEnv elementRef
-        fmap (newElem:) $ setup (idx + 1) xs []
+          elementReactiveEnv = outerReactiveEnv
+            { scope = elementScope
+            }
+        let elementEnv = ElemEnv elementHtmlEnv elementReactiveEnv elementRef
+        exec elementEnv $ h idx elementRef
+        fmap (elementEnv:) $ setup (idx + 1) xs []
       -- New list is shorter, delete the elements that no longer
       -- present in the new list
       (r:rs, []) -> do
-        liftIO $ finalizeElems True (r:rs)
+        finalizeElems True (r:rs)
         return []
       -- Update child elements along the way
       (r:rs, y:ys) -> do
         writeRef (ee_dyn_ref r) y
         fmap (r:) $ setup (idx + 1) ys rs
-    finalizeElems remove = traverse_ \ElemEnv{ee_html_env} -> do
+    finalizeElems remove = traverse_ \ee -> do
       when remove $
-        mapM_ removeBoundary $ html_content_boundary ee_html_env
-      let re = html_reactive_env ee_html_env
-      finalizers <- readIORef $ renv_finalizers re
-      applyFinalizer re finalizers
+        liftIO $ mapM_ removeBoundary $ ee.ee_html_env.html_content_boundary
+      freeScope ee.ee_reactive_env.scope
     updateList new = do
       old <- liftIO $ atomicModifyIORef' prevValue (new,)
       eenvs <- liftIO $ readIORef elemEnvsRef
       newEenvs <- setup 0 new eenvs
       liftIO $ writeIORef elemEnvsRef newEenvs
-  performDyn $ updateList <$> listDyn
-  void $ installFinalizer $ readIORef elemEnvsRef >>= finalizeElems False
+    cleanup = do
+      old <- liftIO $ readIORef elemEnvsRef
+      finalizeElems False old
+  lift $ performDyn $ fmap updateList listDyn
+  lift $ installFinalizer cleanup
 
 -- | First build a DOM with the widget that is currently held by the
 -- given Dynamic, then rebuild it every time Dynamic's value
@@ -243,45 +247,25 @@ simpleList listDyn h = do
 dyn :: Dynamic (Html ()) -> Html ()
 dyn d = do
   htmlEnv <- ask
-  childRef <- liftIO (newIORef Nothing)
   boundary <- insertBoundary
+  newScope <- lift newReactiveScope
+  initialVal <- readDyn d
   let
-    finalizeEnv newEnv = do
-      readIORef childRef >>= \case
-        Just HtmlEnv{html_reactive_env} -> do
-          finalizers <- atomicModifyIORef' (renv_finalizers html_reactive_env) (Map.empty,)
-          applyFinalizer html_reactive_env finalizers
-        Nothing -> return ()
-      writeIORef childRef newEnv
-    setup html = liftIO do
-      finalizers <- newIORef Map.empty
-      let
-        newEnv = htmlEnv
-          { html_reactive_env = (html_reactive_env htmlEnv)
-            { renv_finalizers = finalizers }
-          , html_content_boundary = Just boundary
-          }
-      finalizeEnv (Just newEnv)
-      clearBoundary boundary
-      execHtmlT newEnv html
-  installFinalizer (finalizeEnv Nothing)
-  performDyn $ setup <$> d
-
--- | Run an action before the current node is detached from the DOM
-installFinalizer :: MonadReactive m => IO () -> m FinalizerKey
-installFinalizer fin = do
-  renv <- askReactiveEnv
-  finalizerId <- liftIO $ nextQueueId renv
-  let finalizerKey = FinalizerQueueId finalizerId
-  liftIO $ modifyIORef renv.renv_finalizers $
-    Map.insert finalizerKey $ CustomFinalizer fin
-  return finalizerKey
+    update html = do
+      liftIO $ clearBoundary boundary
+      html
+    exec = local (\s -> s {scope = newScope}) .
+      execHtmlT htmlEnv {html_content_boundary = Just boundary}
+  lift $ exec $ update initialVal
+  lift $ d.updates.subscribe \newVal -> do
+    freeScope newScope
+    exec $ update newVal
 
 -- | Attach resulting DOM to the given node instead of
 -- 'html_current_element'. Might be useful for implementing modal
 -- dialogs, tooltips etc. Similar to what called portals in React
 -- ecosystem
-portal :: MonadIO m => DOMElement -> HtmlT m a -> HtmlT m a
+portal :: DOMElement -> Html a -> Html a
 portal newRootEl html = do
   boundary <- local (\e -> e
     { html_current_element = newRootEl
@@ -291,7 +275,7 @@ portal newRootEl html = do
     { html_current_element = newRootEl
     , html_content_boundary = Just boundary
     }) html
-  installFinalizer $ removeBoundary boundary
+  lift $ installFinalizer $ liftIO $ removeBoundary boundary
   return result
 
 -- | Parse given text as HTML and attach the resulting tree to
@@ -304,9 +288,9 @@ portal newRootEl html = do
 -- >   unsafeHtml "<svg viewBox="0 0 100 100">\
 -- >     \<circle cx="50" cy="50" r="50"/>\
 -- >     \</svg>"
-unsafeHtml :: MonadIO m => Text -> HtmlT m ()
+unsafeHtml :: Text -> Html ()
 unsafeHtml htmlText = do
   henv <- ask
-  let anchor = fmap boundary_end henv.html_content_boundary
+  let anchor = fmap (.boundary_end) henv.html_content_boundary
   liftIO $ unsafeInsertHtml henv.html_current_element anchor
     htmlText

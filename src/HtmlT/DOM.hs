@@ -10,20 +10,15 @@ Functions and definitions to manipulate and query the DOM tree
 #endif
 module HtmlT.DOM where
 
-import Control.Monad
 import Control.Monad.Reader
-import Control.Monad.Trans.Maybe
-import Data.Coerce
-import GHC.Exts as Exts
-import GHC.Generics hiding (R)
-import Unsafe.Coerce
-import Wasm.Compat.Prim
-import Wasm.Compat.Marshal
-import HtmlT.Types
-import HtmlT.Event
-import Data.Text
-
 import Data.Kind
+import Data.Text
+import GHC.Exts as Exts
+import GHC.Generics hiding (RX)
+import HtmlT.Event
+import HtmlT.Types
+import Wasm.Compat.Marshal
+import Wasm.Compat.Prim
 
 data EventListenerOptions = EventListenerOptions
   { prevent_default :: Bool
@@ -42,7 +37,7 @@ on k = addEventListener (addEventListenerArgs @eventName) k
 data AddEventListenerArgs callback = AddEventListenerArgs
   { event_name :: Text
   , listener_options :: EventListenerOptions
-  , mk_callback :: callback -> JSVal -> R ()
+  , mk_callback :: callback -> JSVal -> RX ()
   } deriving (Generic)
 
 addEventListener :: AddEventListenerArgs callback -> callback -> Html ()
@@ -53,13 +48,13 @@ addEventListener args k = do
 -- | EventTarget.addEventListener()
 -- https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener
 addEventListenerTarget
-  :: MonadIO m
-  => JSVal
+  :: JSVal
   -> AddEventListenerArgs callback
   -> callback
-  -> m ()
+  -> Html ()
 addEventListenerTarget target args k = do
-  cb <- liftIO $ js_dynExport1 $ trampoline . args.mk_callback k
+  e <- lift ask
+  cb <- liftIO $ js_dynExport1 $ launchReactiveT e . args.mk_callback k
   jEventName <- liftIO $ toJSVal args.event_name
   -- jscb <- withopts hscb
   liftIO $ js_addEventListener target jEventName cb
@@ -74,63 +69,63 @@ class IsEventName eventName where
   addEventListenerArgs :: AddEventListenerArgs (EventListenerCb eventName)
 
 instance IsEventName "click" where
-  type EventListenerCb "click" = R ()
+  type EventListenerCb "click" = RX ()
   addEventListenerArgs = pointerEventArgs "click"
 
 instance IsEventName "mousedown" where
-  type EventListenerCb "mousedown" = R ()
+  type EventListenerCb "mousedown" = RX ()
   addEventListenerArgs = pointerEventArgs "mousedown"
 
 instance IsEventName "mouseup" where
-  type EventListenerCb "mouseup" = R ()
+  type EventListenerCb "mouseup" = RX ()
   addEventListenerArgs = pointerEventArgs "mouseup"
 
 instance IsEventName "dblclick" where
-  type EventListenerCb "dblclick" = R ()
+  type EventListenerCb "dblclick" = RX ()
   addEventListenerArgs = pointerEventArgs "dblclick"
 
 instance IsEventName "submit" where
-  type EventListenerCb "submit" = R ()
+  type EventListenerCb "submit" = RX ()
   addEventListenerArgs = submitEventArgs
 
 instance IsEventName "input" where
-  type EventListenerCb "input" = Text -> R ()
+  type EventListenerCb "input" = Text -> RX ()
   addEventListenerArgs = inputEventArgs
 
 instance IsEventName "keydown" where
-  type EventListenerCb "keydown" = Int -> R ()
+  type EventListenerCb "keydown" = Int -> RX ()
   addEventListenerArgs = keyboardEventArgs "keydown"
 
 instance IsEventName "keyup" where
-  type EventListenerCb "keyup" = Int -> R ()
+  type EventListenerCb "keyup" = Int -> RX ()
   addEventListenerArgs = keyboardEventArgs "keyup"
 
 instance IsEventName "focus" where
-  type EventListenerCb "focus" = R ()
+  type EventListenerCb "focus" = RX ()
   addEventListenerArgs = pointerEventArgs "focus"
 
 instance IsEventName "blur" where
-  type EventListenerCb "blur" = R ()
+  type EventListenerCb "blur" = RX ()
   addEventListenerArgs = pointerEventArgs "blur"
 
 instance IsEventName "input/blur" where
-  type EventListenerCb "input/blur" = Text -> R ()
+  type EventListenerCb "input/blur" = Text -> RX ()
   addEventListenerArgs = inputEventArgs {event_name = "blur"}
 
 instance IsEventName "input/focus" where
-  type EventListenerCb "input/focus" = Text -> R ()
+  type EventListenerCb "input/focus" = Text -> RX ()
   addEventListenerArgs = inputEventArgs {event_name = "focus"}
 
 instance IsEventName "checkbox/change" where
-  type EventListenerCb "checkbox/change" = Bool -> R ()
+  type EventListenerCb "checkbox/change" = Bool -> RX ()
   addEventListenerArgs = checkboxChangeEventArgs
 
 instance IsEventName "select/change" where
-  type EventListenerCb "select/change" = Text -> R ()
+  type EventListenerCb "select/change" = Text -> RX ()
   addEventListenerArgs = selectChangeEventArgs
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/click_event
-pointerEventArgs :: Text -> AddEventListenerArgs (R ())
+pointerEventArgs :: Text -> AddEventListenerArgs (RX ())
 pointerEventArgs event_name = AddEventListenerArgs
   { event_name
   , listener_options = defaultEventListenerOptions
@@ -138,7 +133,7 @@ pointerEventArgs event_name = AddEventListenerArgs
   }
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/HTMLFormElement/submit_event
-submitEventArgs :: AddEventListenerArgs (R ())
+submitEventArgs :: AddEventListenerArgs (RX ())
 submitEventArgs = AddEventListenerArgs
   { event_name = "submit"
   , listener_options = defaultSubmitOptions
@@ -148,7 +143,7 @@ submitEventArgs = AddEventListenerArgs
     defaultSubmitOptions = EventListenerOptions True True
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/input_event
-inputEventArgs :: AddEventListenerArgs (Text -> R ())
+inputEventArgs :: AddEventListenerArgs (Text -> RX ())
 inputEventArgs = AddEventListenerArgs
   { event_name = "input"
   , listener_options = defaultEventListenerOptions
@@ -160,7 +155,7 @@ inputEventArgs = AddEventListenerArgs
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/keydown_event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/keyup_event
-keyboardEventArgs :: Text -> AddEventListenerArgs (Int -> R ())
+keyboardEventArgs :: Text -> AddEventListenerArgs (Int -> RX ())
 keyboardEventArgs event_name = AddEventListenerArgs
   { event_name
   , listener_options = defaultEventListenerOptions
@@ -173,7 +168,7 @@ keyboardEventArgs event_name = AddEventListenerArgs
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/blur_event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/focusin_event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/focusout_event
-focusEventArgs :: Text -> AddEventListenerArgs (R ())
+focusEventArgs :: Text -> AddEventListenerArgs (RX ())
 focusEventArgs event_name = AddEventListenerArgs
   { event_name
   , listener_options = defaultEventListenerOptions
@@ -181,7 +176,7 @@ focusEventArgs event_name = AddEventListenerArgs
   }
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/change_event
-checkboxChangeEventArgs :: AddEventListenerArgs (Bool -> R ())
+checkboxChangeEventArgs :: AddEventListenerArgs (Bool -> RX ())
 checkboxChangeEventArgs = AddEventListenerArgs
   { event_name = "change"
   , listener_options = defaultEventListenerOptions
@@ -192,7 +187,7 @@ checkboxChangeEventArgs = AddEventListenerArgs
   }
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/change_event
-selectChangeEventArgs :: AddEventListenerArgs (Text -> R ())
+selectChangeEventArgs :: AddEventListenerArgs (Text -> RX ())
 selectChangeEventArgs = AddEventListenerArgs
   { event_name = "change"
   , listener_options = defaultEventListenerOptions
@@ -222,7 +217,7 @@ data Location = Location
   } deriving stock (Show, Eq, Generic)
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/Window/popstate_event
-popstateEventArgs :: AddEventListenerArgs (Location -> R ())
+popstateEventArgs :: AddEventListenerArgs (Location -> RX ())
 popstateEventArgs = AddEventListenerArgs
   { event_name = "popstate"
   , listener_options = defaultEventListenerOptions
@@ -371,85 +366,12 @@ data MouseDelta = MouseDelta
   , md_delta_z :: Int
   } deriving stock (Eq, Show, Generic)
 
--- mouseDeltaDecoder :: MonadIO m => JSVal -> MaybeT m MouseDelta
--- mouseDeltaDecoder mouseEvent = do
---   md_delta_x <- propDecoder "deltaX" mouseEvent
---   md_delta_y <- propDecoder "deltaY" mouseEvent
---   md_delta_z <- propDecoder "deltaZ" mouseEvent
---   return MouseDelta {..}
-
 -- | Pair of two values, might denote either a size or coordinates in
 -- different contexts
 data Point a = Point
   { pt_x :: a
   , pt_y :: a
   } deriving stock (Eq, Show, Ord, Functor, Generic)
-
--- -- | Read clientX and clientY properties from MouseEvent
--- -- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
--- clientXYDecoder :: MonadIO m => JSVal -> MaybeT m (Point Int)
--- clientXYDecoder mouseEvent = do
---   pt_x <- propDecoder "clientX" mouseEvent
---   pt_y <- propDecoder "clientY" mouseEvent
---   return Point {..}
-
--- -- | Read offsetX and offsetY properties from MouseEvent
--- -- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
--- offsetXYDecoder :: MonadIO m => JSVal -> MaybeT m (Point Int)
--- offsetXYDecoder mouseEvent = do
---   pt_x <- propDecoder "offsetX" mouseEvent
---   pt_y <- propDecoder "offsetY" mouseEvent
---   return Point {..}
-
--- -- | Read pageX and pageY properties from MouseEvent
--- -- https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
--- pageXYDecoder :: MonadIO m => JSVal -> MaybeT m (Point Int)
--- pageXYDecoder mouseEvent = do
---   pt_x <- propDecoder "pageX" mouseEvent
---   pt_y <- propDecoder "pageY" mouseEvent
---   return Point {..}
-
--- -- | Collection of altKey, ctrlKey, metaKey and shiftKey properties
--- -- from KeyboardEvent
--- data KeyModifiers = KeyModifiers
---   { kmod_alt_key :: Bool
---   , kmod_ctrl_key :: Bool
---   , kmod_meta_key :: Bool
---   , kmod_shift_key :: Bool
---   } deriving stock (Eq, Show, Generic)
-
--- -- | Read altKey, ctrlKey, metaKey and shiftKey properties from
--- -- KeyboardEvent
--- -- https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent
--- keyModifiersDecoder :: MonadIO m => JSVal -> MaybeT m KeyModifiers
--- keyModifiersDecoder keyEvent = do
---   kmod_alt_key <- propDecoder "altKey" keyEvent
---   kmod_ctrl_key <- propDecoder "ctrlKey" keyEvent
---   kmod_meta_key <- propDecoder "metaKey" keyEvent
---   kmod_shift_key <- propDecoder "shiftKey" keyEvent
---   return KeyModifiers {..}
-
--- -- | Read keyCode properties from KeyboardEvent
--- -- https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/keyCode
--- keyCodeDecoder :: MonadIO m => JSVal -> MaybeT m Int
--- keyCodeDecoder = propDecoder "keyCode"
-
--- -- | Collection of some useful information from KeyboardEvent
--- data KeyboardEvent = KeyboardEvent
---   { ke_modifiers :: KeyModifiers
---   , ke_key :: Maybe JSString
---   , ke_key_code :: Int
---   , ke_repeat :: Bool
---   } deriving stock (Generic)
-
--- -- | Read information from KeyboardEvent
--- keyboardEventDecoder :: MonadIO m => JSVal -> MaybeT m KeyboardEvent
--- keyboardEventDecoder keyEvent = do
---   ke_modifiers <- keyModifiersDecoder keyEvent
---   ke_key <- propDecoder "key" keyEvent
---   ke_key_code <- propDecoder "keyCode" keyEvent
---   ke_repeat <- propDecoder "repeat" keyEvent
---   return KeyboardEvent {..}
 
 errorGhcjsOnly :: a
 errorGhcjsOnly = error "Only GHCJS is supported"

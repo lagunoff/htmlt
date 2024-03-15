@@ -25,22 +25,37 @@ import Data.Set qualified as Set
 import Data.Tuple
 import GHC.Exts
 import GHC.Fingerprint
-import GHC.Generics hiding (R)
+import GHC.Generics
 import Unsafe.Coerce
 import Data.List qualified as List
+import Data.Function
 
 data ReactiveEnv = ReactiveEnv
   { scope :: ReactiveScope
   , reactive_state_ref :: IORef ReactiveState
   } deriving (Generic)
 
+newReactiveEnv :: IO ReactiveEnv
+newReactiveEnv = do
+  let scope = ReactiveScope emptyReactiveState.id_supply
+  reactive_state_ref <- newIORef emptyReactiveState
+  return ReactiveEnv {reactive_state_ref, scope}
+
 data ReactiveState = ReactiveState
-  { subscriptions :: Map EventId [(ReactiveScope, Any -> R ())]
+  { subscriptions :: Map EventId [(ReactiveScope, Any -> RX ())]
   , scopes :: Map ReactiveScope ReactiveNode
-  , transaction_queue :: Map EventId (R ())
+  , transaction_queue :: Map EventId (RX ())
   , id_supply :: Int
   -- ^ Id supply for EventId and ReactiveScope
   } deriving (Generic)
+
+emptyReactiveState :: ReactiveState
+emptyReactiveState = ReactiveState
+  { subscriptions = Map.empty
+  , scopes = Map.empty
+  , transaction_queue = Map.empty
+  , id_supply = 0
+  }
 
 newtype EventId = EventId { unEventId :: Int }
   deriving newtype (Eq, Ord, Show, Num, Enum)
@@ -50,20 +65,20 @@ newtype ReactiveScope = ReactiveScope { unReactiveScope :: Int }
 
 -- | Represents a stream of event occurrences of type @a@. Its actual
 -- representation is simply a function that subscribes to the event
-newtype Event a = Event { subscribe :: (a -> R ()) -> R () }
+newtype Event a = Event { subscribe :: (a -> RX ()) -> RX () }
 
 instance Functor Event where
   fmap f (Event s) = Event \k -> s . (. f) $ k
 
--- | Contains a value that is subject to change over time. Provides
--- operations for reading the current value ('readDyn') and
--- subscribing to its future changes ('updates').
+-- | Represens a value that changes over time. Provides operations for
+-- sampling the current value — 'readDyn' and for listening to future
+-- changes 'updates'.
 data Dynamic a = Dynamic
   { sample :: IO a
-  -- ^ Read current value. Use public alias 'readDyn' instead
+  -- ^ Read current value held by Dynamic
   , updates :: Event a
-  -- ^ Event that fires when the value changes. Use public alias
-  -- 'updates' instead
+  -- ^ Event fires every time value changes, carries the new value of
+  -- the Dynamic
   } deriving stock Generic
 
 instance Functor Dynamic where
@@ -108,43 +123,37 @@ data DynRef a = DynRef
 -- cases when you know that all changes already been reflected in
 -- the DOM
 newtype Modifier a = Modifier
-  { unModifier :: forall r. Bool -> (a -> (a, r)) -> R r
+  { unModifier :: forall r. Bool -> (a -> (a, r)) -> RX r
   }
 
--- | Minimal implementation for 'HasReactiveEnv'
-newtype ReactiveT m a = ReactiveT
-  { unReactiveT :: ReaderT ReactiveScope (StateT ReactiveState m) a
-  }
-  deriving newtype (
-    Functor, Applicative, Monad, MonadIO, MonadFix, MonadCatch, MonadThrow,
-    MonadMask, MonadState ReactiveState, MonadReader ReactiveScope
-  )
-
-newtype ReactivT m a = ReactivT
-  { unReactivT :: ReaderT ReactiveEnv m a
+newtype RX a = RX
+  { unRX :: ReaderT ReactiveEnv IO a
   }
   deriving newtype (
     Functor, Applicative, Monad, MonadIO, MonadFix, MonadCatch, MonadThrow,
     MonadMask, MonadReader ReactiveEnv
   )
 
-type Callback a = a -> R ()
+instance MonadReactive RX where
+  reactive f = RX $ ReaderT $ \e ->
+    liftIO $ atomicModifyIORef' e.reactive_state_ref $ f e.scope
+  {-# INLINE reactive #-}
 
-type R = ReactiveT IO
+type Callback a = a -> RX ()
 
-type Subscriptions = Map EventId [(ReactiveScope, Any -> R ())]
+type Subscriptions = Map EventId [(ReactiveScope, Any -> RX ())]
 
 type Finalizers = Map ReactiveScope ReactiveNode
 
 data ReactiveNode = ReactiveNode
   { nodes :: [ReactiveScope]
   , parent :: Maybe ReactiveScope
-  , finalizers :: [R ()]
+  , finalizers :: [RX ()]
   } deriving stock Generic
 
-freeScope :: ReactiveScope -> R ()
+freeScope :: ReactiveScope -> RX ()
 freeScope rscope = do
-  mRemovedNode <- state $ swap . freeScopeFn rscope
+  mRemovedNode <- reactive $ const $ freeScopeFn rscope
   forM_ mRemovedNode \n -> do
     sequence_ n.finalizers
     forM_ n.nodes freeScope
@@ -177,7 +186,7 @@ freeScopeFn rscope s =
     filterSubscriptions ((s, c):xs) | s == rscope = xs
                                     | otherwise = (s, c) : filterSubscriptions xs
 
-unsafeSubscribeFn :: EventId -> (a -> R ()) -> ReactiveScope -> ReactiveState -> ReactiveState
+unsafeSubscribeFn :: EventId -> (a -> RX ()) -> ReactiveScope -> ReactiveState -> ReactiveState
 unsafeSubscribeFn eid k rs s =
   let
     insertSubscription (Just xs) = Just $ (rs, k . unsafeCoerce):xs
@@ -185,48 +194,55 @@ unsafeSubscribeFn eid k rs s =
   in
     s {subscriptions = Map.alter insertSubscription eid s.subscriptions }
 
-unsafeSubscribe :: EventId -> (a -> R ()) -> R ()
-unsafeSubscribe eid k = ask >>= \rs -> modify (unsafeSubscribeFn eid k rs)
+unsafeSubscribe :: EventId -> (a -> RX ()) -> RX ()
+unsafeSubscribe eid k = reactive_ (unsafeSubscribeFn eid k)
 
-installFinalizer :: R () -> ReactiveScope -> ReactiveState -> ReactiveState
-installFinalizer fin rs s =
+installFinalizerFn :: RX () -> ReactiveScope -> ReactiveState -> ReactiveState
+installFinalizerFn fin rs s =
   let
     insertFin (Just n) = Just $ n { finalizers = fin : n.finalizers}
     insertFin Nothing = Nothing
   in
     s {scopes = Map.alter insertFin rs s.scopes }
 
-unsafeTrigger :: EventId -> a -> R ()
-unsafeTrigger eid a = defer eid do
-  callbacks <- gets $ fromMaybe [] .
-    Map.lookup eid . (.subscriptions)
-  forM_ callbacks $ ($ unsafeCoerce @_ @Any a) . snd
+installFinalizer :: RX () -> RX ()
+installFinalizer fin = reactive_ (installFinalizerFn fin)
 
-newReactiveScopeFn :: ReactiveScope -> ReactiveState -> (ReactiveScope, ReactiveState)
+unsafeTrigger :: EventId -> a -> RX ()
+unsafeTrigger eid a = do
+  defer eid do
+    callbacks <- reactive \_ s ->
+      (s, s.subscriptions & Map.lookup eid & fromMaybe [])
+    forM_ callbacks $ ($ unsafeCoerce @_ @Any a) . snd
+
+newReactiveScopeFn :: ReactiveScope -> ReactiveState -> (ReactiveState, ReactiveScope)
 newReactiveScopeFn parent s0 =
   let
     (s1, intId) = nextIntId s0
     rscope = ReactiveScope intId
     scopes = Map.insert rscope (ReactiveNode [] (Just parent) []) s1.scopes
   in
-    (rscope, s1 {scopes})
+    (s1 {scopes}, rscope)
+
+newReactiveScope :: RX ReactiveScope
+newReactiveScope = reactive newReactiveScopeFn
 
 -- | Defers a computation (typically an event firing) until the end of
 -- the current reactive transaction. This allows for the avoidance of
 -- double firing of events constructed from multiple other events.
-defer :: EventId -> R () -> R ()
-defer k act = modify \s -> s {transaction_queue = Map.insert k act s.transaction_queue}
+defer :: EventId -> RX () -> RX ()
+defer k act = reactive_ \_ s -> s {transaction_queue = Map.insert k act s.transaction_queue}
 
-newEvent :: R (Event a, a -> R ())
-newEvent = state \s0 ->
+newEvent :: RX (Event a, a -> RX ())
+newEvent = reactive \_ s0 ->
   let
     (s1, eventId) = nextIntId s0
     event = Event $ unsafeSubscribe $ EventId eventId
     trig = unsafeTrigger $ EventId eventId
   in
-    ((event, trig), s1)
+    (s1, (event, trig))
 
-newRef :: a -> R (DynRef a)
+newRef :: a -> RX (DynRef a)
 newRef initial = do
   ioRef <- liftIO $ newIORef initial
   (event, push) <- newEvent
@@ -254,7 +270,7 @@ never = Event \ _ -> return ()
 -- > transactionWrite ref "New dynamic"
 -- > readRef ref
 -- "New dynamic"
-writeRef :: DynRef a -> a -> R ()
+writeRef :: DynRef a -> a -> RX ()
 writeRef ref a = modifyRef ref (const a)
 
 -- | Read the current value held by given 'DynRef'
@@ -270,14 +286,14 @@ readRef = readDyn . (.dynamic)
 -- > ref <- newRef [1..3]
 -- > modifyRef ref $ fmap (*2)
 -- [2, 4, 6]
-modifyRef :: DynRef a -> (a -> a) -> R ()
+modifyRef :: DynRef a -> (a -> a) -> RX ()
 modifyRef (DynRef _ (Modifier mod)) f = mod True $ (,()) . f
 
 -- | Update a 'DynRef' with first field of the tuple and return back
 -- the second field. The name is intended to be similar to
 -- 'atomicModifyIORef' but there are no atomicity guarantees
 -- whatsoever
-atomicModifyRef :: DynRef a -> (a -> (a, r)) -> R r
+atomicModifyRef :: DynRef a -> (a -> (a, r)) -> RX r
 atomicModifyRef (DynRef _ (Modifier mod)) f = mod True f
 
 -- | Extract a 'Dynamic' out of 'DynRef'
@@ -290,7 +306,7 @@ readDyn = liftIO . (.sample)
 
 -- | Executes an action currently held inside the 'Dynamic' and every
 -- time the dynamic changes.
-performDyn :: Dynamic (R ()) -> R ()
+performDyn :: Dynamic (RX ()) -> RX ()
 performDyn d = do
   join $ liftIO d.sample
   d.updates.subscribe id
@@ -301,12 +317,6 @@ holdUniqDyn :: Eq a => Dynamic a -> Dynamic a
 holdUniqDyn = holdUniqDynBy (==)
 {-# INLINE holdUniqDyn #-}
 
--- TODO: The name could be mesleading because it works differently
--- compare to the holdUniqDynBy function in reflex. Unlike the
--- original this version will perform comparisons equal to
--- @number_of_updates × number_of_subscriptions@ as opposed to once
--- per update in reflex (I could be wrong in my understanding of
--- 'holdUniqDynBy' in Reflex)
 -- | Same as 'holdUniqDyn' but accepts arbitrary equality test
 -- function
 holdUniqDynBy :: (a -> a -> Bool) -> Dynamic a -> Dynamic a
@@ -323,7 +333,7 @@ holdUniqDynBy equalFn da =
 
 -- | Produce a new Dynamic by applying a function to both the source
 -- (Dynamic a) and previous value of itself
-foldDynMaybe :: (a -> b -> Maybe b) -> b -> Dynamic a -> R (Dynamic b)
+foldDynMaybe :: (a -> b -> Maybe b) -> b -> Dynamic a -> RX (Dynamic b)
 foldDynMaybe f initB dynA = do
   initA <- liftIO dynA.sample
   refB <- newRef $ fromMaybe initB $ f initA initB
@@ -338,9 +348,9 @@ nextIntId s = (s {id_supply = succ s.id_supply}, s.id_supply)
 -- | Alternative version if 'fmap' where given function will only be
 -- called once every time 'Dynamic a' value changes, whereas in 'fmap'
 -- it would be called once for each subscription per change event. As
--- a general guideline, if the function @f! is inexpensive, choose
+-- a general guideline, if the function @f@ is inexpensive, choose
 -- @fmap f@. Otherwise, consider using @mapDyn f@.
-mapDyn :: (a -> b) -> Dynamic a -> R (Dynamic b)
+mapDyn :: (a -> b) -> Dynamic a -> RX (Dynamic b)
 mapDyn fun da = do
   initialA <- liftIO $ da.sample
   latestA <- liftIO $ newIORef initialA
@@ -357,7 +367,7 @@ mapDyn fun da = do
     defer eventId fire
   return $ Dynamic (readIORef latestB) updates
 
-mapDyn2 :: (a -> b -> c) -> Dynamic a -> Dynamic b -> R (Dynamic c)
+mapDyn2 :: (a -> b -> c) -> Dynamic a -> Dynamic b -> RX (Dynamic c)
 mapDyn2 fun da db = do
   initialA <- liftIO $ da.sample
   initialB <- liftIO $ db.sample
@@ -391,7 +401,7 @@ unsafeMapDynN
   -- corresponding positions of given Dynamics
   -> [Dynamic Any]
   -- ^ List of input Dynamics
-  -> R (Dynamic a)
+  -> RX (Dynamic a)
 unsafeMapDynN fun dyns = do
   initialInputs <- liftIO $ mapM (.sample) dyns
   initialOutput <- liftIO $ fun initialInputs
@@ -403,7 +413,7 @@ unsafeMapDynN fun dyns = do
       newOutput <- liftIO $ fun =<< readIORef latestInputsRef
       liftIO $ writeIORef latestOutputRef newOutput
       unsafeTrigger eventId newOutput
-    updates = Event (unsafeSubscribe eventId)
+    updates = Event $ unsafeSubscribe eventId
     updateList _ _ [] = []
     updateList 0 a (_:xs) = a:xs
     updateList n a (x:xs) = x : updateList (pred n) a xs
@@ -412,12 +422,6 @@ unsafeMapDynN fun dyns = do
       liftIO $ modifyIORef latestInputsRef $ updateList i newVal
       defer eventId fire
   return $ Dynamic (readIORef latestOutputRef) updates
-
-reactive :: (ReactiveScope -> ReactiveState -> (ReactiveState, a)) -> R a
-reactive f = ReactiveT $ ReaderT \rs -> StateT $ pure . swap . f rs
-
-reactive_ :: (ReactiveScope -> ReactiveState -> ReactiveState) -> R ()
-reactive_ f = ReactiveT $ ReaderT \rs -> StateT $ pure . ((),) . f rs
 
 type Lens' s a = forall f. Functor f => (a -> f a) -> s -> f s
 
@@ -434,27 +438,36 @@ lensMap l s =
     DynRef {dynamic, modifier}
 
 -- | Loop until transaction_queue is empty
-trampoline :: R a -> R a
+trampoline :: RX a -> RX a
 trampoline act = loop0 act where
-  loop0 :: R a -> R a
-  loop0 act = do
-    r <- act
-    loop1 =<< gets (.transaction_queue)
+  loop0 :: RX a -> RX a
+  loop0 before = do
+    r <- before
+    mcont <- popQueue
+    forM_ mcont loop1
     return r
-  loop1 :: Map EventId (R ()) -> R ()
-  loop1 q =
-    case Map.minViewWithKey q of
-      Nothing -> return ()
-      Just ((_, newAct), newQueue) -> do
-        modify \s -> s {transaction_queue = newQueue}
-        newAct
-        loop1 =<< gets (.transaction_queue)
+  loop1 :: RX () -> RX ()
+  loop1 before = do
+    before
+    mcont <- popQueue
+    forM_ mcont loop1
+  popQueue :: RX (Maybe (RX ()))
+  popQueue = reactive \_ s ->
+    case Map.minViewWithKey s.transaction_queue of
+      Nothing -> (s, Nothing)
+      Just ((_, r), newQueue) -> (s {transaction_queue = newQueue}, Just r)
 
-execReactiveT :: ReactiveScope -> ReactiveState -> ReactiveT m a -> m (a, ReactiveState)
-execReactiveT scope state = flip runStateT state . flip runReaderT scope . unReactiveT
+launchReactiveT :: ReactiveEnv -> RX a -> IO a
+launchReactiveT e = execReactiveT e . trampoline
+
+execReactiveT :: ReactiveEnv -> RX a -> IO a
+execReactiveT e = flip runReaderT e . unRX
+
+runReactiveT :: RX a -> ReactiveEnv -> IO a
+runReactiveT = flip execReactiveT
 
 class MonadReactive m where
-  reactiv :: (ReactiveScope -> ReactiveState -> (ReactiveState, a)) -> m a
+  reactive :: (ReactiveScope -> ReactiveState -> (ReactiveState, a)) -> m a
 
-reactiv_ :: MonadReactive m => (ReactiveScope -> ReactiveState -> ReactiveState) -> m ()
-reactiv_ f = reactiv (\r s -> (,()) $ f r s)
+reactive_ :: MonadReactive m => (ReactiveScope -> ReactiveState -> ReactiveState) -> m ()
+reactive_ f = reactive (\r s -> (,()) $ f r s)

@@ -26,8 +26,7 @@ data HtmlEnv = HtmlEnv
   -- attached, when Nothing whole parent element is available
   } deriving Generic
 
--- | Most applications will only need HtmlT IO, hence this shortcut
-type Html = HtmlT (ReactiveT IO)
+type Html = HtmlT RX
 
 -- | A newtype over JSVal which is an instance of Node
 -- https://developer.mozilla.org/en-US/docs/Web/API/Node

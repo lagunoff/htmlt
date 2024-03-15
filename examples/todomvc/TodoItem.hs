@@ -11,9 +11,9 @@ import Wasm.Compat.Prim
 import "this" Utils
 
 data TodoItemConfig = TodoItemConfig
-  { state_ref :: DynRef TodoItemState
+  { self :: DynRef TodoItemState
   , is_hidden_dyn :: Dynamic Bool
-  , ask_delete_item :: Step ()
+  , ask_delete_item :: RX ()
   }
 
 data TodoItemState = TodoItemState
@@ -30,26 +30,26 @@ data TodoItemAction a where
   CheckedAction :: TodoItemConfig -> Bool -> TodoItemAction ()
   KeydownAction :: TodoItemConfig -> Int -> TodoItemAction ()
 
-eval :: TodoItemAction a -> Step a
+eval :: TodoItemAction a -> RX a
 eval = \case
   CancelAction cfg ->
-    modifyRef cfg.state_ref \s -> s{editing=Nothing}
+    modifyRef cfg.self \s -> s{editing=Nothing}
   CommitAction cfg -> do
-    state <- readRef cfg.state_ref
+    state <- readRef cfg.self
     case state.editing of
       Just "" ->
         cfg.ask_delete_item
       Just t ->
-        modifyRef cfg.state_ref \s -> s {editing=Nothing, title = t}
+        modifyRef cfg.self \s -> s {editing=Nothing, title = t}
       Nothing ->
         pure ()
   InputAction cfg newVal ->
-    modifyRef cfg.state_ref \s -> s{editing = Just newVal}
+    modifyRef cfg.self \s -> s{editing = Just newVal}
   DoubleClickAction cfg targetEl -> do
-    modifyRef cfg.state_ref \s -> s {editing = Just s.title}
+    modifyRef cfg.self \s -> s {editing = Just s.title}
     liftIO $ js_todoItemInputFocus targetEl
   CheckedAction cfg isChecked -> do
-    modifyRef cfg.state_ref \s -> s{completed = isChecked}
+    modifyRef cfg.self \s -> s{completed = isChecked}
   KeydownAction cfg key -> case key of
     13 {- Enter -} -> eval (CommitAction cfg)
     27 {- Escape -} -> eval (CancelAction cfg)
@@ -58,18 +58,18 @@ eval = \case
 html :: TodoItemConfig -> Html ()
 html cfg = li_ do
   let
-    completedDyn = (.completed) <$> fromRef cfg.state_ref
-    editingDyn = isJust . (.editing) <$> fromRef cfg.state_ref
-    valueDyn = fromMaybe "" . (.editing) <$> fromRef cfg.state_ref
+    completedDyn = (.completed) <$> fromRef cfg.self
+    editingDyn = isJust . (.editing) <$> fromRef cfg.self
+    valueDyn = fromMaybe "" . (.editing) <$> fromRef cfg.self
   toggleClass "completed" completedDyn
   toggleClass "editing" editingDyn
   toggleClass "hidden" cfg.is_hidden_dyn
   div_ [class_ "view"] do
     on @DblClickWithTarget $ eval . DoubleClickAction cfg
     input_ [class_ "toggle", type_ "checkbox"] do
-      dynChecked $ (.completed) <$> fromRef cfg.state_ref
+      dynChecked $ (.completed) <$> fromRef cfg.self
       on @"checkbox/change" $ eval . CheckedAction cfg
-    label_ $ dynText $ (.title) <$> fromRef cfg.state_ref
+    label_ $ dynText $ (.title) <$> fromRef cfg.self
     button_ [class_ "destroy"] do
       on @"click" cfg.ask_delete_item
   input_ [class_ "edit", type_ "text"] do
@@ -105,7 +105,7 @@ instance FromJSVal TodoItemState where
 data DblClickWithTarget
 
 instance IsEventName DblClickWithTarget where
-  type EventListenerCb DblClickWithTarget = JSVal -> Step ()
+  type EventListenerCb DblClickWithTarget = JSVal -> RX ()
   addEventListenerArgs = AddEventListenerArgs
     { event_name = "dblclick"
     , listener_options = defaultEventListenerOptions

@@ -2,7 +2,6 @@ module HtmlT.Internal where
 
 import Control.Monad.Reader
 import GHC.Generics
-import Wasm.Compat.Prim
 
 import HtmlT.Event
 import HtmlT.Types
@@ -11,6 +10,7 @@ import HtmlT.DOM
 -- | Auxiliary type helps to implement 'simpleList'
 data ElemEnv a = ElemEnv
   { ee_html_env :: HtmlEnv
+  , ee_reactive_env :: ReactiveEnv
   , ee_dyn_ref :: DynRef a
   } deriving Generic
 
