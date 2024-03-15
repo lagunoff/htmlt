@@ -7,12 +7,15 @@ import Data.Maybe
 import Data.Function
 import GHC.Generics
 import Text.Read
+import Data.Text (Text)
+import Data.Text qualified as Text
 import Wasm.Compat.Prim
 import Wasm.Compat.Marshal
+import Data.Char qualified as C
 
 data UrlParts = Url
-  { partsPath :: [JSString] -- ^ Path segments
-  , partsQuery :: [(JSString, JSString)] -- ^ GET parameters
+  { partsPath :: [Text] -- ^ Path segments
+  , partsQuery :: [(Text, Text)] -- ^ GET parameters
   } deriving (Eq, Show, Generic)
 
 data Route
@@ -22,14 +25,14 @@ data Route
   deriving (Eq, Show, Generic)
 
 data CountriesListQ = CountriesListQ
-  { search :: Maybe JSString
+  { search :: Maybe Text
   , page :: Int
   , sort_by :: CountrySortBy
   , sort_dir :: SortDir
   } deriving (Eq, Show, Generic)
 
 data CountriesMapQ = CountriesMapQ
-  { selected :: Maybe JSString
+  { selected :: Maybe Text
   } deriving (Eq, Show, Generic)
 
 data SortDir = Asc | Desc
@@ -68,7 +71,7 @@ parseRoute = \case
       Just "region" -> SortByRegion
       Just "subregion" -> SortBySubregion
       _ -> defaultCountriesListQ.sort_by
-    parseIntQuery = readMaybe . fromJSString
+    parseIntQuery = readMaybe . Text.unpack
 
 printRoute :: Route -> UrlParts
 printRoute = \case
@@ -94,7 +97,7 @@ printRoute = \case
       SortByRegion -> "region"
       SortBySubregion -> "subregion") .
       mfilter (/=defaultCountriesListQ.sort_by) . Just
-    toIntQuery = JSS.pack . show
+    toIntQuery = Text.pack . show
 
 defaultCountriesListQ :: CountriesListQ
 defaultCountriesListQ = CountriesListQ
@@ -109,39 +112,74 @@ defaultCountriesMapQ = CountriesMapQ
   { selected = Nothing
   }
 
-toUrl :: Route -> JSString
-toUrl = ("#"<>) . partsToText . printRoute
+toUrl :: Route -> Text
+toUrl = ("#"<>) . printUrlParts . printRoute
 
-fromUrl :: JSString -> Maybe Route
+fromUrl :: Text -> Maybe Route
 fromUrl url = url
-  & JSS.stripPrefix "#"
+  & Text.stripPrefix "#"
   & fromMaybe url
-  & textToParts
+  & parseUrlParts
   & parseRoute
 
-partsToText :: UrlParts -> JSString
-partsToText (Url s q) = JSS.intercalate "?" (segments : query)
+printUrlParts :: UrlParts -> Text
+printUrlParts (Url s q) = Text.intercalate "?" (segments : query)
   where
     segments =
-      JSS.intercalate "/" $ fmap JSS.encodeURIComponent s
+      Text.intercalate "/" $ fmap encodeURIComponent s
     query = q
-      & fmap (bimap JSS.encodeURIComponent JSS.encodeURIComponent)
+      & fmap (bimap encodeURIComponent encodeURIComponent)
       & fmap (\(k, v) -> k <> "=" <> v)
-      & List.filter (not . JSS.null)
-      & JSS.intercalate "&"
-      & List.filter (not . JSS.null) . (:[])
+      & List.filter (not . Text.null)
+      & Text.intercalate "&"
+      & List.filter (not . Text.null) . (:[])
 
-textToParts :: JSString -> UrlParts
-textToParts t = Url segments query
+parseUrlParts :: Text -> UrlParts
+parseUrlParts t = Url segments query
   where
     (segmentsStr, queryStr) = breakOn1 "?" t
     segments = segmentsStr
-      & JSS.splitOn "/"
-      & List.filter (not . JSS.null)
-      & fmap JSS.decodeURIComponent
+      & Text.splitOn "/"
+      & List.filter (not . Text.null)
+      & fmap decodeURIComponent
     query = queryStr
-      & JSS.splitOn "&"
-      & List.filter (not . JSS.null)
-      & fmap (breakOn1 "=" . JSS.decodeURIComponent)
+      & Text.splitOn "&"
+      & List.filter (not . Text.null)
+      & fmap (breakOn1 "=" . decodeURIComponent)
     breakOn1 s t =
-      let (a, b) = JSS.breakOn s t in (a, JSS.drop 1 b)
+      let (a, b) = Text.breakOn s t in (a, Text.drop 1 b)
+
+encodeURIComponent :: Text -> Text
+encodeURIComponent =
+  Text.pack . concatMap encodeChar . Text.unpack
+  where
+    encodeChar c
+      | C.isAlphaNum c = [c]
+      | c == ' ' = "+"
+      | otherwise = '%' : showHex (C.ord c) ""
+    showHex :: Int -> String -> String
+    showHex n acc
+      | n < 16 = intToDigit n : acc
+      | otherwise = let (q,r) = n `divMod` 16 in showHex q (intToDigit r : acc)
+    intToDigit :: Int -> Char
+    intToDigit n
+      | 0 <= n && n <= 9 = toEnum (fromEnum '0' + n)
+      | 10 <= n && n <= 15 = toEnum (fromEnum 'a' + n - 10)
+      | otherwise = error "intToDigit: not a digit"
+
+decodeURIComponent :: Text -> Text
+decodeURIComponent =
+  Text.pack . decode . Text.unpack
+  where
+    decode [] = []
+    decode ('%':x1:x2:xs)
+      | C.isHexDigit x1 && C.isHexDigit x2 =
+        C.chr (16 * digitToInt x1 + digitToInt x2) : decode xs
+    decode ('+':xs) = ' ' : decode xs
+    decode (x:xs) = x : decode xs
+    digitToInt :: Char -> Int
+    digitToInt c
+      | '0' <= c && c <= '9' = fromEnum c - fromEnum '0'
+      | 'a' <= c && c <= 'f' = fromEnum c - fromEnum 'a' + 10
+      | 'A' <= c && c <= 'F' = fromEnum c - fromEnum 'A' + 10
+      | otherwise = error "digitToInt: not a digit"

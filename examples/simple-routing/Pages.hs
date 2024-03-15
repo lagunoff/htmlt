@@ -6,6 +6,9 @@ import Data.Foldable
 import Data.List qualified as List
 import Data.Maybe
 import Data.Ord
+import Data.Text qualified as Text
+import Data.Text (Text)
+import Data.Function((&))
 import HtmlT
 import Wasm.Compat.Marshal
 import Wasm.Compat.Prim
@@ -66,7 +69,7 @@ homePage = unsafeHtml $ "\
   \and implement backend part of HTML5-style routing.</p>\
   \<p>Last thing we need to run the site is this auxiliary function \
   \<a href=\"https://github.com/lagunoff/htmlt/blob/master/examples/simple-routing/Utils.hs#L18\">mkUrlHashRef</a> \
-  \that creates a <code>DynRef JSString</code> — dynamic value containing current \
+  \that creates a <code>DynRef Text</code> — dynamic value containing current \
   \hash-string from the browser. When parsed to <code>Dynamic Route</code> \
   \and then mapped with <code>(<&>)</code> operator to \
   \<code>Dynamic (Html ())</code> the <code>dyn</code> function can be used to \
@@ -82,7 +85,7 @@ countriesListPage :: CountriesListQ -> Html ()
 countriesListPage q = div_ [class_ "CountriesList"] do
   searchQueryRef <- newRef q
   form_ do
-    onOptions "submit" (ListenerOpts True True True) \_event -> do
+    on @"submit" do
       newRoute <- toUrl . CountriesListR . (\s -> s{page = 1}) <$> readRef searchQueryRef
       pushUrl newRoute
     div_ [style_ "display:flex;"] do
@@ -90,8 +93,7 @@ countriesListPage q = div_ [class_ "CountriesList"] do
         [ type_ "text" , placeholder_ "Search countries by title", autofocus_ True
         ] do
           dynValue $ fromMaybe "" . (.search) <$> fromRef searchQueryRef
-          on "input" $ decodeEvent valueDecoder $
-            modifyRef searchQueryRef . (\v s -> s{search = v}) . Just
+          on @"input" $ modifyRef searchQueryRef . (\v s -> s{search = v}) . Just
       button_ [type_ "submit"] "Search"
   table_ do
     thead_ $ tr_ do
@@ -102,7 +104,7 @@ countriesListPage q = div_ [class_ "CountriesList"] do
       thSort SortByPopulation "Population"
     tbody_ do
       for_ pageResults \(n, country) -> tr_ do
-        td_ do text (JSS.pack (show @Int n))
+        td_ do text (Text.pack (show @Int n))
         td_ do
           a_ [href_ (mkMapLink country.code)] do
             for_ country.flag_icon
@@ -110,14 +112,14 @@ countriesListPage q = div_ [class_ "CountriesList"] do
             text country.title
         td_ do text country.region
         td_ do text country.subregion
-        td_ do text (JSS.pack (show country.population))
+        td_ do text (Text.pack (show country.population))
   center_ do
     for_ (paginate total q.page itemsPerPage) \case
       Nothing ->
         button_ [disabled_ True] "..."
       Just p -> a_
         [ href_ (toUrl (CountriesListR q {page = p}))] $
-        button_ [disabled_ (q.page == p)] $ text $ JSS.pack $ show p
+        button_ [disabled_ (q.page == p)] $ text $ Text.pack $ show p
   dl_ do
     dt_ "Country"
     dd_ $ unsafeHtml "The word <i>country</i> comes from <a href=\"\
@@ -137,7 +139,7 @@ countriesListPage q = div_ [class_ "CountriesList"] do
         (sortVal, Asc) | sortVal == sortBy -> text "▲"
         (sortVal, Desc) | sortVal == sortBy -> text "▼"
         otherwise -> text ""
-      on_ "click" do pushUrl $ toUrl . CountriesListR . toggleSortBy sortBy $ q
+      on @"click" do pushUrl $ toUrl . CountriesListR . toggleSortBy sortBy $ q
 
     toggleSortBy sortBy q
       | q.sort_by == sortBy = q {sort_dir = flipDir q.sort_dir}
@@ -156,7 +158,7 @@ countriesListPage q = div_ [class_ "CountriesList"] do
       $ countries
     countryFilter country = case q.search of
       Just needle ->
-        JSS.isInfixOf (JSS.toLower needle) (JSS.toLower country.title)
+        Text.isInfixOf (Text.toLower needle) (Text.toLower country.title)
       Nothing -> True
     countrySortBy = case q.sort_by of
       SortByTitle -> Left . (.title)
@@ -167,7 +169,7 @@ countriesListPage q = div_ [class_ "CountriesList"] do
       Asc -> Left . countrySortBy
       Desc -> Right . Down . countrySortBy
     itemsPerPage = 40
-    mkMapLink = toUrl . CountriesMapR . CountriesMapQ . Just . JSS.toLower
+    mkMapLink = toUrl . CountriesMapR . CountriesMapQ . Just . Text.toLower
 
 countriesMapPage :: CountriesMapQ -> Html ()
 countriesMapPage q =
@@ -176,11 +178,13 @@ countriesMapPage q =
       unsafeHtml countriesMap
       figcaption_ "political map of the planet Earth"
       centerEl <- asks html_current_element
-      liftIO $ js_selectCountry centerEl $ maybeToNullable $
-        fmap JSS.toJSValPure q.selected
-      on "click" \event -> do
-        mcode <- fmap JSS.fromJSValPure . nullableToMaybe <$>
-          liftIO (js_svgClickGetCountryCode event)
+      liftIO do
+        msel <- mapM toJSVal q.selected
+        js_selectCountry centerEl $ maybeToNullable msel
+      on @ClickWithEvent \event -> do
+        mcode <- liftIO (js_svgClickGetCountryCode event)
+          & (fmap nullableToMaybe)
+          & mapM fromJSVal
         mapM_ (pushUrl . toUrl . CountriesMapR . CountriesMapQ . Just) mcode
 
 paginate
@@ -202,3 +206,14 @@ paginate totalItems curPage limit
     (pageQuot, pageRem) = totalItems `divMod` limit
     totalPages = if pageRem == 0 then pageQuot else pageQuot + 1
     maxLinks = 10
+
+
+data ClickWithEvent
+
+instance IsEventName ClickWithEvent where
+  type EventListenerCb ClickWithEvent = JSVal -> Step ()
+  addEventListenerArgs = AddEventListenerArgs
+    { event_name = "dblclick"
+    , listener_options = defaultEventListenerOptions
+    , mk_callback = \k j -> k j
+    }

@@ -24,12 +24,10 @@ data HtmlEnv = HtmlEnv
   , html_content_boundary :: Maybe ContentBoundary
   -- ^ Boundary defined by parent scope where new content should be
   -- attached, when Nothing whole parent element is available
-  , html_reactive_env :: ReactiveEnv
-  -- ^ Needed to implement 'HasReactiveEnv'
   } deriving Generic
 
 -- | Most applications will only need HtmlT IO, hence this shortcut
-type Html = HtmlT IO
+type Html = HtmlT (ReactiveT IO)
 
 -- | A newtype over JSVal which is an instance of Node
 -- https://developer.mozilla.org/en-US/docs/Web/API/Node
@@ -71,6 +69,3 @@ instance (Semigroup a, Applicative m) => Semigroup (HtmlT m a) where
 
 instance (Monoid a, Applicative m) => Monoid (HtmlT m a) where
   mempty = HtmlT $ ReaderT \_ -> pure mempty
-
-instance Monad m => HasReactiveEnv (HtmlT m) where
-  askReactiveEnv = asks html_reactive_env

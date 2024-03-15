@@ -1,9 +1,11 @@
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
-{-# LANGUAGE JavaScriptFFI #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE UnboxedTuples #-}
+#if defined(wasm32_HOST_ARCH)
+{-# LANGUAGE JavaScriptFFI #-}
+#endif
 module Wasm.Compat.Marshal where
 
 import Control.Monad
@@ -160,7 +162,7 @@ js_arrayPush :: JSVal -> JSVal -> IO () = undefined
 js_arrayLength :: JSVal -> IO Int = undefined
 js_arrayIndex :: JSVal -> Int -> IO JSVal = undefined
 js_decodeUtf8 :: Ptr Word8 -> Int -> IO JSString = undefined
-js_encodeUtf8 :: JSString -> Ptr Word8 -> Int -> IO () = undefined
+js_encodeUtf8 :: JSString -> Ptr Word8 -> Int -> IO Int = undefined
 js_stringLength :: JSString -> IO Int = undefined
 
 #else
