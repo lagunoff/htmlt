@@ -26,7 +26,7 @@ data HtmlEnv = HtmlEnv
   -- attached, when Nothing whole parent element is available
   } deriving Generic
 
-type Html = HtmlT RX
+type Html = HtmlT RI
 
 -- | A newtype over JSVal which is an instance of Node
 -- https://developer.mozilla.org/en-US/docs/Web/API/Node

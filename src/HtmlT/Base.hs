@@ -186,10 +186,10 @@ simpleList listDyn h = do
   prevValue <- liftIO $ newIORef []
   elemEnvsRef <- liftIO $ newIORef ([] :: [ElemEnv a])
   let
-    exec :: ElemEnv a -> Html x -> RX x
+    exec :: ElemEnv a -> Html x -> RI x
     exec e = local (const e.ee_reactive_env) .
       execHtmlT e.ee_html_env
-    setup :: Int -> [a] -> [ElemEnv a] -> RX [ElemEnv a]
+    setup :: Int -> [a] -> [ElemEnv a] -> RI [ElemEnv a]
     setup idx new existing = case (existing, new) of
       ([], []) -> return []
       -- New list is longer, append new elements

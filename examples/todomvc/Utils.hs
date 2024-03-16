@@ -11,7 +11,7 @@ import Data.Text (Text)
 import Wasm.Compat.Prim
 import Wasm.Compat.Marshal
 
-mkUrlHashRef :: RX (DynRef Text)
+mkUrlHashRef :: RI (DynRef Text)
 mkUrlHashRef = do
   reactiveEnv <- ask
   initial <- liftIO $ textFromJSString =<< js_readUrlHash

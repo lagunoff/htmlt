@@ -13,7 +13,7 @@ import "this" Utils
 data TodoItemConfig = TodoItemConfig
   { self :: DynRef TodoItemState
   , is_hidden_dyn :: Dynamic Bool
-  , ask_delete_item :: RX ()
+  , ask_delete_item :: RI ()
   }
 
 data TodoItemState = TodoItemState
@@ -30,7 +30,7 @@ data TodoItemAction a where
   CheckedAction :: TodoItemConfig -> Bool -> TodoItemAction ()
   KeydownAction :: TodoItemConfig -> Int -> TodoItemAction ()
 
-eval :: TodoItemAction a -> RX a
+eval :: TodoItemAction a -> RI a
 eval = \case
   CancelAction cfg ->
     modifyRef cfg.self \s -> s{editing=Nothing}
@@ -105,7 +105,7 @@ instance FromJSVal TodoItemState where
 data DblClickWithTarget
 
 instance IsEventName DblClickWithTarget where
-  type EventListenerCb DblClickWithTarget = JSVal -> RX ()
+  type EventListenerCb DblClickWithTarget = JSVal -> RI ()
   addEventListenerArgs = AddEventListenerArgs
     { event_name = "dblclick"
     , listener_options = defaultEventListenerOptions

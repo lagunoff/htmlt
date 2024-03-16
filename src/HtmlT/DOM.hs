@@ -14,7 +14,7 @@ import Control.Monad.Reader
 import Data.Kind
 import Data.Text
 import GHC.Exts as Exts
-import GHC.Generics hiding (RX)
+import GHC.Generics hiding (RI)
 import HtmlT.Event
 import HtmlT.Types
 import Wasm.Compat.Marshal
@@ -37,7 +37,7 @@ on k = addEventListener (addEventListenerArgs @eventName) k
 data AddEventListenerArgs callback = AddEventListenerArgs
   { event_name :: Text
   , listener_options :: EventListenerOptions
-  , mk_callback :: callback -> JSVal -> RX ()
+  , mk_callback :: callback -> JSVal -> RI ()
   } deriving (Generic)
 
 addEventListener :: AddEventListenerArgs callback -> callback -> Html ()
@@ -69,63 +69,63 @@ class IsEventName eventName where
   addEventListenerArgs :: AddEventListenerArgs (EventListenerCb eventName)
 
 instance IsEventName "click" where
-  type EventListenerCb "click" = RX ()
+  type EventListenerCb "click" = RI ()
   addEventListenerArgs = pointerEventArgs "click"
 
 instance IsEventName "mousedown" where
-  type EventListenerCb "mousedown" = RX ()
+  type EventListenerCb "mousedown" = RI ()
   addEventListenerArgs = pointerEventArgs "mousedown"
 
 instance IsEventName "mouseup" where
-  type EventListenerCb "mouseup" = RX ()
+  type EventListenerCb "mouseup" = RI ()
   addEventListenerArgs = pointerEventArgs "mouseup"
 
 instance IsEventName "dblclick" where
-  type EventListenerCb "dblclick" = RX ()
+  type EventListenerCb "dblclick" = RI ()
   addEventListenerArgs = pointerEventArgs "dblclick"
 
 instance IsEventName "submit" where
-  type EventListenerCb "submit" = RX ()
+  type EventListenerCb "submit" = RI ()
   addEventListenerArgs = submitEventArgs
 
 instance IsEventName "input" where
-  type EventListenerCb "input" = Text -> RX ()
+  type EventListenerCb "input" = Text -> RI ()
   addEventListenerArgs = inputEventArgs
 
 instance IsEventName "keydown" where
-  type EventListenerCb "keydown" = Int -> RX ()
+  type EventListenerCb "keydown" = Int -> RI ()
   addEventListenerArgs = keyboardEventArgs "keydown"
 
 instance IsEventName "keyup" where
-  type EventListenerCb "keyup" = Int -> RX ()
+  type EventListenerCb "keyup" = Int -> RI ()
   addEventListenerArgs = keyboardEventArgs "keyup"
 
 instance IsEventName "focus" where
-  type EventListenerCb "focus" = RX ()
+  type EventListenerCb "focus" = RI ()
   addEventListenerArgs = pointerEventArgs "focus"
 
 instance IsEventName "blur" where
-  type EventListenerCb "blur" = RX ()
+  type EventListenerCb "blur" = RI ()
   addEventListenerArgs = pointerEventArgs "blur"
 
 instance IsEventName "input/blur" where
-  type EventListenerCb "input/blur" = Text -> RX ()
+  type EventListenerCb "input/blur" = Text -> RI ()
   addEventListenerArgs = inputEventArgs {event_name = "blur"}
 
 instance IsEventName "input/focus" where
-  type EventListenerCb "input/focus" = Text -> RX ()
+  type EventListenerCb "input/focus" = Text -> RI ()
   addEventListenerArgs = inputEventArgs {event_name = "focus"}
 
 instance IsEventName "checkbox/change" where
-  type EventListenerCb "checkbox/change" = Bool -> RX ()
+  type EventListenerCb "checkbox/change" = Bool -> RI ()
   addEventListenerArgs = checkboxChangeEventArgs
 
 instance IsEventName "select/change" where
-  type EventListenerCb "select/change" = Text -> RX ()
+  type EventListenerCb "select/change" = Text -> RI ()
   addEventListenerArgs = selectChangeEventArgs
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/click_event
-pointerEventArgs :: Text -> AddEventListenerArgs (RX ())
+pointerEventArgs :: Text -> AddEventListenerArgs (RI ())
 pointerEventArgs event_name = AddEventListenerArgs
   { event_name
   , listener_options = defaultEventListenerOptions
@@ -133,7 +133,7 @@ pointerEventArgs event_name = AddEventListenerArgs
   }
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/HTMLFormElement/submit_event
-submitEventArgs :: AddEventListenerArgs (RX ())
+submitEventArgs :: AddEventListenerArgs (RI ())
 submitEventArgs = AddEventListenerArgs
   { event_name = "submit"
   , listener_options = defaultSubmitOptions
@@ -143,7 +143,7 @@ submitEventArgs = AddEventListenerArgs
     defaultSubmitOptions = EventListenerOptions True True
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/input_event
-inputEventArgs :: AddEventListenerArgs (Text -> RX ())
+inputEventArgs :: AddEventListenerArgs (Text -> RI ())
 inputEventArgs = AddEventListenerArgs
   { event_name = "input"
   , listener_options = defaultEventListenerOptions
@@ -155,7 +155,7 @@ inputEventArgs = AddEventListenerArgs
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/keydown_event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/keyup_event
-keyboardEventArgs :: Text -> AddEventListenerArgs (Int -> RX ())
+keyboardEventArgs :: Text -> AddEventListenerArgs (Int -> RI ())
 keyboardEventArgs event_name = AddEventListenerArgs
   { event_name
   , listener_options = defaultEventListenerOptions
@@ -168,7 +168,7 @@ keyboardEventArgs event_name = AddEventListenerArgs
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/blur_event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/focusin_event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/focusout_event
-focusEventArgs :: Text -> AddEventListenerArgs (RX ())
+focusEventArgs :: Text -> AddEventListenerArgs (RI ())
 focusEventArgs event_name = AddEventListenerArgs
   { event_name
   , listener_options = defaultEventListenerOptions
@@ -176,7 +176,7 @@ focusEventArgs event_name = AddEventListenerArgs
   }
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/change_event
-checkboxChangeEventArgs :: AddEventListenerArgs (Bool -> RX ())
+checkboxChangeEventArgs :: AddEventListenerArgs (Bool -> RI ())
 checkboxChangeEventArgs = AddEventListenerArgs
   { event_name = "change"
   , listener_options = defaultEventListenerOptions
@@ -187,7 +187,7 @@ checkboxChangeEventArgs = AddEventListenerArgs
   }
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/change_event
-selectChangeEventArgs :: AddEventListenerArgs (Text -> RX ())
+selectChangeEventArgs :: AddEventListenerArgs (Text -> RI ())
 selectChangeEventArgs = AddEventListenerArgs
   { event_name = "change"
   , listener_options = defaultEventListenerOptions
@@ -217,7 +217,7 @@ data Location = Location
   } deriving stock (Show, Eq, Generic)
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/Window/popstate_event
-popstateEventArgs :: AddEventListenerArgs (Location -> RX ())
+popstateEventArgs :: AddEventListenerArgs (Location -> RI ())
 popstateEventArgs = AddEventListenerArgs
   { event_name = "popstate"
   , listener_options = defaultEventListenerOptions

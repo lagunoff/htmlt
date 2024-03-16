@@ -41,7 +41,7 @@ data TodoListAction a where
   DeleteItemAction :: Int -> TodoListAction ()
   ClearCompletedAction :: TodoListAction ()
 
-new :: Filter -> RX (DynRef TodoListState)
+new :: Filter -> RI (DynRef TodoListState)
 new filter = do
   todos <- fromMaybe [] . fmap unLocalStorageTodoItems <$> liftIO localStorageGet
   newRef TodoListState
@@ -50,7 +50,7 @@ new filter = do
     , title = ""
     }
 
-eval :: TodoListConfig -> TodoListAction a -> RX a
+eval :: TodoListConfig -> TodoListAction a -> RI a
 eval cfg = \case
   UpdateFilter filter ->
     modifyRef cfg.self \s -> s {filter}
