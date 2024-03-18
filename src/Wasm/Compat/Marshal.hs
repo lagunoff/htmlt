@@ -142,6 +142,14 @@ textFromJSString j = IO \s0 ->
       (# s4, arr #) = unsafeFreezeByteArray# marr s3
   in  (# s4, (Text (ByteArray arr) 0 tlen) #)
 
+newtype RawJavaScript = RawJavaScript {unRawJavaScript :: Text}
+
+evalRawJavaScript :: RawJavaScript -> IO JSVal
+evalRawJavaScript rjs = do
+  let Text (ByteArray arr) off len = rjs.unRawJavaScript
+      addr = byteArrayContents# arr
+  js_evalRawJavaScript (Ptr addr `plusPtr` off) len
+
 #if !defined(wasm32_HOST_ARCH)
 
 js_true :: JSVal = undefined
@@ -164,6 +172,7 @@ js_arrayIndex :: JSVal -> Int -> IO JSVal = undefined
 js_decodeUtf8 :: Ptr Word8 -> Int -> IO JSString = undefined
 js_encodeUtf8 :: JSString -> Ptr Word8 -> Int -> IO Int = undefined
 js_stringLength :: JSString -> IO Int = undefined
+js_evalRawJavaScript :: Ptr Word8 -> Int -> IO JSString = undefined
 
 #else
 
@@ -215,4 +224,7 @@ foreign import javascript unsafe
 foreign import javascript unsafe
   "$1.length"
   js_stringLength :: JSString -> IO Int
+foreign import javascript unsafe
+  "eval(new TextDecoder('utf8').decode(new Uint8Array(__exports.memory.buffer, $1, $2)))"
+  js_evalRawJavaScript :: Ptr Word8 -> Int -> IO JSVal
 #endif

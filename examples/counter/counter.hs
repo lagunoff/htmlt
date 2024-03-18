@@ -1,32 +1,35 @@
 import Control.Monad
-import Control.Monad.Trans.Maybe
 import HtmlT
-import JavaScript.Compat.String qualified as JSS
 import Text.Read (readMaybe)
+import Data.Text qualified as Text
+import Data.Function ((&))
+import Control.Monad.Trans
+import Control.Monad.Reader
+import Control.Concurrent
 
 app :: Html ()
 app = do
   -- First create a 'DynRef
-  counterRef <- newRef @Int 0
+  counterRef <- lift $ newRef @Int 0
   div_ do
     input_ [type_ "number"] do
       -- Show the value inside <input>
-      dynProp "value" $ JSS.pack . show <$> fromRef counterRef
+      dynProp "value" $ Text.pack . show <$> fromRef counterRef
       -- Parse and update the value on each InputEvent
-      on "input" $ decodeEvent intDecoder $ writeRef counterRef
+      on @"input" \inp ->
+        readMaybe (Text.unpack inp) & mapM_ (writeRef counterRef)
     br_
     -- Decrease the value on each click
     button_ do
-      on_ "click" $ modifyRef counterRef pred
+      on @"click" $ modifyRef counterRef pred
       text "-"
     -- Increase the value on each click
     button_ do
-      on_ "click" $ modifyRef counterRef succ
+      on @"click" $ modifyRef counterRef succ
       text "+"
-  where
-    intDecoder =
-      valueDecoder >=> MaybeT . pure . readMaybe . JSS.unpack
+
+foreign export ccall wasm_main :: IO ()
+wasm_main = void $ attachToBody app
 
 main :: IO ()
-main =
-  void $ attachToBody app
+main = return ()

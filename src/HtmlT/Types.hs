@@ -6,6 +6,7 @@ import Data.Coerce
 import Data.String
 import GHC.Generics
 import HtmlT.Event
+import Data.Text
 import Control.Monad.Fix
 
 import Wasm.Compat.Prim

@@ -103,16 +103,21 @@ library
     ghc-experimental,
     ghc-prim,
 
--- executable htmlt-counter
---   import: htmlt-common         
---   main-is: counter.hs
---   hs-source-dirs: ./examples/counter
---   build-depends:
---     base,
---     htmlt,
---     transformers,
---   if !flag(examples)
---     buildable: False
+executable htmlt-counter
+  import: htmlt-common         
+  main-is: counter.hs
+  hs-source-dirs: ./examples/counter
+  ghc-options:
+    -no-hs-main -optl-mexec-model=reactor
+    -optl-Wl,--export=hs_init,--export=wasm_main
+  build-depends:
+    base,
+    htmlt,
+    text,
+    mtl,
+    transformers,
+  if !flag(examples)
+    buildable: False
 
 executable htmlt-todomvc
   import: htmlt-common         

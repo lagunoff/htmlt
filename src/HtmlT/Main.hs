@@ -57,15 +57,15 @@ attachWithOptions opt app = mdo
 
 -- | Start the application and attach it to the given HTMLElement
 attachTo :: DOMElement -> Html a -> IO (a, RunningApp)
-attachTo rootEl html = do
+attachTo root html = do
   renv <- newReactiveEnv
-  attachWithOptions (AttachOptions renv rootEl True True) html
+  attachWithOptions (AttachOptions renv root True True) html
 
 -- | Start the application and attach it to current <body> element
 attachToBody :: Html a -> IO (a, RunningApp)
 attachToBody html = do
-  bodyEl <- getCurrentBody
-  attachTo bodyEl html
+  body <- getCurrentBody
+  attachTo body html
 
 -- | Run finalizers and detach created elements from the DOM
 detach :: RunningApp -> IO ()
