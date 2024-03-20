@@ -144,11 +144,45 @@ textFromJSString j = IO \s0 ->
 
 newtype RawJavaScript = RawJavaScript {unRawJavaScript :: Text}
 
-evalRawJavaScript :: RawJavaScript -> IO JSVal
-evalRawJavaScript rjs = do
+evalJavaScript :: RawJavaScript -> IO JSVal
+evalJavaScript rjs = do
   let Text (ByteArray arr) off len = rjs.unRawJavaScript
       addr = byteArrayContents# arr
-  js_evalRawJavaScript (Ptr addr `plusPtr` off) len
+  js_evalJavaScript (Ptr addr `plusPtr` off) len
+
+evalJavaScript1 :: ToJSVal arg0 => arg0 -> RawJavaScript -> IO JSVal
+evalJavaScript1 arg0 rjs = do
+  a0 <- toJSVal arg0
+  let Text (ByteArray arr) off len = rjs.unRawJavaScript
+      addr = byteArrayContents# arr
+  js_evalJavaScript1 a0 (Ptr addr `plusPtr` off) len
+
+evalJavaScript2 :: (ToJSVal arg0, ToJSVal arg1) => arg0 -> arg1 -> RawJavaScript -> IO JSVal
+evalJavaScript2 arg0 arg1 rjs = do
+  a0 <- toJSVal arg0
+  a1 <- toJSVal arg1
+  let Text (ByteArray arr) off len = rjs.unRawJavaScript
+      addr = byteArrayContents# arr
+  js_evalJavaScript2 a0 a1 (Ptr addr `plusPtr` off) len
+
+evalJavaScript3 :: (ToJSVal arg0, ToJSVal arg1, ToJSVal arg2) => arg0 -> arg1 -> arg2 -> RawJavaScript -> IO JSVal
+evalJavaScript3 arg0 arg1 arg2 rjs = do
+  a0 <- toJSVal arg0
+  a1 <- toJSVal arg1
+  a2 <- toJSVal arg2
+  let Text (ByteArray arr) off len = rjs.unRawJavaScript
+      addr = byteArrayContents# arr
+  js_evalJavaScript3 a0 a1 a2 (Ptr addr `plusPtr` off) len
+
+evalJavaScript4 :: (ToJSVal arg0, ToJSVal arg1, ToJSVal arg2, ToJSVal arg3) => arg0 -> arg1 -> arg2 -> arg3 -> RawJavaScript -> IO JSVal
+evalJavaScript4 arg0 arg1 arg2 arg3 rjs = do
+  a0 <- toJSVal arg0
+  a1 <- toJSVal arg1
+  a2 <- toJSVal arg2
+  a3 <- toJSVal arg3
+  let Text (ByteArray arr) off len = rjs.unRawJavaScript
+      addr = byteArrayContents# arr
+  js_evalJavaScript4 a0 a1 a2 a3 (Ptr addr `plusPtr` off) len
 
 #if !defined(wasm32_HOST_ARCH)
 
@@ -172,7 +206,11 @@ js_arrayIndex :: JSVal -> Int -> IO JSVal = undefined
 js_decodeUtf8 :: Ptr Word8 -> Int -> IO JSString = undefined
 js_encodeUtf8 :: JSString -> Ptr Word8 -> Int -> IO Int = undefined
 js_stringLength :: JSString -> IO Int = undefined
-js_evalRawJavaScript :: Ptr Word8 -> Int -> IO JSString = undefined
+js_evalJavaScript :: Ptr Word8 -> Int -> IO JSVal = undefined
+js_evalJavaScript1 :: JSVal -> Ptr Word8 -> Int -> IO JSVal = undefined
+js_evalJavaScript2 :: JSVal -> JSVal -> Ptr Word8 -> Int -> IO JSVal = undefined
+js_evalJavaScript3 :: JSVal -> JSVal -> JSVal -> Ptr Word8 -> Int -> IO JSVal = undefined
+js_evalJavaScript4 :: JSVal -> JSVal -> JSVal -> JSVal -> Ptr Word8 -> Int -> IO JSVal = undefined
 
 #else
 
@@ -226,5 +264,17 @@ foreign import javascript unsafe
   js_stringLength :: JSString -> IO Int
 foreign import javascript unsafe
   "eval(new TextDecoder('utf8').decode(new Uint8Array(__exports.memory.buffer, $1, $2)))"
-  js_evalRawJavaScript :: Ptr Word8 -> Int -> IO JSVal
+  js_evalJavaScript :: Ptr Word8 -> Int -> IO JSVal
+foreign import javascript unsafe
+  "eval(new TextDecoder('utf8').decode(new Uint8Array(__exports.memory.buffer, $2, $3)))($1)"
+  js_evalJavaScript1 :: JSVal -> Ptr Word8 -> Int -> IO JSVal
+foreign import javascript unsafe
+  "eval(new TextDecoder('utf8').decode(new Uint8Array(__exports.memory.buffer, $3, $4)))($1, $2)"
+  js_evalJavaScript2 :: JSVal -> JSVal -> Ptr Word8 -> Int -> IO JSVal
+foreign import javascript unsafe
+  "eval(new TextDecoder('utf8').decode(new Uint8Array(__exports.memory.buffer, $4, $5)))($1, $2, $3)"
+  js_evalJavaScript3 :: JSVal -> JSVal -> JSVal -> Ptr Word8 -> Int -> IO JSVal
+foreign import javascript unsafe
+  "eval(new TextDecoder('utf8').decode(new Uint8Array(__exports.memory.buffer, $5, $6)))($1, $2, $3, $4)"
+  js_evalJavaScript4 :: JSVal -> JSVal -> JSVal -> JSVal -> Ptr Word8 -> Int -> IO JSVal
 #endif
