@@ -1,20 +1,23 @@
- module HtmlT.Sketch where
+module HtmlT.Sketch where
 
-import Control.Monad.State
-import Control.Monad.Reader
-import Control.Monad.Identity
-import Data.Foldable
-import Data.Typeable
-import Data.Tuple
-import Data.IORef
 import Control.Monad
-import GHC.TypeLits
-import Data.Text (Text)
-import Data.List qualified as List
-import Data.Proxy
-import Data.Generics.Product.Fields
+import Control.Monad.Identity
+import Control.Monad.Reader
+import Control.Monad.State
+import Data.Foldable
 import Data.Generics.Internal.VL hiding (build)
+import Data.Generics.Product.Fields
 import Data.Generics.Sum.Constructors
+import Data.IORef
+import Data.List qualified as List
+import Data.Text (Text)
+import Data.Tuple
+import Data.Typeable
+import Data.Map (Map)
+import Data.Map qualified as Map
+import GHC.Generics
+import GHC.Exts hiding (build)
+import GHC.TypeLits
 
 import HtmlT.Sketch.FFI
 import Wasm.Compat.Prim
@@ -25,25 +28,75 @@ import Wasm.Compat.Prim
 
 data Edit a where
   Ins :: a -> Edit a
-  Fld :: (HasField' f s a, KnownSymbol f, Typeable a) => Proxy f -> Edit a -> Edit s
-  Ctor :: AsConstructor' ctor s a => Proxy ctor -> Edit a -> Edit s
+  Fld ::
+    ( HasField' f s a
+    , KnownSymbol f
+    , Typeable a
+    ) =>
+    Proxy f -> Edit a -> Edit s
+  Ctor ::
+    ( AsConstructor' ctor s a
+    , KnownSymbol ctor
+    , Typeable a
+    ) => Proxy ctor -> Edit a -> Edit s
+  Sum :: SumCtor ctor s a => Edit a -> Edit s
   Ix :: Int -> Edit e -> Edit [e]
   Splice :: Int -> Int -> [e] -> Edit [e]
 
-data SyncOp s where
-  TextOp :: JSVal -> (s -> Text) -> SyncOp s
-  PropOp :: JSVal -> Text -> (s -> Text) -> SyncOp s
-  MapOp :: (Jet s -> Jet t) -> SyncOp t -> SyncOp s
-
-data Jet a = Jet { position :: a, velocity :: [Edit a] }
-
 type SyncPlan s = [SyncOp s]
 
-emptySyncPlan :: SyncPlan s
-emptySyncPlan = []
+class SumCtor ctor s a | ctor s -> a
+
+instance SumCtor "In1" (Sum a b) a
+
+instance SumCtor "In2" (Sum a b) b
+
+patch :: Edit s -> s -> s
+patch (Ins s) _ = s
+patch (Fld p e) s = pfld p e s where
+  pfld :: forall f s a. HasField' f s a => Proxy f -> Edit a -> s -> s
+  pfld _ e s = over (field' @f) (patch e) s
+patch (Ctor p e) s = pctor p e s where
+  pctor :: forall ctor s a. AsConstructor' ctor s a => Proxy ctor -> Edit a -> s -> s
+  pctor _ e s = over (_Ctor' @ctor) (patch e) s
+patch (Ix i e) s = go i e s where
+  go :: Int -> Edit e -> [e] -> [e]
+  go 0 e (x:xs) = patch e x : xs
+  go _ _ [] = []
+  go n e (x:xs) = x : go (n - 1) e xs
+patch (Splice i rem ins) s = go ins i s where
+  go :: [e] -> Int -> [e] -> [e]
+  go ins 0 xs = ins <> List.drop rem xs
+  go ins n (x:xs) = x : go ins (n - 1) xs
+  go _ _ [] = []
+
+------------------------------------------------------------
+-- INCREMENTAL OPTICS USED FOR EMBEDDING COMPONENT STATES --
+------------------------------------------------------------
+
+data IncOptic s a where
+  FldLens ::
+    ( HasField' f s a
+    , KnownSymbol f
+    , Typeable a
+    ) => Proxy f -> IncOptic s a
+  IxTrav ::
+    Int -> IncOptic [a] a
+  CtorPrism ::
+    ( AsConstructor' ctor s a
+    , KnownSymbol ctor
+    , Typeable a
+    ) => Proxy ctor -> IncOptic s a
+  Comp :: IncOptic s x -> IncOptic x a -> IncOptic s a
+
+type IncGetter s a = Jet s -> Jet a
+
+-----------------
+-- CORE TYPES  --
+-----------------
 
 data Layout s where
-  Embed :: (ModifierFn s -> ModifierFn t) -> (Jet s -> Jet t) -> [Layout t] -> Layout s
+  EmbedNode :: (ModifierFn s -> ModifierFn t) -> (Jet s -> Jet t) -> [Layout t] -> Layout s
   TextNode :: Text -> Layout s
   DynText :: (s -> Text) -> Layout s
   ElemNode :: Text -> [(Text, Text)] -> [Layout s] -> Layout s
@@ -51,33 +104,12 @@ data Layout s where
   -- DynNode :: (Jet s -> Jet (Layout s)) -> Layout s
   -- SimpleList :: (Jet s -> Jet [a]) -> (Edit [a] -> Edit s) -> Layout a -> Layout s
 
-patch :: Edit s -> s -> s
-patch e s = case e of
-  Ins s -> s
-  Fld p e -> pfield p e s
-    where
-      pfield :: forall f s a. HasField' f s a => Proxy f -> Edit a -> s -> s
-      pfield _ e s = over (field' @f) (patch e) s
-  Ctor p e -> pctor p e s
-    where
-      pctor :: forall ctor s a. AsConstructor' ctor s a => Proxy ctor -> Edit a -> s -> s
-      pctor _ e s = over (_Ctor' @ctor) (patch e) s
-  Ix i e -> go i e s
-    where
-      go :: Int -> Edit e -> [e] -> [e]
-      go 0 e (x:xs) = patch e x : xs
-      go _ _ [] = []
-      go n e (x:xs) = x : go (n - 1) e xs
-  Splice ix remove insert -> go insert ix s
-    where
-      go :: [e] -> Int -> [e] -> [e]
-      go ins 0 xs = ins <> List.drop remove xs
-      go ins n (x:xs) = x : go ins (n - 1) xs
-      go _ _ [] = []
+data SyncOp s where
+  TextOp :: JSVal -> (s -> Text) -> SyncOp s
+  PropOp :: JSVal -> Text -> (s -> Text) -> SyncOp s
+  MapOp :: (Jet s -> Jet t) -> SyncOp t -> SyncOp s
 
------------------
--- CORE TYPES  --
------------------
+data Jet a = Jet { position :: a, velocity :: [Edit a] }
 
 newtype BuilderM s a = BuilderM { unBuilderM :: StateT [Layout s] Identity a }
   deriving newtype (Functor, Applicative, Monad, MonadState [Layout s])
@@ -126,15 +158,15 @@ mapModifierFn g f (ModifierFn ms) = ModifierFn f0 where
     js' = Jet js.position (fmap g ja.velocity <> js.velocity)
 
 refModifier :: forall s. (Jet s -> IO ()) -> IORef s -> ModifierFn s
-refModifier up ref = ModifierFn m0 where
-  m0 :: forall x. (Jet s -> (Jet s, x)) -> IO x
-  m0 f = do
-    (x, jet) <- atomicModifyIORef' ref $ m1 f
+refModifier up ref = ModifierFn f0 where
+  f0 :: forall x. (Jet s -> (Jet s, x)) -> IO x
+  f0 f = do
+    (x, jet) <- atomicModifyIORef' ref $ f1 f
     up jet
     return x
 
-  m1 :: forall x. (Jet s -> (Jet s, x)) -> s -> (s, (x, Jet s))
-  m1 f s = let (js', x) = f (Jet s []) in (js'.position, (x, js'))
+  f1 :: forall x. (Jet s -> (Jet s, x)) -> s -> (s, (x, Jet s))
+  f1 f s = let (js', x) = f (Jet s []) in (js'.position, (x, js'))
 
 fldModifierFn :: forall f s a.
   ( HasField' f s a
@@ -179,18 +211,6 @@ fldJet js = Jet (getField @f js.position) (fltc js.velocity) where
     , Just Refl <- eqT @a' @a = Just e
     | otherwise = Nothing
 
-embedFld :: forall f s a x.
-  ( HasField' f s a
-  , KnownSymbol f
-  , Typeable a
-  ) =>
-  BuilderM a x ->
-  BuilderM s x
-embedFld b = BuilderM $ StateT $ \l -> Identity (x, (Embed f g l':l)) where
-  (x, l') = runIdentity $ runStateT b.unBuilderM []
-  f = fldModifierFn @f
-  g = fldJet @f
-
 ------------------
 -- BUILDING DOM --
 ------------------
@@ -228,9 +248,33 @@ select_ = el "select"
 on :: Text -> (JSVal -> TransitionM s ()) -> BuilderM s ()
 on e l = modify (EventListener e l :)
 
------------------------------
--- STARTING AN APPLICATION --
------------------------------
+--------------------------
+-- COMPONENT EMBEDDING  --
+--------------------------
+
+embedFld :: forall f s a x.
+  ( HasField' f s a
+  , KnownSymbol f
+  , Typeable a
+  ) =>
+  BuilderM a x ->
+  BuilderM s x
+embedFld b = BuilderM $ StateT st where
+  st l = Identity (x, (n:l))
+  n = EmbedNode (fldModifierFn @f) (fldJet @f) l'
+  (x, l') = runIdentity $ runStateT b.unBuilderM []
+
+data Sum a b = In1 a | In2 b deriving Generic
+
+embedSum ::
+  BuilderM a x ->
+  BuilderM b x ->
+  BuilderM (Sum a b) x
+embedSum b = undefined
+
+--------------------------
+-- START AN APPLICATION --
+--------------------------
 
 build ::
   ModifierFn s ->
@@ -243,14 +287,7 @@ build m = go0 . List.reverse where
   go0 [] _ _ p = return p
   go0 (x:xs) s r p = do { p' <- go1 m x s r p; go0 xs s r p' }
 
-  go1 :: forall s.
-    ModifierFn s ->
-    Layout s ->
-    s ->
-    JSVal ->
-    SyncPlan s ->
-    IO (SyncPlan s)
-  go1 m (Embed f g l) s r p = do
+  go1 m (EmbedNode f g l) s r p = do
     p' <- build (f m) l ((g (Jet s [])).position) r []
     return $ fmap (MapOp g) p' <> p
   go1 m (TextNode t) s r p =
@@ -286,3 +323,13 @@ attach s html = mdo
   let mod = refModifier (sync plan) stateRef
   plan <- build mod layout s body []
   return res
+
+-------------------------------
+-- REATIVE STUFF RESURRECTED --
+-------------------------------
+
+data IncRef t a where
+  TipRef :: RefId -> IORef a -> IncRef t a
+  MapRef :: IncOptic s a -> IncRef t a
+
+type RefId = Int

@@ -1,8 +1,8 @@
 import HtmlT.Sketch
-import "this" Charts qualified as Charts
+import "this" App qualified as App
 
 main :: IO ()
 main = return ()
 
 foreign export ccall wasm_main :: IO ()
-wasm_main = Charts.new >>= flip attach Charts.html
+wasm_main = App.new >>= flip attach App.html
