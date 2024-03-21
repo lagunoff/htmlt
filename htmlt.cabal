@@ -78,17 +78,19 @@ common htmlt-common
 
 library
   import: htmlt-common         
-  hs-source-dirs: src
+  hs-source-dirs: src ./examples/charts
   exposed-modules:
-    HtmlT
-    HtmlT.Base
-    HtmlT.DOM
-    HtmlT.Element
-    HtmlT.Event
-    HtmlT.Internal
-    HtmlT.Main
-    HtmlT.Property
-    HtmlT.Types
+    -- HtmlT
+    -- HtmlT.Base
+    -- HtmlT.DOM
+    -- HtmlT.Element
+    -- HtmlT.Event
+    -- HtmlT.Internal
+    -- HtmlT.Main
+    -- HtmlT.Property
+    -- HtmlT.Types
+    HtmlT.Sketch
+    HtmlT.Sketch.FFI
     Wasm.Compat.Prim
     Wasm.Compat.Marshal
     
@@ -102,11 +104,47 @@ library
     transformers,
     ghc-experimental,
     ghc-prim,
+    generic-lens,
 
-executable htmlt-counter
+-- executable htmlt-counter
+--   import: htmlt-common         
+--   main-is: counter.hs
+--   hs-source-dirs: ./examples/counter
+--   ghc-options:
+--     -no-hs-main -optl-mexec-model=reactor
+--     -optl-Wl,--export=hs_init,--export=wasm_main
+--   build-depends:
+--     base,
+--     htmlt,
+--     text,
+--     mtl,
+--     transformers,
+--   if !flag(examples)
+--     buildable: False
+
+-- executable htmlt-todomvc
+--   import: htmlt-common         
+--   main-is: todomvc.hs
+--   hs-source-dirs: ./examples/todomvc
+--   ghc-options:
+--     -no-hs-main -optl-mexec-model=reactor
+--     -optl-Wl,--export=hs_init,--export=wasm_main
+--   other-modules:
+--     TodoItem
+--     TodoList
+--     Utils
+--   build-depends:
+--     base,
+--     htmlt,
+--     text,
+--     mtl,
+--   if !flag(examples)
+--     buildable: False
+
+executable htmlt-charts
   import: htmlt-common         
-  main-is: counter.hs
-  hs-source-dirs: ./examples/counter
+  main-is: charts.hs
+  hs-source-dirs: ./examples/charts
   ghc-options:
     -no-hs-main -optl-mexec-model=reactor
     -optl-Wl,--export=hs_init,--export=wasm_main
@@ -115,26 +153,9 @@ executable htmlt-counter
     htmlt,
     text,
     mtl,
-    transformers,
-  if !flag(examples)
-    buildable: False
-
-executable htmlt-todomvc
-  import: htmlt-common         
-  main-is: todomvc.hs
-  hs-source-dirs: ./examples/todomvc
-  ghc-options:
-    -no-hs-main -optl-mexec-model=reactor
-    -optl-Wl,--export=hs_init,--export=wasm_main
   other-modules:
-    TodoItem
-    TodoList
-    Utils
-  build-depends:
-    base,
-    htmlt,
-    text,
-    mtl,
+    Charts
+    PairSelector
   if !flag(examples)
     buildable: False
   

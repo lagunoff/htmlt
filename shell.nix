@@ -1,1 +1,1 @@
-(import ./default.nix {}).shell.x86_64
+(import ./default.nix {}).shell
