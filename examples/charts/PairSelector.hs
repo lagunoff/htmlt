@@ -6,8 +6,8 @@ import Data.Text qualified as Text
 import Data.Function hiding (on)
 import GHC.Generics
 
-import HtmlT.Sketch
-import HtmlT.Sketch.FFI
+import Sketch
+import Sketch.FFI
 
 data TradingPair = TradingPair
   { base :: Text

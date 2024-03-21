@@ -1,4 +1,4 @@
-import HtmlT.Sketch
+import Sketch
 import "this" App qualified as App
 
 main :: IO ()

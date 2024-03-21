@@ -6,7 +6,7 @@
 #if defined(wasm32_HOST_ARCH)
 {-# LANGUAGE JavaScriptFFI #-}
 #endif
-module HtmlT.Sketch.FFI where
+module Sketch.FFI where
 
 import Control.Monad.IO.Class
 import Wasm.Compat.Prim

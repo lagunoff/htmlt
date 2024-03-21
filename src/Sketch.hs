@@ -1,4 +1,4 @@
-module HtmlT.Sketch where
+module Sketch where
 
 import Control.Monad
 import Control.Monad.Identity
@@ -19,7 +19,7 @@ import GHC.Generics
 import GHC.Exts hiding (build)
 import GHC.TypeLits
 
-import HtmlT.Sketch.FFI
+import Sketch.FFI
 import Wasm.Compat.Prim
 
 --------------------------
@@ -324,12 +324,37 @@ attach s html = mdo
   plan <- build mod layout s body []
   return res
 
+---------------------------
+-- INCREMENTAL VARIABLES --
+---------------------------
+
+data IncVar t a where
+  TipVar :: RefId -> IORef a -> IncVar '[] a
+  LensMapVar :: IncOptic s a -> IncVar t a
+  MapVar :: (s -> a) -> IncVar '[ 'GetterConstraint] a
+
+type RefId = Int
+
+data VarConstraint = GetterConstraint
+
 -------------------------------
 -- REATIVE STUFF RESURRECTED --
 -------------------------------
 
-data IncRef t a where
-  TipRef :: RefId -> IORef a -> IncRef t a
-  MapRef :: IncOptic s a -> IncRef t a
+data RunningState = RunningState
+  { sync_plan :: [(ScopeId, RefId, Any -> IO ())]
+  , finalizers :: [(ScopeId, RefId, Any -> IO ())]
+  } deriving (Generic)
 
-type RefId = Int
+type EventId = Int
+
+data ScopeId
+  = RootScope
+  | BranchScope ScopeId Int
+  deriving (Eq, Ord, Show)
+
+data ScopeNode = ScopeNode
+  { nodes :: [ScopeId]
+  , parent :: Maybe ScopeId
+  , finalizers :: [IO ()]
+  } deriving stock Generic

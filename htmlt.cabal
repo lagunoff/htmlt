@@ -89,8 +89,8 @@ library
     -- HtmlT.Main
     -- HtmlT.Property
     -- HtmlT.Types
-    HtmlT.Sketch
-    HtmlT.Sketch.FFI
+    Sketch
+    Sketch.FFI
     Wasm.Compat.Prim
     Wasm.Compat.Marshal
     

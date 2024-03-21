@@ -6,8 +6,8 @@ import Data.Text (Text)
 import Data.Text qualified as Text
 import GHC.Generics
 
-import HtmlT.Sketch
-import HtmlT.Sketch.FFI
+import Sketch
+import Sketch.FFI
 import PairSelector qualified as PairSelector
 
 -------------------------------------------------------
