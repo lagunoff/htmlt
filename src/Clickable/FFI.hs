@@ -6,7 +6,7 @@
 #if defined(wasm32_HOST_ARCH)
 {-# LANGUAGE JavaScriptFFI #-}
 #endif
-module Sketch.FFI where
+module Clickable.FFI where
 
 import Control.Monad.IO.Class
 import Wasm.Compat.Prim
@@ -16,6 +16,8 @@ import GHC.Prim
 import Data.Text.Internal
 import Data.Array.Byte
 
+
+newtype DomBuilder = DomBuilder {unDomBuilder :: JSVal}
 
 insertText :: JSVal -> Text -> IO JSVal
 insertText root (Text (ByteArray arr) off len) = do
@@ -73,17 +75,31 @@ documentBody = undefined
 js_consoleLog :: Ptr Word8 -> Int -> IO ()
 js_consoleLog = undefined
 
+js_insertBrackets :: JSVal -> IO JSVal
+js_insertBrackets = undefined
+
+js_clearBrackets :: JSVal -> IO ()
+js_clearBrackets = undefined
+
 #else
 foreign import javascript unsafe
   "var c = new TextDecoder('utf8').decode(new Uint8Array(__exports.memory.buffer, $2, $3));\
    var n = document.createTextNode(c);\
-   $1.appendChild(n);\
+   if ($1 instanceof Comment) {\
+     $1.parentNode.insertBefore(n, $1);\
+   } else {\
+     $1.appendChild(n);\
+   }\
    return n;"
   js_insertText :: JSVal -> Ptr Word8 -> Int -> IO JSVal
 foreign import javascript unsafe
   "var t = new TextDecoder('utf8').decode(new Uint8Array(__exports.memory.buffer, $2, $3));\
    var n = document.createElement(t);\
-   $1.appendChild(n);\
+   if ($1 instanceof Comment) {\
+     $1.parentNode.insertBefore(n, $1);\
+   } else {\
+     $1.appendChild(n);\
+   }\
    return n;"
   js_insertElement :: JSVal -> Ptr Word8 -> Int -> IO JSVal
 foreign import javascript unsafe
@@ -92,15 +108,49 @@ foreign import javascript unsafe
 foreign import javascript unsafe
   "var k = new TextDecoder('utf8').decode(new Uint8Array(__exports.memory.buffer, $2, $3));\
    var v = new TextDecoder('utf8').decode(new Uint8Array(__exports.memory.buffer, $4, $5));\
-   $1[k] = v;"
+   if ($1 instanceof Comment) {\
+     $1.parentNode[k] = v;\
+   } else {\
+     $1[k] = v;\
+   }"
   js_setProperty :: JSVal -> Ptr Word8 -> Int -> Ptr Word8 -> Int -> IO ()
 foreign import javascript unsafe "document.body" documentBody :: IO JSVal
 foreign import javascript unsafe
   "var e = new TextDecoder('utf8').decode(new Uint8Array(__exports.memory.buffer, $2, $3));\
-   $1.addEventListener(e, $4);"
+   if ($1 instanceof Comment) {\
+     $1.parentNode.addEventListener(e, $4);\
+   } else {\
+     $1.addEventListener(e, $4);\
+   }"
   js_addEventListener :: JSVal -> Ptr Word8 -> Int -> JSVal -> IO ()
 foreign import javascript "wrapper" js_dynExport :: (JSVal -> IO ()) -> IO JSVal
 foreign import javascript unsafe
   "console.log(new TextDecoder('utf8').decode(new Uint8Array(__exports.memory.buffer, $1, $2)));"
   js_consoleLog :: Ptr Word8 -> Int -> IO ()
+foreign import javascript unsafe
+  "var c1 = document.createComment('ContentBoundary {{');\
+   var c2 = document.createComment('}}');\
+   if ($1 instanceof Comment) {\
+     $1.parentNode.insertBefore(c1, $1);\
+     $1.parentNode.insertBefore(c2, $1);\
+   } else {\
+     $1.appendChild(c1);\
+     $1.appendChild(c2);\
+   }\
+   return c2;"
+  js_insertBrackets :: JSVal -> IO JSVal
+foreign import javascript unsafe
+  "function isOpenBracket(node) {return node instanceof Comment && node.textContent == 'ContentBoundary {{'}\
+   function isCloseBracket(node) {return node instanceof Comment && node.textContent == '}}'}\
+   var iter = $1;\
+   var nestedCounter = 0;\
+   for (;;){\
+     if (!iter.previousSibling ||\
+       (nestedCounter == 0 && isOpenBracket(iter.previousSibling))\
+       ) break;\
+     if (isCloseBracket(iter.previousSibling)) nestedCounter++;\
+     else if (isOpenBracket(iter.previousSibling)) nestedCounter--;\
+     iter.previousSibling.parentNode.removeChild(iter.previousSibling);\
+   }"
+  js_clearBrackets :: JSVal -> IO ()
 #endif
