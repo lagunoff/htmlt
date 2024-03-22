@@ -6,8 +6,8 @@ import Data.Text qualified as Text
 import Data.Function hiding (on)
 import GHC.Generics
 
-import Sketch
-import Sketch.FFI
+import Clickable
+import Clickable.FFI
 
 data TradingPair = TradingPair
   { base :: Text
@@ -20,24 +20,24 @@ data PairSelectorState = PairSelectorState
   , options :: [TradingPair]
   } deriving (Show, Eq, Generic)
 
-new :: IO PairSelectorState
+new :: ClickM (IncVar PairSelectorState)
 new =
-  return PairSelectorState
+  newVar PairSelectorState
     { selected_pair = Nothing
     , options = []
     }
 
-html :: BuilderM PairSelectorState ()
-html = do
+html :: IncVar PairSelectorState -> HtmlM ()
+html self = do
   el "style" [] $ text styles
   div_ [("className", "PairSelector-root")] do
     button_ [] do
       text "Select pair"
       on "click" \_ -> do
-        modifyFld @"selected_pair" $ \case
-          Just _ -> Nothing
-          Nothing -> Just $ TradingPair "BTC" "USDT" "MEXC"
-    span_ [] $ dynText \s -> s.selected_pair & maybe
+        modifyVar self \s -> case s.selected_pair of
+          Just _ -> s {selected_pair = Nothing}
+          Nothing -> s {selected_pair = Just $ TradingPair "BTC" "USDT" "MEXC"}
+    span_ [] $ dynText $ TipVal self `MapVal` \s -> s.selected_pair & maybe
       "Nothing selected"
       (("Selected pair: " <>) . Text.pack . show)
 

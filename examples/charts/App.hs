@@ -6,25 +6,25 @@ import Data.Proxy
 import Data.Text (Text)
 import Data.Text qualified as Text
 import GHC.Generics
-import Sketch
-import Sketch.FFI
+import Clickable
+import Clickable.FFI
 
 
-data AppState = AppState
-  { charts_instance :: Charts.ChartState
-  } deriving (Show, Eq, Generic)
+data AppInstance = AppInstance
+  { charts_instance :: Charts.ChartInstance
+  } deriving (Generic)
 
-new :: IO AppState
+new :: ClickM AppInstance
 new = do
   charts_instance <- Charts.new
-  return AppState
+  return AppInstance
     { charts_instance
     }
 
-html :: BuilderM AppState ()
-html = do
+html :: AppInstance -> HtmlM ()
+html self = do
   el "style" [] $ text styles
-  embedFld @"charts_instance" Charts.html
+  Charts.html self.charts_instance
 
 styles :: Text
 styles = "\

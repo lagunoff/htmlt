@@ -22,10 +22,10 @@ let
 
       # th-compat = self.callCabal2nix "th-compat" ./packages/th-compat {};
       tagged = self.callCabal2nix "tagged" ../fullstack-app/packages/tagged {};
-      th-abstraction = self.callCabal2nix "th-abstraction" ./packages/th-abstraction {};
-      vector = self.callCabal2nix "vector" ./packages/vector/vector {};
-      vector-stream = self.callCabal2nix "vector-stream" ./packages/vector/vector-stream {};
-      unordered-containers = self.callCabal2nix "unordered-containers" ./packages/unordered-containers {};
+      th-abstraction = self.callCabal2nix "th-abstraction" ../fullstack-app/packages/th-abstraction {};
+      vector = self.callCabal2nix "vector" ../fullstack-app/packages/vector/vector {};
+      vector-stream = self.callCabal2nix "vector-stream" ../fullstack-app/packages/vector/vector-stream {};
+      unordered-containers = self.callCabal2nix "unordered-containers" ../fullstack-app/packages/unordered-containers {};
       # text-short = self.callCabal2nix "text-short" ./packages/text-short {};
       generic-deriving = doJailbreak super.generic-deriving;
       bifunctors = doJailbreak super.bifunctors;

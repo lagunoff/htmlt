@@ -89,8 +89,8 @@ library
     -- HtmlT.Main
     -- HtmlT.Property
     -- HtmlT.Types
-    Sketch
-    Sketch.FFI
+    Clickable
+    Clickable.FFI
     Wasm.Compat.Prim
     Wasm.Compat.Marshal
     
@@ -154,6 +154,7 @@ executable htmlt-charts
     text,
     mtl,
   other-modules:
+    App
     Charts
     PairSelector
   if !flag(examples)
