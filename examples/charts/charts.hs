@@ -7,4 +7,4 @@ main = return ()
 
 foreign export ccall wasm_main :: IO ()
 wasm_main = attach do
-  (HtmlM $ ReaderT $ \_ -> App.new) >>= App.html
+  liftClickM App.new >>= App.html

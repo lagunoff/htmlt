@@ -11,11 +11,15 @@ module Wasm.Compat.Marshal where
 import Control.Monad
 import Data.Maybe
 import Data.String
+import Data.Text qualified as Text
+import Data.List qualified as List
 import Data.Coerce
+import Data.Kind
 import Wasm.Compat.Prim
 import GHC.Prim
 import GHC.Ptr
 import GHC.Int
+import GHC.Generics as G
 import GHC.IO
 import Data.Text.Internal
 import Data.Array.Byte
@@ -40,8 +44,25 @@ pattern TypeNumber = TypeResult 2
 pattern TypeString = TypeResult 3
 pattern TypeArray = TypeResult 4
 pattern TypeObject = TypeResult 5
+--------------------------------------------------------------------------------
 
-class FromJSVal v where fromJSVal :: JSVal -> IO (Maybe v)
+instance IsString JSString where fromString = toJSString
+
+instance Semigroup JSString where (<>) = js_concatStr
+
+instance Monoid JSString where mempty = js_emptyStr
+
+instance Eq JSString where (==) a b = fromJSString a == fromJSString b
+
+instance Show JSString where show = show . fromJSString
+
+instance Ord JSString where compare a b = fromJSString a `compare` fromJSString b
+--------------------------------------------------------------------------------
+
+class FromJSVal a where
+  fromJSVal :: JSVal -> IO (Maybe a)
+  default fromJSVal :: (Generic a, GFromJSVal (Rep a)) => JSVal -> IO (Maybe a)
+  fromJSVal = fmap (fmap G.to) . gFromJSVal
 
 class FromJSValPure v where fromJSValPure :: JSVal -> Maybe v
 
@@ -87,7 +108,24 @@ instance FromJSVal Text where
     TypeString -> fmap Just $ textFromJSString $ JSString j
     _ -> pure Nothing
 
-class ToJSVal v where toJSVal :: v -> IO JSVal
+instance (FromJSVal a, FromJSVal b) => FromJSVal (a, b) where
+  fromJSVal j = do
+    ma <- fromJSVal =<< js_arrayIndex j 0
+    mb <- fromJSVal =<< js_arrayIndex j 1
+    return $ liftA2 (,) ma mb
+
+instance (FromJSVal a, FromJSVal b, FromJSVal c) => FromJSVal (a, b, c) where
+  fromJSVal j = do
+    ma <- fromJSVal =<< js_arrayIndex j 0
+    mb <- fromJSVal =<< js_arrayIndex j 1
+    mc <- fromJSVal =<< js_arrayIndex j 2
+    return $ (,,) <$> ma <*> mb <*> mc
+
+--------------------------------------------------------------------------------
+class ToJSVal a where
+  toJSVal :: a -> IO JSVal
+  default toJSVal :: (Generic a, GToJSVal (Rep a)) => a -> IO JSVal
+  toJSVal = gToJSVal . G.from
 
 class ToJSValPure v where toJSValPure :: v -> JSVal
 
@@ -117,17 +155,87 @@ instance ToJSVal v => ToJSVal [v] where
 instance ToJSVal Text where
   toJSVal = fmap (\(JSString j) -> j) . textToJSString
 
-instance IsString JSString where fromString = toJSString
+instance (ToJSVal a, ToJSVal b) => ToJSVal (a, b) where
+  toJSVal (a, b) = do
+    ja <- toJSVal a
+    jb <- toJSVal b
+    toJSVal [ja, jb]
 
-instance Semigroup JSString where (<>) = js_concatStr
+instance (ToJSVal a, ToJSVal b, ToJSVal c) => ToJSVal (a, b, c) where
+  toJSVal (a, b, c) = do
+    ja <- toJSVal a
+    jb <- toJSVal b
+    jc <- toJSVal c
+    toJSVal [ja, jb, jc]
 
-instance Monoid JSString where mempty = js_emptyStr
+--------------------------------------------------------------------------------
 
-instance Eq JSString where (==) a b = fromJSString a == fromJSString b
+class GFromJSVal (f :: Type -> Type) where
+  gFromJSVal :: JSVal -> IO (Maybe (f a))
 
-instance Show JSString where show = show . fromJSString
+instance GFromJSVal f => GFromJSVal (M1 m c f) where
+  gFromJSVal = fmap (fmap M1) . gFromJSVal @f
 
-instance Ord JSString where compare a b = fromJSString a `compare` fromJSString b
+instance GFromJSObject (x :*: y) => GFromJSVal (x :*: y) where
+  gFromJSVal kvs = gFromJSObject kvs
+
+instance {-# OVERLAPPING #-} FromJSVal a => GFromJSVal (S1 s (Rec0 a)) where
+  gFromJSVal = fmap (fmap (M1 . K1)) . fromJSVal @a
+--------------------------------------------------------------------------------
+
+class GToJSVal (f :: Type -> Type) where
+  gToJSVal :: f x -> IO JSVal
+
+instance GToJSVal f => GToJSVal (M1 m c f) where
+  gToJSVal (M1 f) = gToJSVal f
+
+instance GToJSObject (x :*: y) => GToJSVal (x :*: y) where
+  gToJSVal (x :*: y) = do
+    o <- js_newObject
+    gToJSObject (x :*: y) o
+    return o
+
+instance {-# OVERLAPPING #-} (ToJSVal a) => GToJSVal (S1 s (Rec0 a)) where
+  gToJSVal (M1 (K1 a)) = toJSVal a
+--------------------------------------------------------------------------------
+
+class GToJSObject (f :: Type -> Type) where
+  gToJSObject :: f x -> JSVal -> IO ()
+
+instance (GToJSObject x, GToJSObject y) => GToJSObject (x :*: y) where
+  gToJSObject (x :*: y) o = gToJSObject x o >> gToJSObject y o
+
+instance (GToJSObject f) => GToJSObject (M1 m c f) where
+  gToJSObject (M1 a) o = gToJSObject a o
+
+instance {-# OVERLAPPING #-} (ToJSVal a, Selector s) => GToJSObject (S1 s (Rec0 a)) where
+  gToJSObject (M1 (K1 a)) o = do
+    v <- toJSVal a
+    js_assignProp o addr len v
+    where
+      key = Text.pack $ selName (undefined :: M1 S s (Rec0 a) x)
+      !(Text (ByteArray arr) off len) = key
+      addr = Ptr (byteArrayContents# arr) `plusPtr` off
+
+class GFromJSObject (f :: Type -> Type) where
+  gFromJSObject :: JSVal -> IO (Maybe (f x))
+
+instance (GFromJSObject x, GFromJSObject y) => GFromJSObject (x :*: y) where
+  gFromJSObject kvs = do
+    x <- gFromJSObject kvs
+    y <- gFromJSObject kvs
+    return $ liftA2 (:*:) x y
+
+instance (GFromJSObject f) => GFromJSObject (M1 m c f) where
+  gFromJSObject = fmap (fmap M1) . gFromJSObject
+
+instance {-# OVERLAPPING #-} (FromJSVal a, Selector s) => GFromJSObject (S1 s (Rec0 a)) where
+  gFromJSObject kvs = js_getProp kvs addr len >>= fmap (fmap (M1 . K1)) . fromJSVal
+    where
+      key = Text.pack $ selName (undefined :: M1 S s (Rec0 a) x)
+      !(Text (ByteArray arr) off len) = key
+      addr = Ptr (byteArrayContents# arr) `plusPtr` off
+--------------------------------------------------------------------------------
 
 textToJSString :: Text -> IO JSString
 textToJSString (Text (ByteArray arr) off len) = do
@@ -143,6 +251,7 @@ textFromJSString j = IO \s0 ->
   in  (# s4, (Text (ByteArray arr) 0 tlen) #)
 
 newtype RawJavaScript = RawJavaScript {unRawJavaScript :: Text}
+  deriving newtype (IsString, Semigroup, Monoid)
 
 evalJavaScript :: RawJavaScript -> IO JSVal
 evalJavaScript rjs = do
@@ -197,7 +306,6 @@ js_unsafeInt :: JSVal -> Int = undefined
 js_unsafeBool :: JSVal -> Bool = undefined
 js_intJSVal :: Int -> JSVal = undefined
 js_boolJSVal :: Bool -> JSVal = undefined
-js_getProp :: JSVal -> JSString -> IO JSVal = undefined
 js_concatStr :: JSString -> JSString -> JSString = undefined
 js_newEmptyArray :: IO JSVal = undefined
 js_arrayPush :: JSVal -> JSVal -> IO () = undefined
@@ -211,6 +319,9 @@ js_evalJavaScript1 :: JSVal -> Ptr Word8 -> Int -> IO JSVal = undefined
 js_evalJavaScript2 :: JSVal -> JSVal -> Ptr Word8 -> Int -> IO JSVal = undefined
 js_evalJavaScript3 :: JSVal -> JSVal -> JSVal -> Ptr Word8 -> Int -> IO JSVal = undefined
 js_evalJavaScript4 :: JSVal -> JSVal -> JSVal -> JSVal -> Ptr Word8 -> Int -> IO JSVal = undefined
+js_getProp :: JSVal -> Ptr Word8 -> Int -> IO JSVal = undefined
+js_assignProp :: JSVal -> Ptr Word8 -> Int -> JSVal -> IO () = undefined
+js_newObject :: IO JSVal = undefined
 
 #else
 
@@ -241,8 +352,6 @@ foreign import javascript unsafe
   "$1" js_intJSVal :: Int -> JSVal
 foreign import javascript unsafe
   "($1 ? true : false)" js_boolJSVal :: Bool -> JSVal
-foreign import javascript unsafe
-  "$1[$2]" js_getProp :: JSVal -> JSString -> IO JSVal
 foreign import javascript unsafe
   "$1 + $2" js_concatStr :: JSString -> JSString -> JSString
 foreign import javascript unsafe
@@ -277,4 +386,13 @@ foreign import javascript unsafe
 foreign import javascript unsafe
   "eval(new TextDecoder('utf8').decode(new Uint8Array(__exports.memory.buffer, $5, $6)))($1, $2, $3, $4)"
   js_evalJavaScript4 :: JSVal -> JSVal -> JSVal -> JSVal -> Ptr Word8 -> Int -> IO JSVal
+foreign import javascript unsafe
+  "$1[new TextDecoder('utf8').decode(new Uint8Array(__exports.memory.buffer, $2, $3))]"
+  js_getProp :: JSVal -> Ptr Word8 -> Int -> IO JSVal
+foreign import javascript unsafe
+  "$1[new TextDecoder('utf8').decode(new Uint8Array(__exports.memory.buffer, $2, $3))] = $4;"
+  js_assignProp :: JSVal -> Ptr Word8 -> Int -> JSVal -> IO ()
+foreign import javascript unsafe
+  "{}"
+  js_newObject :: IO JSVal
 #endif

@@ -90,6 +90,10 @@ library
     -- HtmlT.Property
     -- HtmlT.Types
     Clickable
+    Clickable.Core
+    Clickable.DOM
+    Clickable.Element
+    Clickable.Property
     Clickable.FFI
     Wasm.Compat.Prim
     Wasm.Compat.Marshal
@@ -104,7 +108,7 @@ library
     transformers,
     ghc-experimental,
     ghc-prim,
-    generic-lens,
+    -- generic-lens,
 
 -- executable htmlt-counter
 --   import: htmlt-common         

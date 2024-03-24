@@ -21,8 +21,8 @@ data ChartState = ChartState
   } deriving (Show, Eq, Generic)
 
 data ChartInstance = ChartInstance
-  { state_var :: IncVar ChartState
-  , pair_selector_instance :: IncVar PairSelector.PairSelectorState
+  { state_var :: DynVar ChartState
+  , pair_selector_instance :: DynVar PairSelector.PairSelectorState
   } deriving (Generic)
 
 new :: ClickM ChartInstance
@@ -37,24 +37,24 @@ new = do
 
 html :: ChartInstance -> HtmlM ()
 html self = do
-  el "style" [] $ text styles
-  div_ [("className", "Charts-root")] do
-    h1_ [] $ text "Canvas with candle chart"
-    div_ [] do
+  el "style" $ text styles
+  div_ [class_ "Charts-root"] do
+    h1_ $ text "Canvas with candle chart"
+    div_ do
       PairSelector.html self.pair_selector_instance
-    div_ [] do
-      button_ [] do
+    div_ do
+      button_ do
         text "Clickable this button"
-        on "click" \_ -> do
+        on @"click" do
           modifyVar self.state_var \s -> s {counter = s.counter + 1 }
-      button_ [] do
+      button_ do
         text "Print state"
-        on "click" \_ -> do
-          s <- liftIO $ readVar self.state_var
+        on @"click" do
+          s <- readVar self.state_var
           consoleLog $ Text.pack $ show s
-      span_ [] $ dynText $ TipVal self.state_var `MapVal` \s ->
+      span_ [] $ dynText $ self.state_var `mapVar` \s ->
         "You clicked " <> Text.pack (show s.counter) <> " times"
-    canvas_ [("className", "Charts-canvas")] $ return ()
+    canvas_ [class_ "Charts-canvas"] $ return ()
 
 styles :: Text
 styles = "\
