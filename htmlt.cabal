@@ -94,6 +94,9 @@ library
     Clickable.DOM
     Clickable.Element
     Clickable.Property
+    Clickable.Main
+    Clickable.Types
+    Clickable.Internal
     Clickable.FFI
     Wasm.Compat.Prim
     Wasm.Compat.Marshal

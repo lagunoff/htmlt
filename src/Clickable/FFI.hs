@@ -114,6 +114,9 @@ js_insertBrackets = undefined
 js_clearBrackets :: JSVal -> IO ()
 js_clearBrackets = undefined
 
+js_removeBrackets :: JSVal -> IO ()
+js_removeBrackets = undefined
+
 js_aquireResource :: JSVal -> Ptr Word8 -> Int -> JSVal -> IO JSVal
 js_aquireResource = undefined
 
@@ -217,6 +220,23 @@ foreign import javascript unsafe
      iter.previousSibling.parentNode.removeChild(iter.previousSibling);\
    }"
   js_clearBrackets :: JSVal -> IO ()
+foreign import javascript unsafe
+  "function isOpenBracket(node) {return node instanceof Comment && node.textContent == 'ContentBoundary {{'}\
+   function isCloseBracket(node) {return node instanceof Comment && node.textContent == '}}'}\
+   var iter = $1;\
+   var nestedCounter = 0;\
+   for (;;){\
+     if (!iter.previousSibling ||\
+       (nestedCounter == 0 && isOpenBracket(iter.previousSibling))\
+       ) break;\
+     if (isCloseBracket(iter.previousSibling)) nestedCounter++;\
+     else if (isOpenBracket(iter.previousSibling)) nestedCounter--;\
+     iter.previousSibling.parentNode.removeChild(iter.previousSibling);\
+   }\
+   $1.parentNode($1);\
+   if ($1 != iter) iter.parentNode.removeChild(iter);\
+   "
+  js_removeBrackets :: JSVal -> IO ()
 foreign import javascript unsafe
   "var j = new TextDecoder('utf8').decode(new Uint8Array(__exports.memory.buffer, $2, $3));\
    if ($1 instanceof Comment) {\

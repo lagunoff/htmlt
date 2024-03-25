@@ -4,7 +4,7 @@ Shortcuts for most common HTML5 elements
 module Clickable.Element where
 
 import Clickable.Core
-import Wasm.Compat.Prim
+import Clickable.Types
 import Data.Text
 
 -- | This typeclass allows for tag constructors to have variable

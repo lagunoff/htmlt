@@ -4,8 +4,8 @@ Shortcuts for common HTML5 attributes and properties
 module Clickable.Property where
 
 import Clickable.Core
+import Clickable.Types
 import Data.Text
-import Wasm.Compat.Prim
 
 
 -- TODO: Real-world usage has demonstrated that 'dynStyles' not

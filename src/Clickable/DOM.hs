@@ -1,29 +1,13 @@
 module Clickable.DOM where
 
-import Control.Monad
-import Data.Bifunctor
-import Control.Monad.Identity
 import Control.Monad.Reader
-import Control.Monad.Trans
-import Control.Monad.State
-import Data.Foldable
-import Data.Function ((&))
-import Data.IORef
-import Data.List qualified as List
 import Data.Text (Text)
-import Data.Tuple
-import Data.Typeable
-import Data.Map (Map)
-import Data.Set (Set)
 import Data.Kind
-import Data.Map qualified as Map
 import GHC.Generics
-import GHC.Exts hiding (build)
-import GHC.TypeLits
-import Unsafe.Coerce
 
 import Clickable.FFI qualified as  FFI
 import Clickable.Core
+import Clickable.Types
 import Wasm.Compat.Prim
 import Wasm.Compat.Marshal
 
@@ -45,16 +29,16 @@ addEventListener args k = do
   liftClickM $ connectResource rootElement args k
 
 data ConnectResourceArgs callback = ConnectResourceArgs
-  { js_wrapper :: RawJavaScript
+  { js_wrapper :: UnsafeJavaScript
   , mk_callback :: callback -> JSVal -> ClickM ()
   }
 
 connectResource :: JSVal -> ConnectResourceArgs callback -> callback -> ClickM ()
 connectResource target args k = do
-  env <- ask
-  let hsCallback' = (`runReaderT` env) . unClickM . args.mk_callback k
+  e :: InternalEnv <- ask
+  let hsCallback' = (`runReaderT` e) . unClickM . trampoline . args.mk_callback k
   hsCallback'' <- liftIO $ FFI.js_dynExport hsCallback'
-  cancel <- liftIO $ FFI.aquireResource target args.js_wrapper.unRawJavaScript hsCallback''
+  cancel <- liftIO $ FFI.aquireResource target args.js_wrapper.unUnsafeJavaScript hsCallback''
   installFinalizer do
     liftIO $ FFI.apply0 cancel
     liftIO $ freeJSVal hsCallback''
@@ -147,8 +131,8 @@ inputConnectArgs eventName  = ConnectResourceArgs
       \  function listener(target){\n\
       \    haskellCb(event.target.value);\n\
       \  }\n\
-      \  window.addEventListener('" <> RawJavaScript eventName <> "', listener);\n\
-      \  return () => window.removeEventListener('" <> RawJavaScript eventName <> "', listener);\n\
+      \  window.addEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
+      \  return () => window.removeEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
       \})"
   , mk_callback = \k event -> liftIO (fromJSVal event) >>= mapM_ k
   }
@@ -162,8 +146,8 @@ keyboardConnectArgs eventName = ConnectResourceArgs
       \  function listener(target){\n\
       \    haskellCb(event.target.value);\n\
       \  }\n\
-      \  window.addEventListener('" <> RawJavaScript eventName <> "', listener);\n\
-      \  return () => window.removeEventListener('" <> RawJavaScript eventName <> "', listener);\n\
+      \  window.addEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
+      \  return () => window.removeEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
       \})"
   , mk_callback = \k event -> liftIO (fromJSVal event) >>= mapM_ k
   }
@@ -206,16 +190,16 @@ selectChangeConnectArgs = ConnectResourceArgs
   , mk_callback = \k event -> liftIO (fromJSVal event) >>= mapM_ k
   }
 
-normalEventWrapper :: Text -> EventListenerOptions -> RawJavaScript
+normalEventWrapper :: Text -> EventListenerOptions -> UnsafeJavaScript
 normalEventWrapper eventName opt =
   "(function(target, haskellCb){\n\
   \  function listener(event){\n\
-  \    " <> preventDefaultStmt <> ";\n\
-  \    " <> stopPropagationStmt <> ";\n\
+  \    " <> preventDefaultStmt <> "\n\
+  \    " <> stopPropagationStmt <> "\n\
   \    haskellCb(event);\n\
   \  }\n\
-  \  target.addEventListener('" <> RawJavaScript eventName <> "', listener);\n\
-  \  return () => target.removeEventListener(" <> RawJavaScript eventName <> ", listener);\n\
+  \  target.addEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
+  \  return () => target.removeEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
   \})"
   where
     preventDefaultStmt = if opt.prevent_default then "event.preventDefault();" else ""

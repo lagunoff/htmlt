@@ -250,46 +250,46 @@ textFromJSString j = IO \s0 ->
       (# s4, arr #) = unsafeFreezeByteArray# marr s3
   in  (# s4, (Text (ByteArray arr) 0 tlen) #)
 
-newtype RawJavaScript = RawJavaScript {unRawJavaScript :: Text}
+newtype UnsafeJavaScript = UnsafeJavaScript {unUnsafeJavaScript :: Text}
   deriving newtype (IsString, Semigroup, Monoid)
 
-evalJavaScript :: RawJavaScript -> IO JSVal
+evalJavaScript :: UnsafeJavaScript -> IO JSVal
 evalJavaScript rjs = do
-  let Text (ByteArray arr) off len = rjs.unRawJavaScript
+  let Text (ByteArray arr) off len = rjs.unUnsafeJavaScript
       addr = byteArrayContents# arr
   js_evalJavaScript (Ptr addr `plusPtr` off) len
 
-evalJavaScript1 :: ToJSVal arg0 => arg0 -> RawJavaScript -> IO JSVal
+evalJavaScript1 :: ToJSVal arg0 => arg0 -> UnsafeJavaScript -> IO JSVal
 evalJavaScript1 arg0 rjs = do
   a0 <- toJSVal arg0
-  let Text (ByteArray arr) off len = rjs.unRawJavaScript
+  let Text (ByteArray arr) off len = rjs.unUnsafeJavaScript
       addr = byteArrayContents# arr
   js_evalJavaScript1 a0 (Ptr addr `plusPtr` off) len
 
-evalJavaScript2 :: (ToJSVal arg0, ToJSVal arg1) => arg0 -> arg1 -> RawJavaScript -> IO JSVal
+evalJavaScript2 :: (ToJSVal arg0, ToJSVal arg1) => arg0 -> arg1 -> UnsafeJavaScript -> IO JSVal
 evalJavaScript2 arg0 arg1 rjs = do
   a0 <- toJSVal arg0
   a1 <- toJSVal arg1
-  let Text (ByteArray arr) off len = rjs.unRawJavaScript
+  let Text (ByteArray arr) off len = rjs.unUnsafeJavaScript
       addr = byteArrayContents# arr
   js_evalJavaScript2 a0 a1 (Ptr addr `plusPtr` off) len
 
-evalJavaScript3 :: (ToJSVal arg0, ToJSVal arg1, ToJSVal arg2) => arg0 -> arg1 -> arg2 -> RawJavaScript -> IO JSVal
+evalJavaScript3 :: (ToJSVal arg0, ToJSVal arg1, ToJSVal arg2) => arg0 -> arg1 -> arg2 -> UnsafeJavaScript -> IO JSVal
 evalJavaScript3 arg0 arg1 arg2 rjs = do
   a0 <- toJSVal arg0
   a1 <- toJSVal arg1
   a2 <- toJSVal arg2
-  let Text (ByteArray arr) off len = rjs.unRawJavaScript
+  let Text (ByteArray arr) off len = rjs.unUnsafeJavaScript
       addr = byteArrayContents# arr
   js_evalJavaScript3 a0 a1 a2 (Ptr addr `plusPtr` off) len
 
-evalJavaScript4 :: (ToJSVal arg0, ToJSVal arg1, ToJSVal arg2, ToJSVal arg3) => arg0 -> arg1 -> arg2 -> arg3 -> RawJavaScript -> IO JSVal
+evalJavaScript4 :: (ToJSVal arg0, ToJSVal arg1, ToJSVal arg2, ToJSVal arg3) => arg0 -> arg1 -> arg2 -> arg3 -> UnsafeJavaScript -> IO JSVal
 evalJavaScript4 arg0 arg1 arg2 arg3 rjs = do
   a0 <- toJSVal arg0
   a1 <- toJSVal arg1
   a2 <- toJSVal arg2
   a3 <- toJSVal arg3
-  let Text (ByteArray arr) off len = rjs.unRawJavaScript
+  let Text (ByteArray arr) off len = rjs.unUnsafeJavaScript
       addr = byteArrayContents# arr
   js_evalJavaScript4 a0 a1 a2 a3 (Ptr addr `plusPtr` off) len
 
