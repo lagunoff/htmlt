@@ -17,9 +17,7 @@ import Clickable.FFI
 import Wasm.Compat.Prim
 
 data DynVar a where
-  DynVar :: RefId -> IORef a -> DynVar a
-
-type RefId = Int
+  DynVar :: SourceId -> IORef a -> DynVar a
 
 data DynVal a where
   ConstVal :: a -> DynVal a
@@ -34,9 +32,11 @@ instance Applicative DynVal where pure = ConstVal; (<*>) = SplatVal
 fromVar :: DynVar a -> DynVal a
 fromVar = FromVar
 
--------------------------------
--- REATIVE STUFF RESURRECTED --
--------------------------------
+newtype ResourceScope = ResourceScope {unResourceScope :: Int}
+  deriving newtype (Eq, Ord, Show)
+
+newtype SourceId = SourceId {unSourceId :: Int}
+  deriving newtype (Eq, Ord, Show)
 
 newtype HtmlM a = HtmlM { unHtmlM :: ReaderT JSVal ClickM a }
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadReader JSVal)
@@ -47,25 +47,18 @@ newtype ClickM a = ClickM {unClickM :: ReaderT InternalEnv IO a }
 instance MonadState InternalState ClickM where
   state f = ClickM $ ReaderT $ \e -> atomicModifyIORef' e.internal_state_ref $ swap . f
 
-
 data InternalEnv = InternalEnv
-  { scope :: ScopeId
+  { scope :: ResourceScope
   , internal_state_ref :: IORef InternalState
   } deriving (Generic)
 
 data InternalState = InternalState
-  { subscriptions :: [Subscription]
-  , finalizers :: [Finalizer]
-  , transaction_queue :: Map RefId (ClickM ())
+  { subscriptions :: [(ResourceScope, SourceId, Any -> ClickM ())]
+  , finalizers :: [(ResourceScope, FinalizerVal)]
+  , transaction_queue :: Map SourceId (ClickM ())
   , next_id :: Int
   } deriving (Generic)
 
-type Subscription = (ScopeId, RefId, Any -> ClickM ())
-
-type Finalizer = (ScopeId, FinalizerVal)
-
-type ScopeId = Int
-
 data FinalizerVal
   = CustomFinalizer (ClickM ())
-  | ScopeFinalizer ScopeId
+  | ScopeFinalizer ResourceScope

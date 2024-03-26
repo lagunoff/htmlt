@@ -4,24 +4,19 @@ import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.State
 import Data.IORef
-import Data.List qualified as List
-import Data.Text (Text)
-import Data.Tuple
-import Data.Map (Map)
 import Data.Map qualified as Map
-import GHC.Generics
-import GHC.Exts hiding (build)
-import Unsafe.Coerce
+import Data.Text (Text)
 
 import Clickable.FFI
-import Clickable.Types
 import Clickable.Internal (reactive, reactive_)
 import Clickable.Internal qualified as Internal
+import Clickable.Types
 import Wasm.Compat.Prim
 
 
 launchHtmlM :: JSVal -> InternalEnv -> HtmlM a -> IO a
-launchHtmlM root env = flip runReaderT env . unClickM . trampoline . flip runReaderT root . unHtmlM
+launchHtmlM root env =
+  flip runReaderT env . unClickM . trampoline . flip runReaderT root . unHtmlM
 
 launchClickM :: InternalEnv -> ClickM a -> IO a
 launchClickM env = flip runReaderT env . unClickM . trampoline
@@ -39,7 +34,7 @@ mapVar var = MapVal (FromVar var)
 newVar :: a -> ClickM (DynVar a)
 newVar a = do
   ref <- liftIO $ newIORef a
-  state \s -> (DynVar s.next_id ref, s {next_id = s.next_id + 1})
+  state \s -> (DynVar (SourceId s.next_id) ref, s {next_id = s.next_id + 1})
 
 readVal :: DynVal a -> ClickM a
 readVal (ConstVal a) = pure a
@@ -71,10 +66,10 @@ subscribe val k = reactive_ $ Internal.subscribe val k
 -- RESOURCE MANAGEMENT --
 -------------------------
 
-newScope :: ClickM ScopeId
+newScope :: ClickM ResourceScope
 newScope = reactive Internal.newScope
 
-freeScope :: Bool -> ScopeId -> ClickM ()
+freeScope :: Bool -> ResourceScope -> ClickM ()
 freeScope unlink s = f where
   f = reactive (const (Internal.freeScope unlink s)) >>= g
   g [] = return ()
@@ -84,11 +79,12 @@ freeScope unlink s = f where
 installFinalizer :: ClickM () -> ClickM ()
 installFinalizer k = reactive_ $ Internal.installFinalizer k
 
--- | Loop until transaction queue is empty.
+-- | Loop until transaction_queue is empty.
 --
--- This makes possible to implement @Applicative DynVal@ without triggering callbacks TODO: Is this even
--- worth-while to have? What if just let multiple DOM changes when it
--- depends on multiple sources?
+-- This makes possible to implement @Applicative DynVal@ without
+-- redundantly firing callback for the final result. TODO: Is this
+-- even worth-while to have?  What if just let multiple DOM changes
+-- when it depends on multiple sources?
 trampoline :: ClickM a -> ClickM a
 trampoline act = loop0 act where
   loop0 :: ClickM a -> ClickM a

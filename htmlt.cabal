@@ -104,6 +104,8 @@ library
   other-modules: Paths_htmlt
   build-depends:
     base,
+    binary,
+    bytestring,
     containers,
     exceptions,
     mtl,
