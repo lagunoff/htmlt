@@ -21,7 +21,7 @@ data AppTab
 new :: ClickM AppInstance
 new = do
   charts_instance <- Charts.new
-  state_var <- newVar $ ChartsTab charts_instance
+  state_var <- newDynVar $ ChartsTab charts_instance
   return AppInstance
     { state_var
     }

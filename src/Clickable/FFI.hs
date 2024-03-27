@@ -123,8 +123,14 @@ js_aquireResource = undefined
 js_apply0 :: JSVal -> IO ()
 js_apply0 = undefined
 
-js_evalMessageFFI :: Ptr Word8 -> IO (Ptr Word8)
+js_evalMessageFFI :: JSVal -> Ptr Word8 -> IO (Ptr Word8)
 js_evalMessageFFI = undefined
+
+js_exportCallback :: (Ptr Word8 {- JavaScriptMessage -} -> IO ()) -> IO JSVal
+js_exportCallback = undefined
+
+js_installCallback :: JSVal -> IO ()
+js_installCallback = undefined
 
 #else
 foreign import javascript unsafe
@@ -251,6 +257,11 @@ foreign import javascript unsafe
 foreign import javascript unsafe
   "$1()" js_apply0 :: JSVal -> IO ()
 foreign import javascript unsafe
-  "evalMessageFFI(__exports, $1)"
-   js_evalMessageFFI :: Ptr Word8 {- HaskellMessage -} -> IO (Ptr Word8 {- JavaScriptMessage -})
+  "evalMessageFFI($1, __exports, $2)"
+   js_evalMessageFFI :: JSVal -> Ptr Word8 {- HaskellMessage -} -> IO (Ptr Word8 {- JavaScriptMessage -})
+foreign import javascript unsafe
+  "window._javascriptMessageCallback = $1;"
+   js_installCallback :: JSVal -> IO ()
+foreign import javascript "wrapper"
+   js_exportCallback :: (Ptr Word8 {- JavaScriptMessage -} -> IO ()) -> IO JSVal
 #endif

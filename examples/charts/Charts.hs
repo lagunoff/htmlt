@@ -1,7 +1,5 @@
 module Charts where
 
-import Data.Proxy
-import Control.Monad.State
 import Data.Text (Text)
 import Data.Text qualified as Text
 import GHC.Generics
@@ -28,7 +26,7 @@ data ChartInstance = ChartInstance
 new :: ClickM ChartInstance
 new = do
   pair_selector_instance <- PairSelector.new
-  state_var <- newVar ChartState
+  state_var <- newDynVar ChartState
     { main_transform = Transform2D 0 0 0 0
     , mouse_position = Point 0 0
     , counter = 0

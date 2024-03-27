@@ -4,27 +4,21 @@ import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.State
 import Data.IORef
+import Data.Function ((&))
 import Data.Map qualified as Map
+import Data.List qualified as List
 import Data.Text (Text)
 
-import Clickable.FFI
 import Clickable.Internal (reactive, reactive_)
 import Clickable.Internal qualified as Internal
 import Clickable.Types
 import Clickable.Protocol
-import Clickable.Protocol.Value
-import Wasm.Compat.Prim
+import Clickable.Protocol.Value (Value)
+import Clickable.Protocol.Value qualified as Value
 
-
-launchHtmlM :: JSVal -> InternalEnv -> HtmlM a -> IO a
-launchHtmlM root env =
-  flip runReaderT env . unClickM . trampoline . flip runReaderT root . unHtmlM
 
 launchClickM :: InternalEnv -> ClickM a -> IO a
-launchClickM env = flip runReaderT env . unClickM . trampoline
-
-liftClickM :: ClickM a -> HtmlM a
-liftClickM = HtmlM . lift
+launchClickM env = flip runReaderT env . unClickT . trampoline
 
 ---------------------------------------
 -- OPERATIONS OVER DYNAMIC VARIABLES --
@@ -33,8 +27,8 @@ liftClickM = HtmlM . lift
 mapVar :: DynVar a -> (a -> b) -> DynVal b
 mapVar var = MapVal (FromVar var)
 
-newVar :: a -> ClickM (DynVar a)
-newVar a = do
+newDynVar :: a -> ClickM (DynVar a)
+newDynVar a = do
   ref <- liftIO $ newIORef a
   state \s -> (DynVar (SourceId s.next_id) ref, s {next_id = s.next_id + 1})
 
@@ -69,9 +63,12 @@ enqueueExpr e = modify \s -> s {evaluation_queue = e : s.evaluation_queue}
 
 evalExpr :: Expr -> ClickM Value
 evalExpr e = do
-  send_command <- asks (.send_command)
+  send_message <- asks (.send_message)
   queue <- state \s -> (s.evaluation_queue, s {evaluation_queue = []})
-  liftIO $ send_command $ RevSeq $ e : queue
+  result <- liftIO $ send_message $ EvalExpr $ RevSeq $ e : queue
+  case result of
+    Return v -> return v
+    _ -> return Value.Null
 
 -------------------------
 -- RESOURCE MANAGEMENT --
@@ -83,12 +80,15 @@ newScope = reactive Internal.newScope
 freeScope :: Bool -> ResourceScope -> ClickM ()
 freeScope unlink s = f where
   f = reactive (const (Internal.freeScope unlink s)) >>= g
-  g [] = return ()
+  g [] = enqueueExpr $ FreeScope s
   g ((_, ScopeFinalizer s'):xs) = freeScope True s' >> g xs
   g ((_, CustomFinalizer x):xs) = x >> g xs
 
 installFinalizer :: ClickM () -> ClickM ()
 installFinalizer k = reactive_ $ Internal.installFinalizer k
+
+newVar :: ClickM VarId
+newVar = reactive Internal.newVar
 
 -- | Loop until transaction_queue is empty.
 --
@@ -120,54 +120,60 @@ trampoline act = loop0 act where
 ------------------
 
 el :: Text -> HtmlM a -> HtmlM a
-el t  ch = do
-  r <- ask
-  el <- liftIO $ insertElement r t
-  local (const el) ch
+el t ch = lift $ htmlBuilder (CreateElement t) $ evalStateT ch.unHtmlT Nothing
 
 property :: Text -> Text -> HtmlM ()
-property k v = do
-  root <- ask
-  liftIO $ setProperty root k v
+property k v = lift $ modify f where
+  f s = s {evaluation_queue = expr : s.evaluation_queue }
+  expr = ElementProp (Arg 0 0) k (String v)
 
 boolProperty :: Text -> Bool -> HtmlM ()
-boolProperty k v = do
-  root <- ask
-  liftIO $ setBoolProperty root k v
+boolProperty k v = lift $ modify f where
+  f s = s {evaluation_queue = expr : s.evaluation_queue }
+  expr = ElementProp (Arg 0 0) k (Boolean v)
 
 attribute :: Text -> Text -> HtmlM ()
-attribute k v = do
-  root <- ask
-  liftIO $ setAttribute root k v
+attribute k v = lift $ modify f where
+  f s = s {evaluation_queue = expr : s.evaluation_queue }
+  expr = ElementAttr (Arg 0 0) k v
 
 text :: Text -> HtmlM ()
-text t = do
-  r <- ask
-  void $ liftIO $ insertText r t
+text t = lift $ modify f where
+  f s = s {evaluation_queue = expr : s.evaluation_queue }
+  expr = InsertNode (Arg 0 0) $ CreateTextNode t
 
 dynText :: DynVal Text -> HtmlM ()
 dynText val = do
-  r <- ask
-  t <- liftClickM $ readVal val
-  textNode <- liftIO $ insertText r t
-  liftClickM $ subscribe val $ \new ->
-    liftIO $ updateTextContent textNode new
+  scope <- lift $ asks (.scope)
+  t <- lift $ readVal val
+  v <- lift $ newVar
+  lift $ modify $ f v t
+  lift $ subscribe val $ enqueueIfAlive scope . UpdateTextNode (Var v)
+  where
+    f v t s = s {evaluation_queue = expr v t : s.evaluation_queue }
+    expr v t = InsertNode (Arg 0 0) $ AssignVar v $ CreateTextNode t
 
 dynProp :: Text -> DynVal Text -> HtmlM ()
 dynProp k val = do
-  root <- ask
-  v <- liftClickM $ readVal val
-  liftIO $ setProperty root k v
-  liftClickM $ subscribe val $ \new ->
-    liftIO $ setProperty root k new
+  scope <- lift $ asks (.scope)
+  t <- lift $ readVal val
+  v <- saveCurrentNode
+  lift $ modify $ f t
+  lift $ subscribe val $ enqueueIfAlive scope . ElementProp (Var v) k . String
+  where
+    f v s = s {evaluation_queue = expr v : s.evaluation_queue }
+    expr v = ElementProp (Arg 0 0) k (String v)
 
 dynBoolProp :: Text -> DynVal Bool -> HtmlM ()
 dynBoolProp k val = do
-  root <- ask
-  v <- liftClickM $ readVal val
-  liftIO $ setBoolProperty root k v
-  liftClickM $ subscribe val $ \new ->
-    liftIO $ setBoolProperty root k new
+  scope <- lift $ asks (.scope)
+  t <- lift $ readVal val
+  v <- saveCurrentNode
+  lift $ modify $ f t
+  lift $ subscribe val $ enqueueIfAlive scope . ElementProp (Var v) k . Boolean
+  where
+    f v s = s {evaluation_queue = expr v : s.evaluation_queue }
+    expr v = ElementProp (Arg 0 0) k (Boolean v)
 
 blank :: Applicative m => m ()
 blank = pure ()
@@ -178,18 +184,88 @@ blank = pure ()
 
 dyn :: DynVal (HtmlM ()) -> HtmlM ()
 dyn val = do
-  root <- ask
-  scope <- liftClickM newScope
-  closeBracket <- liftIO $ js_insertBrackets root
-  initialVal <- liftClickM $ readVal val
+  boundary <- lift insertBoundary
+  scope <- lift newScope
+  initialVal <- lift $ readVal val
   let
     update html = do
-      liftIO $ js_clearBrackets closeBracket
+      lift $ clearBoundary boundary
       html
-    exec = local (\s -> s {scope}) .
-      flip runReaderT closeBracket . unHtmlM
-  liftClickM $ exec $ update initialVal
-  liftClickM $ subscribe val \newVal -> do
+    exec h = evalStateT h.unHtmlT Nothing
+      & htmlBuilder1 (Var boundary)
+      & local (\s -> s {scope})
+  lift $ exec $ update initialVal
+  lift $ subscribe val $ \newVal -> do
     freeScope False scope
     exec $ update newVal
+
+htmlBuilder :: Expr -> ClickM a -> ClickM a
+htmlBuilder builder content = do
+  prevQueue <- state \s -> (s.evaluation_queue, s {evaluation_queue = []})
+  result <- content
+  let mkExpr revSeq = InsertNode (Arg 0 0) (HtmlBuilder builder (Lam (RevSeq revSeq)))
+  modify \s -> s {evaluation_queue = mkExpr s.evaluation_queue : prevQueue}
+  return result
+
+htmlBuilder1 :: Expr -> ClickM a -> ClickM a
+htmlBuilder1 builder content = do
+  prevQueue <- state \s -> (s.evaluation_queue, s {evaluation_queue = []})
+  result <- content
+  let mkExpr revSeq = HtmlBuilder builder (Lam (RevSeq revSeq))
+  modify \s -> s {evaluation_queue = mkExpr s.evaluation_queue : prevQueue}
+  return result
+
+enqueueIfAlive :: ResourceScope -> Expr -> ClickM ()
+enqueueIfAlive scope e = modify \s ->
+  let
+    evaluation_queue =
+      -- if Map.member scope s.finalizers
+      if True
+        then e : s.evaluation_queue else s.evaluation_queue
+  in
+    s {evaluation_queue}
+
+saveCurrentNode :: HtmlM VarId
+saveCurrentNode = do
+  alreadySaved <- HtmlT get
+  case alreadySaved of
+    Nothing -> do
+      varId <- lift newVar
+      HtmlT $ put $ Just varId
+      lift $ enqueueExpr $ AssignVar varId (Arg 0 0)
+      return varId
+    Just saved -> return saved
+
+insertBoundary :: ClickM VarId
+insertBoundary = do
+  boundary <- newVar
+  modify \s -> s {evaluation_queue = AssignVar boundary (InsertBoundary (Arg 0 0)) : s.evaluation_queue}
+  return boundary
+
+clearBoundary :: VarId -> ClickM ()
+clearBoundary boundary = enqueueExpr (ClearBoundary (Var boundary) False)
+
+destroyBoundary :: VarId -> ClickM ()
+destroyBoundary boundary = enqueueExpr (ClearBoundary (Var boundary) True)
+
+attachHtml :: Expr -> HtmlM a -> ClickM a
+attachHtml builder contents = do
+  saveQueue <- state \s ->
+    (s.evaluation_queue, s {evaluation_queue = []})
+  result <- evalStateT contents.unHtmlT Nothing
+  modify \s ->
+    let
+      attachExpr = HtmlBuilder builder (Lam (RevSeq s.evaluation_queue))
+    in
+      s {evaluation_queue = attachExpr : saveQueue}
+  return result
+
+attachToBody :: HtmlM a -> ClickM a
+attachToBody = attachHtml (Id "document" `Dot` "body")
+
+syncPoint :: ClickM ()
+syncPoint = do
+  send_message <- asks (.send_message)
+  queue <- state \s -> (s.evaluation_queue, s {evaluation_queue = []})
+  liftIO $ send_message $ EvalExpr $ RevSeq queue
   return ()

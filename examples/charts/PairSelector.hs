@@ -1,6 +1,5 @@
 module PairSelector where
 
-import Data.Proxy
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Function hiding (on)
@@ -21,7 +20,7 @@ data PairSelectorState = PairSelectorState
 
 new :: ClickM (DynVar PairSelectorState)
 new =
-  newVar PairSelectorState
+  newDynVar PairSelectorState
     { selected_pair = Nothing
     , options = []
     }

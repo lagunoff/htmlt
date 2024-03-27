@@ -4,6 +4,7 @@ import Data.Binary (Binary)
 import Data.ByteString (ByteString)
 import Data.Int
 import Data.Text (Text)
+import Data.String
 import Data.Word
 import GHC.Generics
 
@@ -23,7 +24,7 @@ data HaskellMessage
 data JavaScriptMessage
   = Start StartFlags
   | Return Value.Value
-  | TriggerCallbackMsg Value.Value CallbackId
+  | TriggerCallbackMsg Value.Value SourceId
   | BeforeUnload
   -- ^ Fired from addEventListener("beforeunload") listener. Won't
   -- work under the DevServer!
@@ -129,8 +130,8 @@ data Expr
   -- ^ Free a variable allocated with @AssignVar@
   | Var VarId
   -- ^ Retrieve the value of the variable
-  | FreeScope ReactiveScope
-  -- ^ Free all the resources assosiated with the given ReactiveScope
+  | FreeScope ResourceScope
+  -- ^ Free all the resources assosiated with the given ResourceScope
 
   | HtmlBuilder Expr Expr
   | InsertNode Expr Expr
@@ -145,17 +146,19 @@ data Expr
   | InsertBoundary Expr
   | ClearBoundary Expr Bool
 
-  | AddEventListener ReactiveScope Expr Expr Expr
+  | AddEventListener ResourceScope Expr Expr Expr
   -- ^ @AddEventListener rscope target eventName listener@ is
   -- equivalent to @target.addEventListener(eventName, listener)@ it
   -- returns @FinalizerId@ integer identifier that can be used in
   -- 'RemoveEventListener', but calling 'RemoveEventListener' is not
-  -- required, it'll be called authomatically when given ReactiveScope
+  -- required, it'll be called authomatically when given ResourceScope
   -- will be freed with 'FreeScope'
-  | SetTimeout ReactiveScope Expr Int64
+  | ConnectResource ResourceScope Expr
   -- ^ Returns FinalizerId
-  | ApplyFinalizer ReactiveScope Expr
-  -- ^ Actuate given finalizer before the ReactiveScope is freed
+  | SetTimeout ResourceScope Expr Int64
+  -- ^ Returns FinalizerId
+  | ApplyFinalizer ResourceScope Expr
+  -- ^ Actuate given finalizer before the ResourceScope is freed
 
   | RevSeq [Expr]
   -- ^ Sequence of the expressions in reverse order. It will be
@@ -163,11 +166,11 @@ data Expr
   -- whatever the last expression (from the head of the list)
   -- evaluates into. Order is reversed to support fast insertion of
   -- new instructions
-  | Eval Text
+  | Eval UnsafeJavaScript
   -- ^ Evaluate arbitrary JavaScript code @(Eval "setTimeout(() =>
   -- console.log('Hi!'), 1000)")@ will print a message with one second
   -- delay
-  | TriggerCallback CallbackId Expr
+  | TriggerCallback SourceId Expr
   -- ^ As a side-effect emits `TriggerCallbackMsg` message to Haskell
   | UncaughtException Text
   deriving stock (Generic, Show)
@@ -184,15 +187,18 @@ valueToExpr = \case
   Value.Object kv -> Object $ fmap (\(k, v) -> (k, valueToExpr v)) kv
   Value.Uint8Array a -> Uint8Array a
 
-data VarId = VarId ReactiveScope Int64
+data VarId = VarId ResourceScope Int64
   deriving stock (Generic, Show, Ord, Eq)
   deriving anyclass (Binary)
 
-newtype CallbackId = CallbackId { unCallbackId :: Int64 }
-  deriving newtype (Show, Num, Binary, Ord, Eq)
-
-newtype ReactiveScope = ReactiveScope { unReactiveScope :: Int64 }
-  deriving newtype (Show, Num, Binary, Ord, Eq)
-
 newtype FinalizerId = FinalizerId { unFinalizerId :: Int64 }
   deriving newtype (Show, Num, Binary, Ord, Eq)
+
+newtype ResourceScope = ResourceScope {unResourceScope :: Int64}
+  deriving newtype (Show, Num, Binary, Ord, Eq)
+
+newtype SourceId = SourceId {unSourceId :: Int64}
+  deriving newtype (Show, Num, Binary, Ord, Eq)
+
+newtype UnsafeJavaScript = UnsafeJavaScript {unUnsafeJavaScript :: Text}
+  deriving newtype (IsString, Show, Semigroup, Monoid, Binary)

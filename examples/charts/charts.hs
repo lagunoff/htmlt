@@ -7,5 +7,5 @@ main = return ()
 
 foreign export ccall wasm_main :: IO ()
 wasm_main = do
-  _ <- attach $ liftClickM App.new >>= App.html
+  _ <- runApp $ lift App.new >>= App.html
   return ()

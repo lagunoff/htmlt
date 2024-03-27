@@ -221,6 +221,13 @@ export function evalExpr(hscb: HaskellCallback, idenScope: List<Bindings>, argSc
       if (!existingScope) finalizers.set(exp.reactiveScope, scopeFinalizers);
       return scopeFinalizers.push(() => domHelpers.removeEventListener(target, eventName, listener));
     }
+    case ExprTag.ConnectResource: {
+      const finalizer = evalExpr(hscb, idenScope, argScope, exp.aquire) as Function;
+      const existingScope = finalizers.get(exp.reactiveScope);
+      const scopeFinalizers = existingScope ? existingScope : new IntMap<Function>();
+      if (!existingScope) finalizers.set(exp.reactiveScope, scopeFinalizers);
+      return scopeFinalizers.push(finalizer);
+    }
     case ExprTag.SetTimeout: {
       const callback = evalExpr(hscb, idenScope, argScope, exp.callback) as Function;
       const existingScope = finalizers.get(exp.reactiveScope);
@@ -405,6 +412,7 @@ export enum ExprTag {
   ClearBoundary,
 
   AddEventListener,
+  ConnectResource,
   SetTimeout,
   ApplyFinalizer,
 
@@ -458,6 +466,7 @@ export type Expr =
   | { tag: ExprTag.ClearBoundary, boundary: Expr, detach: number }
 
   | { tag: ExprTag.AddEventListener, reactiveScope: number, target: Expr, eventName: Expr, listener: Expr }
+  | { tag: ExprTag.ConnectResource, reactiveScope: number, aquire: Expr }
   | { tag: ExprTag.SetTimeout, reactiveScope: number, callback: Expr, timeout: number }
   | { tag: ExprTag.ApplyFinalizer, reactiveScope: number, finalizerId: Expr }
 
@@ -510,6 +519,7 @@ export const expr = b.recursive<Expr>(self => b.discriminate({
   [ExprTag.ClearBoundary]: b.record({ boundary: self, detach: b.int8 }),
 
   [ExprTag.AddEventListener]: b.record({ reactiveScope: b.int64, target: self, eventName: self, listener: self }),
+  [ExprTag.ConnectResource]: b.record({ reactiveScope: b.int64, aquire: self }),
   [ExprTag.SetTimeout]: b.record({ reactiveScope: b.int64, callback: self, timeout: b.int64 }),
   [ExprTag.ApplyFinalizer]: b.record({ reactiveScope: b.int64, finalizerId: self }),
 

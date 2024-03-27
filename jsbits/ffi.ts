@@ -36,15 +36,19 @@ export function storeBuffer(exports: HaskellExports, u8array: Uint8Array): Haske
   return ptr;
 }
 
-export function evalMessageFFI(exports: HaskellExports, ptr: HaskellPointer): HaskellPointer {
+type SendMessageCallback = (jptr: HaskellPointer) => void;
+
+export function evalMessageFFI(javascriptMessageCallback: SendMessageCallback, exports: HaskellExports, ptr: HaskellPointer): HaskellPointer {
   const inbuf = loadBuffer(exports, ptr);
   const haskMsg = p.haskellMessage.decode(inbuf);
-  const jsCallback = (_jsMsg: JavaScriptMessage, _argScope: List<IArguments>) => {
-    // TODO
+  const jsCallback = (jsmsg: JavaScriptMessage, _argScope: List<IArguments>) => {
+    const outbuf = p.javascriptMessage.encode(jsmsg);
+    const ptr = storeBuffer(exports, outbuf);
+    javascriptMessageCallback(ptr);
   };
   switch (haskMsg.tag) {
     case HaskellMessageTag.EvalExpr: {
-      const result = p.evalExpr(jsCallback, null, null, haskMsg.expr);
+      const result = p.evalExpr(jsCallback, [globalThis, null], null, haskMsg.expr);
       const jsmsg: JavaScriptMessage = { tag: JavaScriptMessageTag.Return, 0: p.unknownToValue(result) };
       const outbuf = p.javascriptMessage.encode(jsmsg);
       return storeBuffer(exports, outbuf);
