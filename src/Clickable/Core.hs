@@ -11,6 +11,8 @@ import Clickable.FFI
 import Clickable.Internal (reactive, reactive_)
 import Clickable.Internal qualified as Internal
 import Clickable.Types
+import Clickable.Protocol
+import Clickable.Protocol.Value
 import Wasm.Compat.Prim
 
 
@@ -61,6 +63,15 @@ writeVar var s = modifyVar var $ const s
 
 subscribe :: DynVal a -> (a -> ClickM ()) -> ClickM ()
 subscribe val k = reactive_ $ Internal.subscribe val k
+
+enqueueExpr :: Expr -> ClickM ()
+enqueueExpr e = modify \s -> s {evaluation_queue = e : s.evaluation_queue}
+
+evalExpr :: Expr -> ClickM Value
+evalExpr e = do
+  send_command <- asks (.send_command)
+  queue <- state \s -> (s.evaluation_queue, s {evaluation_queue = []})
+  liftIO $ send_command $ RevSeq $ e : queue
 
 -------------------------
 -- RESOURCE MANAGEMENT --

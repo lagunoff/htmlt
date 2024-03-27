@@ -1,19 +1,15 @@
 module Clickable.Types where
 
-import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.State
 import Data.IORef
-import Data.List qualified as List
-import Data.Text (Text)
 import Data.Tuple
 import Data.Map (Map)
-import Data.Map qualified as Map
 import GHC.Generics
-import GHC.Exts hiding (build)
-import Unsafe.Coerce
+import GHC.Exts
 
-import Clickable.FFI
+import Clickable.Protocol
+import Clickable.Protocol.Value
 import Wasm.Compat.Prim
 
 data DynVar a where
@@ -38,10 +34,10 @@ newtype ResourceScope = ResourceScope {unResourceScope :: Int}
 newtype SourceId = SourceId {unSourceId :: Int}
   deriving newtype (Eq, Ord, Show)
 
-newtype HtmlM a = HtmlM { unHtmlM :: ReaderT JSVal ClickM a }
+newtype HtmlM a = HtmlM {unHtmlM :: ReaderT JSVal ClickM a}
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadReader JSVal)
 
-newtype ClickM a = ClickM {unClickM :: ReaderT InternalEnv IO a }
+newtype ClickM a = ClickM {unClickM :: ReaderT InternalEnv IO a}
   deriving newtype (Functor, Applicative, Monad, MonadIO, MonadReader InternalEnv)
 
 instance MonadState InternalState ClickM where
@@ -50,12 +46,14 @@ instance MonadState InternalState ClickM where
 data InternalEnv = InternalEnv
   { scope :: ResourceScope
   , internal_state_ref :: IORef InternalState
+  , send_command :: HaskellMessage -> IO JavaScriptMessage
   } deriving (Generic)
 
 data InternalState = InternalState
   { subscriptions :: [(ResourceScope, SourceId, Any -> ClickM ())]
   , finalizers :: [(ResourceScope, FinalizerVal)]
   , transaction_queue :: Map SourceId (ClickM ())
+  , evaluation_queue :: [Expr]
   , next_id :: Int
   } deriving (Generic)
 

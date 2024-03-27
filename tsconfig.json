@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "sourceMap": false,
+    "target": "ES6",
+    "outDir": "./dist",
+    "rootDir": ".",
+    "strict": true,
+    "importHelpers": true,
+    "moduleResolution": "bundler",
+    "module": "ES6"
+  },
+  "include": [
+    "jsbits/**/*.ts"
+  ]
+}

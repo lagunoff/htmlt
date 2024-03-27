@@ -10,4 +10,13 @@ module.exports = {
     extensions: ['.ts', '.js'],
   },
   devtool: false,
+  module: {
+    rules: [
+      {
+        test: /\.ts$/,
+        use: 'ts-loader',
+        exclude: /node_modules/,
+      },
+    ],
+  },
 };

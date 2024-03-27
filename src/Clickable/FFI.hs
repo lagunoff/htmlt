@@ -123,6 +123,9 @@ js_aquireResource = undefined
 js_apply0 :: JSVal -> IO ()
 js_apply0 = undefined
 
+js_evalMessageFFI :: Ptr Word8 -> IO (Ptr Word8)
+js_evalMessageFFI = undefined
+
 #else
 foreign import javascript unsafe
   "var c = new TextDecoder('utf8').decode(new Uint8Array(__exports.memory.buffer, $2, $3));\
@@ -247,4 +250,7 @@ foreign import javascript unsafe
   js_aquireResource :: JSVal -> Ptr Word8 -> Int -> JSVal -> IO JSVal
 foreign import javascript unsafe
   "$1()" js_apply0 :: JSVal -> IO ()
+foreign import javascript unsafe
+  "evalMessageFFI(__exports, $1)"
+   js_evalMessageFFI :: Ptr Word8 {- HaskellMessage -} -> IO (Ptr Word8 {- JavaScriptMessage -})
 #endif
