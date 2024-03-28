@@ -1,8 +1,5 @@
 module Clickable.Internal where
 
-import Clickable.FFI qualified as FFI
-import Clickable.Protocol
-import Clickable.Types
 import Control.Monad.Reader
 import Control.Monad.State
 import Data.Binary qualified as Binary
@@ -21,6 +18,9 @@ import Foreign.Storable
 import Unsafe.Coerce
 import Wasm.Compat.Prim
 
+import Clickable.FFI qualified as FFI
+import Clickable.Protocol
+import Clickable.Types
 
 emptyInternalState :: InternalState
 emptyInternalState = InternalState [] [] Map.empty [] 0
@@ -34,13 +34,17 @@ newInternalEnv = mdo
   let env = InternalEnv {internal_state_ref, scope, send_message = sendMessage receiveCb}
   return env
 
+-- | Unsafe because there is no gurantee that @a@ matches @a@ in
+-- correspoding @DynVar a@ where SourceId comes from
 unsafeTrigger :: SourceId -> a -> InternalState -> InternalState
-unsafeTrigger varId vals = go0 where
-  go0 = defer varId $ gets (.subscriptions) >>= go1
-  go1 [] = return ()
-  go1 ((_, sVar, cb) : xs)
-    | sVar == varId = cb (unsafeCoerce vals) >> go1 xs
-    | otherwise = go1 xs
+unsafeTrigger sourceId vals =
+  defer sourceId $ gets (.subscriptions) >>= notify
+  where
+    notify [] = return ()
+    notify ((_, s, cb) : xs)
+      | s == sourceId = cb (unsafeCoerce vals) >> notify xs
+      | otherwise = notify xs
+    defer k act s = s {transaction_queue = Map.insert k act s.transaction_queue}
 
 newScope :: ResourceScope -> InternalState -> (InternalState, ResourceScope)
 newScope p s =
@@ -104,15 +108,6 @@ subscribe (SplatVal fv av) fn scope s =
     readVal (FromVar (DynVar _ ref)) = liftIO $ readIORef ref
     readVal (MapVal val f) = fmap f $ readVal val
     readVal (SplatVal f a) = liftA2 ($) (readVal f) (readVal a)
-
-defer :: SourceId -> ClickM () -> InternalState -> InternalState
-defer k act s = s { transaction_queue = Map.insert k act s.transaction_queue }
-
-reactive :: (ResourceScope -> InternalState -> (InternalState, a)) -> ClickM a
-reactive f = ClickT $ ReaderT $ \e -> atomicModifyIORef' e.internal_state_ref $ f e.scope
-
-reactive_ :: (ResourceScope -> InternalState -> InternalState) -> ClickM ()
-reactive_ f = reactive \scope s -> (f scope s, ())
 
 sendMessage :: JSVal -> HaskellMessage -> IO JavaScriptMessage
 sendMessage receiveCb hmsg = do
@@ -187,3 +182,9 @@ syncPoint = do
   queue <- state \s -> (s.evaluation_queue, s {evaluation_queue = []})
   liftIO $ send_message $ EvalExpr $ RevSeq queue
   return ()
+
+reactive :: (ResourceScope -> InternalState -> (InternalState, a)) -> ClickM a
+reactive f = ClickT $ ReaderT $ \e -> atomicModifyIORef' e.internal_state_ref $ f e.scope
+
+reactive_ :: (ResourceScope -> InternalState -> InternalState) -> ClickM ()
+reactive_ f = reactive \scope s -> (f scope s, ())

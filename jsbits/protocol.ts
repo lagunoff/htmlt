@@ -160,12 +160,6 @@ export function evalExpr(hscb: HaskellCallback, idenScope: List<Bindings>, argSc
       domHelpers.insertIntoBuilder(parent, child);
       return null;
     }
-    case ExprTag.HtmlBuilder: {
-      const dest = evalExpr(hscb, idenScope, argScope, exp.dest) as Element|Comment;
-      const builderFn = evalExpr(hscb, idenScope, argScope, exp.builderFn) as Function;
-      builderFn(dest);
-      return dest;
-    }
     case ExprTag.CreateElement: {
       return document.createElement(exp.tagName);
     }
@@ -398,7 +392,6 @@ export enum ExprTag {
   Var,
   FreeScope,
 
-  HtmlBuilder,
   InsertNode,
   CreateElement,
   CreateElementNS,
@@ -453,7 +446,6 @@ export type Expr =
   | { tag: ExprTag.FreeScope, scopeId: number }
 
   | { tag: ExprTag.InsertNode, parent: Expr, child: Expr }
-  | { tag: ExprTag.HtmlBuilder, dest: Expr, builderFn: Expr }
   | { tag: ExprTag.CreateElement, tagName: string }
   | { tag: ExprTag.CreateElementNS, ns: string, tagName: string }
   | { tag: ExprTag.CreateText, content: string }
@@ -506,7 +498,6 @@ export const expr = b.recursive<Expr>(self => b.discriminate({
   [ExprTag.FreeScope]: b.record({ scopeId: b.int64 }),
 
   [ExprTag.InsertNode]: b.record({ parent: self, child: self }),
-  [ExprTag.HtmlBuilder]: b.record({ dest: self, builderFn: self }),
   [ExprTag.CreateElement]: b.record({ tagName: b.string }),
   [ExprTag.CreateElementNS]: b.record({ ns: b.string, tagName: b.string }),
   [ExprTag.CreateText]: b.record({ content: b.string }),

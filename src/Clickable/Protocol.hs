@@ -133,7 +133,6 @@ data Expr
   | FreeScope ResourceScope
   -- ^ Free all the resources assosiated with the given ResourceScope
 
-  | HtmlBuilder Expr Expr
   | InsertNode Expr Expr
   | CreateElement Text
   | CreateElementNS Text Text

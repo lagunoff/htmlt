@@ -2,6 +2,7 @@ module App where
 
 import Charts qualified as Charts
 import Control.Monad.State
+import Control.Concurrent
 import Data.Proxy
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -38,6 +39,18 @@ html self = do
     button_ do
       text "Open Help"
       on @"click" $ modifyVar self.state_var $ const HelpTab
+    button_ do
+      text "Open Modal"
+      on @"click" do
+        mvar <- liftIO newEmptyMVar
+        attachToBody do
+          p_ $ text "Content of the modal"
+          button_ do
+            text "Close"
+            on @"click" $ liftIO $ putMVar mvar "dljfhdlsfjh"
+        syncPoint
+        answer <- liftIO $ takeMVar mvar
+        consoleLog answer
   dyn $ self.state_var `mapVar` \case
     ChartsTab inst -> Charts.html inst
     HelpTab -> p_ $ text
