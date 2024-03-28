@@ -1,1 +1,1 @@
-(import ./default.nix {}).shell.javascript
+(import ./default.nix {}).shell

@@ -1,11 +1,11 @@
 {-|
 Shortcuts for most common HTML5 elements
 -}
-module HtmlT.Element where
+module Clickable.Element where
 
-import HtmlT.Base
-import HtmlT.Types
-import JavaScript.Compat.String (JSString(..))
+import Clickable.Core
+import Clickable.Types
+import Data.Text
 
 -- | This typeclass allows for tag constructors to have variable
 -- length arguments. Each tag constructor like 'div_' defined below
@@ -18,18 +18,18 @@ import JavaScript.Compat.String (JSString(..))
 -- https://github.com/chrisdone/lucid/blob/fb3b0e7c189c2acd8d88838d4a13923f24542ee8/src/Lucid/Base.hs#L272
 class Term arg result | result -> arg where
   term
-    :: JSString -- ^ Name.
+    :: Text -- ^ Name.
     -> arg -- ^ Some argument.
     -> result -- ^ Result: either an element or an attribute.
 
 -- | Given attributes, expect more child input.
-instance f ~ Html a => Term [Html ()] (f -> Html a) where
+instance f ~ HtmlM a => Term [HtmlM ()] (f -> HtmlM a) where
   term name attrs = el name . (sequence_ attrs *>)
   {-# INLINE term #-}
 
 -- | Given children immediately, just use that and expect no
 -- attributes.
-instance Term (Html a) (Html a) where
+instance Term (HtmlM a) (HtmlM a) where
   term = el
   {-# INLINE term #-}
 
@@ -357,7 +357,7 @@ sup_ :: Term arg result => arg -> result
 sup_ = term "sup"
 {-# INLINE sup_ #-}
 
-br_ :: Html ()
+br_ :: HtmlM ()
 br_ = el "br" blank
 {-# INLINE br_ #-}
 
