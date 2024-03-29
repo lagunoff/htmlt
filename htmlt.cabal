@@ -80,15 +80,6 @@ library
   import: htmlt-common         
   hs-source-dirs: src ./examples/charts
   exposed-modules:
-    -- HtmlT
-    -- HtmlT.Base
-    -- HtmlT.DOM
-    -- HtmlT.Element
-    -- HtmlT.Event
-    -- HtmlT.Internal
-    -- HtmlT.Main
-    -- HtmlT.Property
-    -- HtmlT.Types
     Clickable
     Clickable.Core
     Clickable.DOM
@@ -101,7 +92,6 @@ library
     Clickable.Protocol.Value
     Clickable.FFI
     Wasm.Compat.Prim
-    Wasm.Compat.Marshal
     
   other-modules: Paths_htmlt
   build-depends:
@@ -115,8 +105,19 @@ library
     transformers,
     ghc-experimental,
     ghc-prim,
-    -- generic-lens,
-
+  if !arch(wasm32)
+    exposed-modules:
+      Clickable.Main.DevServer
+    build-depends:
+      async,
+      foreign-store,
+      http-types,
+      wai,
+      wai-app-static,
+      wai-websockets,
+      warp,
+      websockets,
+      
 -- executable htmlt-counter
 --   import: htmlt-common         
 --   main-is: counter.hs

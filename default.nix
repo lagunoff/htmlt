@@ -20,22 +20,24 @@ let
       htmlt = self.callCabal2nix "htmlt" ./. {};
 
 
-      # th-compat = self.callCabal2nix "th-compat" ./packages/th-compat {};
+      th-compat = self.callCabal2nix "th-compat" ../fullstack-app/packages/th-compat {};
+      aeson = doJailbreak (self.callCabal2nix "aeson" ../fullstack-app/packages/aeson {});
+      bifunctors = doJailbreak super.bifunctors;
+      free = doJailbreak super.free;
+      generic-deriving = doJailbreak super.generic-deriving;
+      invariant = doJailbreak super.invariant;
+      lens = doJailbreak super.lens;
+      semigroupoids = doJailbreak super.semigroupoids;
       tagged = self.callCabal2nix "tagged" ../fullstack-app/packages/tagged {};
+      text-short = self.callCabal2nix "text-short" ../fullstack-app/packages/text-short {};
       th-abstraction = self.callCabal2nix "th-abstraction" ../fullstack-app/packages/th-abstraction {};
+      th-expand-syns = doJailbreak super.th-expand-syns;
+      th-lift = doJailbreak super.th-lift;
+      unordered-containers = self.callCabal2nix "unordered-containers" ../fullstack-app/packages/unordered-containers {};
       vector = self.callCabal2nix "vector" ../fullstack-app/packages/vector/vector {};
       vector-stream = self.callCabal2nix "vector-stream" ../fullstack-app/packages/vector/vector-stream {};
-      unordered-containers = self.callCabal2nix "unordered-containers" ../fullstack-app/packages/unordered-containers {};
-      # text-short = self.callCabal2nix "text-short" ./packages/text-short {};
-      generic-deriving = doJailbreak super.generic-deriving;
-      bifunctors = doJailbreak super.bifunctors;
-      semigroupoids = doJailbreak super.semigroupoids;
-      th-lift = doJailbreak super.th-lift;
-      th-expand-syns = doJailbreak super.th-expand-syns;
-      invariant = doJailbreak super.invariant;
-      free = doJailbreak super.free;
-      th-compat = doJailbreak super.th-compat;
-      lens = doJailbreak super.lens;
+      websockets = doJailbreak super.websockets;
+      wuss = doJailbreak super.wuss;
     };
   };
 

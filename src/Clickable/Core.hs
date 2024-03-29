@@ -39,19 +39,19 @@ readVal (SplatVal f a) = liftA2 ($) (readVal f) (readVal a)
 readVar :: DynVar a -> ClickM a
 readVar (DynVar _ ref) = liftIO $ readIORef ref
 
-atomicModifyVar :: DynVar s -> (s -> (s, a)) -> ClickM a
-atomicModifyVar var@(DynVar varId ref) f = do
+modifyVar :: DynVar s -> (s -> (s, a)) -> ClickM a
+modifyVar var@(DynVar varId ref) f = do
   (newVal, a) <- liftIO $ atomicModifyIORef' ref g
   modify $ Internal.unsafeTrigger varId newVal
   return a
   where
     g old = let (new, a) = f old in (new, (new, a))
 
-modifyVar :: DynVar s -> (s -> s) -> ClickM ()
-modifyVar var f = atomicModifyVar var ((,()) . f)
+modifyVar_ :: DynVar s -> (s -> s) -> ClickM ()
+modifyVar_ var f = modifyVar var ((,()) . f)
 
 writeVar :: DynVar s -> s -> ClickM ()
-writeVar var s = modifyVar var $ const s
+writeVar var s = modifyVar_ var $ const s
 
 subscribe :: DynVal a -> (a -> ClickM ()) -> ClickM ()
 subscribe val k = reactive_ $ Internal.subscribe val k

@@ -188,3 +188,24 @@ reactive f = ClickT $ ReaderT $ \e -> atomicModifyIORef' e.internal_state_ref $ 
 
 reactive_ :: (ResourceScope -> InternalState -> InternalState) -> ClickM ()
 reactive_ f = reactive \scope s -> (f scope s, ())
+
+data ClientMessage
+  = BrowserMessage JavaScriptMessage
+  -- ^ Regular command received from JavaScript environment
+  | DevServerMessage (ClickM ())
+  -- ^ Bypass protocol and inject a command directly into the
+  -- DevServer instance (useful for delivering notifications under
+  -- devserver)
+
+handleMessage :: InternalEnv -> (StartFlags -> ClickM ()) -> ClientMessage -> IO HaskellMessage
+handleMessage e jsMain = \case
+  BrowserMessage (Start startFlags) -> do
+    launchClickM e $ jsMain startFlags
+    return Halt
+  BrowserMessage (Return _val) -> return Halt
+  BrowserMessage (TriggerCallbackMsg arg sourceId) -> do
+    launchClickM e $ modify (unsafeTrigger sourceId arg)
+    return Halt
+  BrowserMessage BeforeUnload ->
+    return Halt
+  DevServerMessage a -> Halt <$ launchClickM e a
