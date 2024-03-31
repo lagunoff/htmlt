@@ -155,11 +155,14 @@ library
 
 executable htmlt-charts
   import: htmlt-common         
-  main-is: charts.hs
   hs-source-dirs: ./examples/charts
-  ghc-options:
-    -no-hs-main -optl-mexec-model=reactor
-    -optl-Wl,--export=hs_init,--export=wasm_main,--export=malloc
+  if arch(wasm32)
+    ghc-options:
+      -no-hs-main -optl-mexec-model=reactor
+      -optl-Wl,--export=hs_init,--export=wasm_main,--export=malloc
+    main-is: charts.hs
+  else
+    main-is: dev-server.hs
   build-depends:
     base,
     htmlt,

@@ -31,7 +31,7 @@ html self = do
   div_ [class_ "PairSelector-root"] do
     button_ do
       text "Select pair"
-      on @"click" $ modifyVar self \s -> case s.selected_pair of
+      on @"click" $ modifyVar_ self \s -> case s.selected_pair of
         Just _ -> s {selected_pair = Nothing}
         Nothing -> s {selected_pair = Just $ TradingPair "BTC" "USDT" "MEXC"}
     span_ $ dynText $ self `mapVar` \s -> s.selected_pair & maybe

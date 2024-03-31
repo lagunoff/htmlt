@@ -332,36 +332,6 @@ export const jvalue = b.recursive<Value>(self => b.discriminate({
   [ValueTag.Uint8Array]: b.record({ 0: b.u8array }),
 }));
 
-export type StartLocation = {
-  protocol: string,
-  hostname: string,
-  port: string,
-  pathname: string,
-  search: string,
-  hash: string,
-};
-
-export const startLocation: b.Decoder<StartLocation> = b.record({
-  protocol: b.string,
-  hostname: b.string,
-  port: b.string,
-  pathname: b.string,
-  search: b.string,
-  hash: b.string,
-});
-
-export type StartFlags = {
-  initial_url: StartLocation;
-  window_inner_size: [number, number];
-  devserver_connection_id: Maybe<number>;
-};
-
-export const startFlags: b.Decoder<StartFlags> = b.record({
-  initial_url: startLocation,
-  window_inner_size: b.tuple(b.int64, b.int64),
-  devserver_connection_id: b.maybe(b.int64),
-});
-
 export enum ExprTag {
   Null,
   Boolean,
@@ -540,7 +510,7 @@ export enum JavaScriptMessageTag {
 }
 
 export const javascriptMessage = b.discriminate({
-  [JavaScriptMessageTag.Start]: b.record({ startFlags }),
+  [JavaScriptMessageTag.Start]: b.record({ 0: jvalue }),
   [JavaScriptMessageTag.Return]: b.record({ 0: jvalue }),
   [JavaScriptMessageTag.TriggerCallback]: b.record({ arg: jvalue, callbackId: b.int64 }),
   [JavaScriptMessageTag.BeforeUnload]: b.record({}),
@@ -554,25 +524,6 @@ export type VarId = number;
 
 export const varStorage = new Map<ReactiveScope, Map<VarId, unknown>>();
 export const finalizers = new Map<ReactiveScope, IntMap<Function>>;
-
-export function mkStartMessage(): JavaScriptMessage {
-  const initial_url: StartLocation = {
-    protocol: location.protocol,
-    hostname: location.hostname,
-    port: location.port,
-    pathname: location.pathname,
-    search: location.search,
-    hash: location.hash,
-  };
-  return {
-    tag: JavaScriptMessageTag.Start,
-    startFlags: {
-      initial_url,
-      window_inner_size: [window.innerWidth, window.innerHeight],
-      devserver_connection_id: { tag: MaybeTag.Nothing },
-    }
-  };
-}
 
 namespace domHelpers {
   export function insertIntoBuilder(builder: Element|Comment, child: Node): void {

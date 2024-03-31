@@ -31,32 +31,8 @@ data JavaScriptMessage
   deriving stock (Generic, Show)
   deriving anyclass (Binary)
 
-data StartFlags = StartFlags
-  { initial_url :: Location
-  , window_inner_size :: (Int64, Int64)
-  , devserver_connection_id :: Maybe Int64
-  } deriving stock (Generic, Show)
-    deriving anyclass (Binary)
-
-data Location = Location
-  { protocol :: Text
-  -- ^ A string containing the protocol scheme of the URL, including
-  -- the final ':'
-  , hostname :: Text
-  -- ^ A string containing the domain of the URL.
-  , port :: Text
-  -- ^ A string containing the port number of the URL.
-  , pathname :: Text
-  -- ^ A string containing an initial '/' followed by the path of the
-  -- URL, not including the query string or fragment.
-  , search :: Text
-  -- ^ A string containing a '?' followed by the parameters or
-  -- "querystring" of the URL
-  , hash :: Text
-  -- ^ A string containing a '#' followed by the fragment identifier
-  -- of the URL.
-  } deriving stock (Show, Eq, Generic)
-    deriving anyclass (Binary, Value.FromJSValue, Value.ToJSValue)
+newtype StartFlags = StartFlags {unStartFlags :: Value.Value}
+  deriving newtype (Generic, Show, Binary)
 
 -- | Strict Lambda calculus with arbitrary side-effects, meant to be
 -- used as commands executed in the JavaScript side, optimized for

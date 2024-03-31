@@ -1,3 +1,6 @@
+import { WASI, File, OpenFile } from '@bjorn3/browser_wasi_shim';
+// @ts-ignore
+import * as jsffi from './jsffi';
 import * as p from './protocol';
 import { JavaScriptMessage, HaskellMessageTag, List, JavaScriptMessageTag } from './protocol';
 
@@ -5,6 +8,7 @@ export type HaskellPointer = number;
 
 export type HaskellExports = {
   hs_init: () => void;
+  wasm_main: (flags: HaskellPointer) => void;
   malloc: (size: number) => HaskellPointer;
   memory: WebAssembly.Memory;
 };
@@ -66,3 +70,32 @@ export function evalMessageFFI(javascriptMessageCallback: SendMessageCallback, e
     }
   }
 }
+
+let __exports: HaskellExports = {} as any;
+
+export async function startWasm(wasmUri: string, startFlags: unknown = null) {
+  const wasi = new WASI([], [], [
+    new OpenFile(new File([])), // stdin
+    new OpenFile(new File([])), // stdout
+    new OpenFile(new File([])), // stderr
+  ]);
+
+  const wasm = await WebAssembly.compileStreaming(fetch(wasmUri));
+  const inst = await WebAssembly.instantiate(wasm, {
+    wasi_snapshot_preview1: wasi.wasiImport,
+    ghc_wasm_jsffi: jsffi.default(__exports)
+  });
+
+  Object.assign(__exports, inst.exports);
+  // @ts-ignore
+  wasi.initialize(inst);
+  // @ts-ignore
+  await inst.exports.hs_init();
+
+  const startFlagsValue = p.unknownToValue(startFlags);
+  const startFlagsBuffer = p.jvalue.encode(startFlagsValue);
+  const startFlagsPtr = storeBuffer(__exports, startFlagsBuffer);
+
+  // @ts-ignore
+  await inst.exports.wasm_main(startFlagsPtr);
+};

@@ -10,7 +10,7 @@ import Unsafe.Coerce
 
 import Clickable.Types
 import Clickable.Protocol
-import Clickable.Protocol.Value (Value, FromJSValue(..))
+import Clickable.Protocol.Value (Value, FromJSValue(..), ToJSValue(..))
 import Clickable.Internal
 
 
@@ -213,6 +213,26 @@ normalEventWrapper eventName opt =
   where
     preventDefaultStmt = if opt.prevent_default then "event.preventDefault();" else ""
     stopPropagationStmt = if opt.stop_propagation then "event.stopPropagation();" else ""
+
+data Location = Location
+  { protocol :: Text
+  -- ^ A string containing the protocol scheme of the URL, including
+  -- the final ':'
+  , hostname :: Text
+  -- ^ A string containing the domain of the URL.
+  , port :: Text
+  -- ^ A string containing the port number of the URL.
+  , pathname :: Text
+  -- ^ A string containing an initial '/' followed by the path of the
+  -- URL, not including the query string or fragment.
+  , search :: Text
+  -- ^ A string containing a '?' followed by the parameters or
+  -- "querystring" of the URL
+  , hash :: Text
+  -- ^ A string containing a '#' followed by the fragment identifier
+  -- of the URL.
+  } deriving stock (Show, Eq, Generic)
+    deriving anyclass (FromJSValue, ToJSValue)
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/Window/popstate_event
 popstateConnectArgs :: ConnectResourceArgs (Location -> ClickM ())

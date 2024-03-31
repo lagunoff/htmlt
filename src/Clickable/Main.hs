@@ -3,8 +3,11 @@ module Clickable.Main where
 import GHC.Generics
 import Clickable.Core
 import Clickable.Types
-import Clickable.Internal (newInternalEnv)
+import Clickable.Internal
+import Clickable.Protocol
 import Wasm.Compat.Prim
+import Data.Word
+import GHC.Ptr
 
 -- data AttachOptions = AttachOptions
 --   { internal_env :: InternalEnv
@@ -24,10 +27,11 @@ data RunningApp = RunningApp
 --   let runApp = RunningApp opt.internal_env domBracket
 --   return (result, runApp)
 
-runApp :: HtmlM a -> IO a
-runApp app = do
+runApp :: Ptr Word8 -> (StartFlags -> ClickM a) -> IO a
+runApp p app = do
   env <- newInternalEnv
-  launchClickM env $ attachToBody app <* syncPoint
+  startFlags <- loadMessage p
+  launchClickM env $ app startFlags <* syncPoint
 
 -- detach :: RunningApp -> IO ()
 -- detach app = do

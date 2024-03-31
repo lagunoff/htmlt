@@ -44,12 +44,13 @@ html self = do
       button_ do
         text "Clickable this button"
         on @"click" do
-          modifyVar self.state_var \s -> s {counter = s.counter + 1 }
+          modifyVar_ self.state_var \s -> s {counter = s.counter + 1 }
       button_ do
         text "Print state"
         on @"click" do
           s <- readVar self.state_var
-          consoleLog $ Text.pack $ show s
+          -- consoleLog $ Text.pack $ show s
+          return ()
       span_ [] $ dynText $ self.state_var `mapVar` \s ->
         "You clicked " <> Text.pack (show s.counter) <> " times"
     canvas_ [class_ "Charts-canvas"] $ return ()

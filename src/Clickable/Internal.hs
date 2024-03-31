@@ -3,6 +3,7 @@ module Clickable.Internal where
 import Control.Monad.Reader
 import Control.Monad.State
 import Data.Binary qualified as Binary
+import Data.Binary (Binary)
 import Data.Foldable
 import Data.ByteString as BS
 import Data.ByteString.Lazy qualified as BSL
@@ -27,9 +28,9 @@ emptyInternalState = InternalState [] [] Map.empty [] 0
 
 newInternalEnv :: IO InternalEnv
 newInternalEnv = mdo
-  let scope = ResourceScope emptyInternalState.next_id
-  internal_state_ref <- newIORef emptyInternalState
-    {next_id = emptyInternalState.next_id + 1}
+  let state = emptyInternalState
+  let scope = ResourceScope state.next_id
+  internal_state_ref <- newIORef state {next_id = state.next_id + 1}
   receiveCb <- FFI.js_exportCallback $ receiveMessage env
   let env = InternalEnv {internal_state_ref, scope, send_message = sendMessage receiveCb}
   return env
@@ -136,7 +137,6 @@ receiveMessage e jptr = do
   jbytes <- loadByteString jptr
   let jmsg = Binary.decode $ BSL.fromStrict jbytes
   case jmsg of
-    Start _startFlags -> return ()
     Return _value -> return ()
     TriggerCallbackMsg arg sourceId ->
       launchClickM e $ modify (unsafeTrigger sourceId arg)
@@ -197,15 +197,11 @@ data ClientMessage
   -- DevServer instance (useful for delivering notifications under
   -- devserver)
 
-handleMessage :: InternalEnv -> (StartFlags -> ClickM ()) -> ClientMessage -> IO HaskellMessage
-handleMessage e jsMain = \case
-  BrowserMessage (Start startFlags) -> do
-    launchClickM e $ jsMain startFlags
-    return Halt
-  BrowserMessage (Return _val) -> return Halt
-  BrowserMessage (TriggerCallbackMsg arg sourceId) -> do
-    launchClickM e $ modify (unsafeTrigger sourceId arg)
-    return Halt
-  BrowserMessage BeforeUnload ->
-    return Halt
-  DevServerMessage a -> Halt <$ launchClickM e a
+loadMessage :: Binary msg => Ptr a -> IO msg
+loadMessage = fmap (Binary.decode . BSL.fromStrict) . loadByteString
+  where
+    loadByteString :: Ptr a -> IO ByteString
+    loadByteString ptr = do
+      len <- peek @Word64 (castPtr ptr)
+      let contentPtr = ptr `plusPtr` 8
+      BSU.unsafePackCStringFinalizer contentPtr (fromIntegral len) (Alloc.free ptr)
