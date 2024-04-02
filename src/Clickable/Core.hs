@@ -5,11 +5,16 @@ module Clickable.Core
   , Internal.launchClickM
   ) where
 
+import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.State
 import Data.IORef
+import Data.Tuple
 import Data.Function ((&))
 import Data.Text (Text)
+import Data.Text qualified as Text
+import Data.String
+import Control.Applicative
 
 import Clickable.Internal (reactive, reactive_)
 import Clickable.Internal qualified as Internal
@@ -30,14 +35,21 @@ newDynVar a = do
   ref <- liftIO $ newIORef a
   state \s -> (DynVar (SourceId s.next_id) ref, s {next_id = s.next_id + 1})
 
+elemVar :: MonadIO m => Int -> DynVar [a] -> a -> m (DynVar a)
+elemVar i var a = do
+  ref <- liftIO $ newIORef a
+  return $ ElemVar var i ref
+
 readVal :: DynVal a -> ClickM a
 readVal (ConstVal a) = pure a
-readVal (FromVar (DynVar _ ref)) = liftIO $ readIORef ref
+readVal (FromVar var) = readVar var
 readVal (MapVal val f) = fmap f $ readVal val
 readVal (SplatVal f a) = liftA2 ($) (readVal f) (readVal a)
 
 readVar :: DynVar a -> ClickM a
 readVar (DynVar _ ref) = liftIO $ readIORef ref
+readVar (LensMap l var) = fmap (getConst . l Const) $ readVar var
+readVar (ElemVar _ _ ref) = liftIO $ readIORef ref
 
 modifyVar :: DynVar s -> (s -> (s, a)) -> ClickM a
 modifyVar var@(DynVar varId ref) f = do
@@ -46,6 +58,13 @@ modifyVar var@(DynVar varId ref) f = do
   return a
   where
     g old = let (new, a) = f old in (new, (new, a))
+modifyVar (ElemVar var i _) f = modifyVar var $ overIx i f
+  where
+    overIx :: forall s a. Int -> (s -> (s, a)) -> [s] -> ([s], a)
+    overIx 0 f (x:xs) = let (s, a) = f x in (s : xs, a)
+    overIx n f (x:xs) = let (s, a) = overIx (pred n) f xs in (x : s, a)
+    overIx _ _ [] = error "ElemVar: invalid index"
+modifyVar (LensMap l var) f = modifyVar var (swap . l (swap . f))
 
 modifyVar_ :: DynVar s -> (s -> s) -> ClickM ()
 modifyVar_ var f = modifyVar var ((,()) . f)
@@ -63,8 +82,8 @@ subscribe val k = reactive_ $ Internal.subscribe val k
 enqueueExpr :: Expr -> ClickM ()
 enqueueExpr e = modify \s -> s {evaluation_queue = e : s.evaluation_queue}
 
-evalSync :: Expr -> ClickM Value
-evalSync e = do
+evalExpr :: Expr -> ClickM Value
+evalExpr e = do
   send_message <- asks (.send_message)
   queue <- state \s -> (s.evaluation_queue, s {evaluation_queue = []})
   result <- liftIO $ send_message $ EvalExpr $ RevSeq $ e : queue
@@ -153,8 +172,18 @@ dynBoolProp k val = do
     f v s = s {evaluation_queue = expr v : s.evaluation_queue }
     expr v = ElementProp (Arg 0 0) k (Boolean v)
 
-blank :: Applicative m => m ()
-blank = pure ()
+toggleClass :: Text -> DynVal Bool -> HtmlM ()
+toggleClass className val = do
+  scope <- lift $ asks (.scope)
+  v <- lift $ readVal val
+  n <- saveCurrentNode
+  let
+    initCmd False queue = queue
+    initCmd True queue = InsertClassList (Arg 0 0) [className] : queue
+    updateCmd False = RemoveClassList (Var n) [className]
+    updateCmd True = InsertClassList (Var n) [className]
+  lift $ modify \s -> s {evaluation_queue = initCmd v s.evaluation_queue}
+  lift $ subscribe val $ enqueueIfAlive scope . updateCmd
 
 ---------------------
 -- DYNAMIC CONTENT --
@@ -176,6 +205,70 @@ dyn val = do
   lift $ subscribe val $ \newVal -> do
     freeScope False scope
     exec $ update newVal
+
+-- | Auxilliary datatype used in 'simpleList' implementation
+data ElemEnv a = ElemEnv
+  { elem_boundary :: VarId
+  , elem_state_ref :: DynVar a
+  , reactive_scope :: ResourceScope
+  }
+
+simpleList
+  :: forall a. DynVar [a]
+  -- ^ Some dynamic data from the above scope
+  -> (Int -> DynVar a -> HtmlM ())
+  -- ^ Function to build children widget. Accepts the index inside the
+  -- collection and dynamic data for that particular element
+  -> HtmlM ()
+simpleList listVar h = lift do
+  let listDyn = fromVar listVar
+  internalStateRef <- liftIO $ newIORef ([] :: [ElemEnv a])
+  boundary <- insertBoundary
+  let
+    exec boundary scope h = evalStateT h.unHtmlT Nothing
+      & htmlBuilder1 (Var boundary)
+      & local (\s -> s {scope})
+    exec1 boundary = htmlBuilder1 (Var boundary)
+
+    setup :: Int -> [a] -> [ElemEnv a] -> ClickM [ElemEnv a]
+    setup idx new existing = case (existing, new) of
+      ([], []) -> return []
+      -- New list is longer, append new elements
+      ([], x:xs) -> do
+        e <- newElem idx x
+        exec e.elem_boundary e.reactive_scope $ h idx e.elem_state_ref
+        fmap (e:) $ setup (idx + 1) xs []
+      -- New list is shorter, delete the elements that no longer
+      -- present in the new list
+      (r:rs, []) -> do
+        finalizeElems True (r:rs)
+        return []
+      -- Update existing elements along the way
+      (r:rs, y:ys) -> do
+        writeVar r.elem_state_ref y
+        fmap (r:) $ setup (idx + 1) ys rs
+    newElem :: Int -> a -> ClickM (ElemEnv a)
+    newElem i a = do
+      scope <- newScope
+      local (\s -> s {scope}) do
+        elem_state_ref <- elemVar i listVar a
+        elem_boundary <- insertBoundary
+        return ElemEnv {reactive_scope = scope, elem_state_ref, elem_boundary}
+    finalizeElems :: Bool -> [ElemEnv a] -> ClickM ()
+    finalizeElems remove = mapM_ \ee -> do
+      when remove $ destroyBoundary ee.elem_boundary
+      freeScope True ee.reactive_scope
+    updateList new = do
+      eenvs <- liftIO $ readIORef internalStateRef
+      newEenvs <- setup 0 new eenvs
+      liftIO $ writeIORef internalStateRef newEenvs
+  initialVal <- readVal listDyn
+  exec1 boundary $ updateList initialVal
+  subscribe listDyn $ exec1 boundary . updateList
+
+----------------------------
+-- AUXILLIARY DEFINITIONS --
+----------------------------
 
 htmlBuilder :: Expr -> ClickM a -> ClickM a
 htmlBuilder builder content = do
@@ -240,3 +333,9 @@ attachHtml rootElm contents = do
 
 attachToBody :: HtmlM a -> ClickM a
 attachToBody = attachHtml (Id "document" `Dot` "body")
+
+blank :: Applicative m => m ()
+blank = pure ()
+
+instance (a ~ ()) => IsString (HtmlM a) where
+  fromString = text . Text.pack

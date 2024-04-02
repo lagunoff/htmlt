@@ -78,7 +78,7 @@ common htmlt-common
 
 library
   import: htmlt-common         
-  hs-source-dirs: src ./examples/charts
+  hs-source-dirs: src ./examples/charts ./examples/todomvc
   exposed-modules:
     Clickable
     Clickable.Core
@@ -134,24 +134,28 @@ library
 --   if !flag(examples)
 --     buildable: False
 
--- executable htmlt-todomvc
---   import: htmlt-common         
---   main-is: todomvc.hs
---   hs-source-dirs: ./examples/todomvc
---   ghc-options:
---     -no-hs-main -optl-mexec-model=reactor
---     -optl-Wl,--export=hs_init,--export=wasm_main
---   other-modules:
---     TodoItem
---     TodoList
---     Utils
---   build-depends:
---     base,
---     htmlt,
---     text,
---     mtl,
---   if !flag(examples)
---     buildable: False
+executable htmlt-todomvc
+  import: htmlt-common         
+  hs-source-dirs: ./examples/todomvc
+  if arch(wasm32)
+    ghc-options:
+      -no-hs-main -optl-mexec-model=reactor
+      -optl-Wl,--export=hs_init,--export=wasm_main,--export=malloc
+    main-is: wasm.hs
+  else
+    ghc-options: -threaded
+    main-is: dev.hs
+  other-modules:
+    TodoItem
+    TodoList
+    Utils
+  build-depends:
+    base,
+    htmlt,
+    text,
+    mtl,
+  if !flag(examples)
+    buildable: False
 
 executable htmlt-charts
   import: htmlt-common         
@@ -162,6 +166,7 @@ executable htmlt-charts
       -optl-Wl,--export=hs_init,--export=wasm_main,--export=malloc
     main-is: charts.hs
   else
+    ghc-options: -threaded
     main-is: dev-server.hs
   build-depends:
     base,

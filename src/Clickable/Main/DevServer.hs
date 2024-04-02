@@ -20,7 +20,7 @@ import GHC.IO.Exception
 import Network.HTTP.Types as H
 import Network.Wai as WAI
 import Network.Wai.Application.Static
-import Network.Wai.Handler.Warp as Warp
+import Network.Wai.Handler.Warp qualified as Warp
 import Network.Wai.Handler.WebSockets
 import Network.WebSockets
 import System.Environment
@@ -57,30 +57,30 @@ data ApplicationSpec = ApplicationSpec
   -- ^ Will be executed after a connection closes
   } deriving Generic
 
-defaultDevServerConfig :: (ConnectionInfo -> StartFlags -> ClickM ()) -> DevServerConfig ()
-defaultDevServerConfig clientApp = DevServerConfig
+defaultConfig :: (ConnectionInfo -> StartFlags -> ClickM ()) -> DevServerConfig ()
+defaultConfig clientApp = DevServerConfig
   { aquire_resource = pure ()
   , release_resource = const (pure ())
-  , reload_app = \_ -> pure $ ApplicationSpec clientApp defaultFallbackApp (const (pure ()))
-  , html_template = defaultHtmlTemplate
+  , reload_app = \_ -> pure $ ApplicationSpec clientApp fallbackApp (const (pure ()))
+  , html_template = htmlTemplate
   , docroots = []
   }
 
-runDebug :: Typeable resource => Warp.Settings -> DevServerConfig resource -> IO ()
-runDebug settings cfg = do
+runSettings :: Typeable resource => Warp.Settings -> DevServerConfig resource -> IO ()
+runSettings settings cfg = do
   -- Using a random constant as the key for Foreign.Store
   let storeId = 183
   hSetBuffering stderr LineBuffering
   lookupStore storeId >>= \case
     Nothing -> do
-      devInst <- newInstance cfg
-      writeStore (Store storeId) devInst
+      inst <- newInstance cfg
+      writeStore (Store storeId) inst
       let
         useCurrentApp req resp = do
-          RunningApp{devserver_config, server_app} <- readIORef devInst.app_state_ref
+          RunningApp{devserver_config, server_app} <- readIORef inst.app_state_ref
           withStaticApp devserver_config.docroots server_app req resp
       forkIfRepl $ tryPort settings $
-        devserverMiddleware devInst useCurrentApp
+        middleware inst useCurrentApp
     Just store -> do
       oldInst <- readStore store
       updateInstance cfg oldInst
@@ -91,14 +91,14 @@ runDebug settings cfg = do
     tryPort :: Warp.Settings -> Application -> IO ()
     tryPort settings application = do
       hPutStrLn stderr $ "Running a Dev Server at http://localhost:" <>
-        show (getPort settings) <> "/"
-      result <- try $ runSettings settings application
+        show (Warp.getPort settings) <> "/"
+      result <- try $ Warp.runSettings settings application
       case result of
         Right () -> return ()
         Left (e::IOException)
           | ioe_type e == ResourceBusy -> do
             hPutStrLn stderr $ "Already in use, trying next port…"
-            tryPort (setPort (getPort settings + 1) settings) application
+            tryPort (Warp.setPort (Warp.getPort settings + 1) settings) application
           | otherwise -> throwIO e
     withStaticApp :: [FilePath] -> Middleware
     withStaticApp [] next = next
@@ -109,66 +109,60 @@ runDebug settings cfg = do
       isRepl <- (== "<interactive>") <$> getProgName
       if isRepl then void (forkIO action) else action
 
-runDebugPort :: Typeable resource => Warp.Port -> DevServerConfig resource -> IO ()
-runDebugPort port cfg =
-  runDebug (Warp.setPort port Warp.defaultSettings) cfg
+runServer :: (StartFlags -> ClickM ()) -> IO ()
+runServer clientApp = runSettings
+  (Warp.setPort 8080 Warp.defaultSettings)
+  (defaultConfig (const clientApp))
 
-runDebugDefault :: Warp.Port -> (ConnectionInfo -> StartFlags -> ClickM ()) -> IO ()
-runDebugDefault port clientApp = runDebug
-  (Warp.setPort port Warp.defaultSettings)
-  (defaultDevServerConfig clientApp)
-
-devserverMiddleware :: DevServerInstance -> Middleware
-devserverMiddleware opts next req resp =
+middleware :: DevServerInstance -> Middleware
+middleware opts next req resp =
   case pathInfo req of
-    [] -> indexHtmlApp req resp
-    ["index.html"] -> indexHtmlApp req resp
-    ["dev-server.sock"] -> devserverApp req resp
+    [] -> indexHtml req resp
+    ["index.html"] -> indexHtml req resp
+    ["dev.sock"] -> devserverApp req resp
     _ -> next req resp
   where
     devserverApp =
-      websocketsOr defaultConnectionOptions (devserverWebsocket opts)
-      defaultFallbackApp
-    indexHtmlApp req resp = do
-      let devSocket = devServerSocketUrl req
+      websocketsOr defaultConnectionOptions (websocketApp opts)
+      fallbackApp
+    indexHtml req resp = do
+      let devSocket = mkWebsocketUrl req
       RunningApp{devserver_config} <- readIORef opts.app_state_ref
       resp $ responseLBS status200
         [(hContentType, "text/html; charset=utf-8")] $
         devserver_config.html_template devSocket
 
-devServerSocketUrl :: WAI.Request -> BSL.ByteString
-devServerSocketUrl req =
+mkWebsocketUrl :: WAI.Request -> BSL.ByteString
+mkWebsocketUrl req =
   WAI.requestHeaders req
     & List.lookup "Host"
     & maybe "localhost" BSL.fromStrict
     & ((if WAI.isSecure req then "wss://" else "ws://") <>)
-    & (<> "/dev-server.sock")
+    & (<> "/dev.sock")
 
-defaultHtmlTemplate :: BSL.ByteString -> BSL.ByteString
-defaultHtmlTemplate devSocket =
+htmlTemplate :: BSL.ByteString -> BSL.ByteString
+htmlTemplate devUrl =
   "<html>\n\
   \ <body>\n\
   \  <script>\n\
   \    " <> BSL.fromStrict indexBundleJs <> "\n\
-  \    startClient(\"" <> devSocket <> "\");\n\
+  \    startClient(\"" <> devUrl <> "\");\n\
   \  </script>\n\
   \ </body>\n\
-  \</html>\n\
-  \"
+  \</html>\n"
 
-defaultFallbackApp :: Application
-defaultFallbackApp _ resp =
+fallbackApp :: Application
+fallbackApp _ resp =
   resp $ responseLBS status404
     [(hContentType, "text/html; charset=utf-8")]
     "<html>\n\
     \ <body>\n\
     \   <h1>Not Found</h1>\n\
     \ </body>\n\
-    \</html>\n\
-    \"
+    \</html>\n"
 
-devserverWebsocket :: DevServerInstance -> ServerApp
-devserverWebsocket opt p =
+websocketApp :: DevServerInstance -> ServerApp
+websocketApp opt p =
   let
     acceptConn = mdo
       conn <- acceptRequest p
@@ -195,31 +189,21 @@ devserverWebsocket opt p =
 
     reader :: ConnectionInfo -> RunningApp -> ClientMessage -> IO ()
     reader conn app = \case
-      BrowserMessage (Start flags) -> do
-        modifyIORef' conn.queue_ref (app.client_app conn flags:)
-        putMVar conn.signal_mvar ()
+      BrowserMessage (Start flags) -> void $ forkIO
+        $ Internal.launchClickM conn.internal_env
+        $ app.client_app conn flags
       BrowserMessage (Return val) -> putMVar conn.return_mvar val
-      BrowserMessage (TriggerCallbackMsg arg sourceId) -> do
-        modifyIORef' conn.queue_ref (modify (Internal.unsafeTrigger sourceId arg):)
-        putMVar conn.signal_mvar ()
+      BrowserMessage (TriggerCallbackMsg arg sourceId) -> void $ forkIO
+        $ Internal.launchClickM conn.internal_env
+        $ modify (Internal.unsafeTrigger sourceId arg)
       BrowserMessage BeforeUnload ->
         return ()
-      DevServerMessage a -> do
-        modifyIORef' conn.queue_ref (a:)
-        putMVar conn.signal_mvar ()
-
-    worker :: ConnectionInfo -> IO ()
-    worker conn = do
-      takeMVar conn.signal_mvar
-      queue <- atomicModifyIORef' conn.queue_ref ([],)
-      forM_ queue $ Internal.launchClickM conn.internal_env
-      worker conn
+      DevServerMessage a -> void $ forkIO
+        $ Internal.launchClickM conn.internal_env a
 
     newConn connection = mdo
       command_chan <- newChan
       return_mvar <- newEmptyMVar
-      signal_mvar <- newEmptyMVar
-      queue_ref <- newIORef []
       internal_env <- newInternalEnv connection return_mvar
       connInfo <- atomicModifyIORef' opt.conn_state_ref \m ->
         let
@@ -229,13 +213,9 @@ devserverWebsocket opt p =
             , connection
             , command_chan
             , connection_id
-            , return_mvar
-            , signal_mvar
-            , worker_thread
-            , queue_ref }
+            , return_mvar }
         in
           (Map.insert connection_id connInfo m, connInfo)
-      worker_thread <- forkIO $ worker connInfo
       return connInfo
     newInternalEnv :: Connection -> MVar Value -> IO InternalEnv
     newInternalEnv conn resultMvar = do
@@ -310,11 +290,8 @@ data DevServerInstance = DevServerInstance
 data ConnectionInfo = ConnectionInfo
   { connection :: Connection
   , return_mvar :: MVar Value
-  , signal_mvar :: MVar ()
-  , queue_ref :: IORef [ClickM ()]
   , internal_env :: InternalEnv
   , command_chan :: Chan (ClickM ())
-  , worker_thread :: ~ThreadId
   -- ^ Writing to the Chan sends a command to the browser to execute
   , connection_id :: ConnectionId
   } deriving Generic

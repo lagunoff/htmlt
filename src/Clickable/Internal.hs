@@ -18,6 +18,8 @@ import Foreign.Ptr
 import Foreign.Storable
 import Unsafe.Coerce
 import Wasm.Compat.Prim
+import Debug.Trace
+import Data.Text qualified as Text
 
 import Clickable.FFI qualified as FFI
 import Clickable.Protocol
@@ -38,12 +40,12 @@ newInternalEnv = mdo
 -- | Unsafe because there is no gurantee that @a@ matches @a@ in
 -- correspoding @DynVar a@ where SourceId comes from
 unsafeTrigger :: SourceId -> a -> InternalState -> InternalState
-unsafeTrigger sourceId vals =
+unsafeTrigger sourceId a =
   defer sourceId $ gets (.subscriptions) >>= notify
   where
     notify [] = return ()
     notify ((_, s, cb) : xs)
-      | s == sourceId = cb (unsafeCoerce vals) >> notify xs
+      | s == sourceId = cb (unsafeCoerce a) >> notify xs
       | otherwise = notify xs
     defer k act s = s {transaction_queue = Map.insert k act s.transaction_queue}
 
@@ -137,8 +139,10 @@ receiveMessage e jptr = do
   jbytes <- loadByteString jptr
   let jmsg = Binary.decode $ BSL.fromStrict jbytes
   case jmsg of
+    Start _value -> return ()
     Return _value -> return ()
-    TriggerCallbackMsg arg sourceId ->
+    TriggerCallbackMsg arg sourceId -> do
+      FFI.consoleLog $ Text.pack $ show (arg, sourceId)
       launchClickM e $ modify (unsafeTrigger sourceId arg)
     BeforeUnload -> return ()
   where

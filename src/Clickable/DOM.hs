@@ -138,7 +138,7 @@ inputConnectArgs eventName  = ConnectResourceArgs
       \  function listener(target){\n\
       \    haskellCb(event.target.value);\n\
       \  }\n\
-      \  window.addEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
+      \  target.addEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
       \  return () => window.removeEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
       \})") `Apply` [Arg 0 0, Lam (TriggerCallback sourceId (Arg 0 0))]
   , mk_callback = \k event -> forM_ (fromJSValue event) k
@@ -151,10 +151,10 @@ keyboardConnectArgs eventName = ConnectResourceArgs
   { aquire_fn = \scope sourceId -> Eval (
       "(function(target, haskellCb){\n\
       \  function listener(target){\n\
-      \    haskellCb(event.target.value);\n\
+      \    haskellCb(event.keyCode);\n\
       \  }\n\
-      \  window.addEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
-      \  return () => window.removeEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
+      \  target.addEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
+      \  return () => target.removeEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
       \})") `Apply` [Arg 0 0, Lam (TriggerCallback sourceId (Arg 0 0))]
   , mk_callback = \k event -> forM_ (fromJSValue event) k
   }
@@ -179,7 +179,7 @@ checkboxChangeConnectArgs = ConnectResourceArgs
       \  function listener(target){\n\
       \    haskellCb(event.target.checked);\n\
       \  }\n\
-      \  window.addEventListener('change', listener);\n\
+      \  target.addEventListener('change', listener);\n\
       \  return () => window.removeEventListener('change', listener);\n\
       \})" `Apply` [Arg 0 0, Lam (TriggerCallback sourceId (Arg 0 0))]
   , mk_callback = \k event -> forM_ (fromJSValue event) k
@@ -193,8 +193,8 @@ selectChangeConnectArgs = ConnectResourceArgs
       \  function listener(target){\n\
       \    haskellCb(event.target.value);\n\
       \  }\n\
-      \  window.addEventListener('change', listener);\n\
-      \  return () => window.removeEventListener('change', listener);\n\
+      \  target.addEventListener('change', listener);\n\
+      \  return () => target.removeEventListener('change', listener);\n\
       \})" `Apply` [Arg 0 0, Lam (TriggerCallback sourceId (Arg 0 0))]
   , mk_callback = \k event -> forM_ (fromJSValue event) k
   }
