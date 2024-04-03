@@ -13,8 +13,12 @@ import Clickable.Protocol
 
 data DynVar a where
   DynVar :: SourceId -> IORef a -> DynVar a
-  ElemVar :: DynVar [a] -> Int -> IORef a -> DynVar a
+  SpyVar :: (UpdateFn a -> UpdateFn a) -> DynVar a -> DynVar a
   LensMap :: Lens' s a -> DynVar s -> DynVar a
+
+type UpdateFn s = forall a. (s -> (s, a)) -> ClickM a
+
+type Lens' s a = forall f. Functor f => (a -> f a) -> s -> f s
 
 data DynVal a where
   ConstVal :: a -> DynVal a
@@ -58,5 +62,3 @@ data InternalState = InternalState
 data FinalizerVal
   = CustomFinalizer (ClickM ())
   | ScopeFinalizer ResourceScope
-
-type Lens' s a = forall f. Functor f => (a -> f a) -> s -> f s

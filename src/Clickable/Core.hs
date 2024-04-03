@@ -35,21 +35,14 @@ newDynVar a = do
   ref <- liftIO $ newIORef a
   state \s -> (DynVar (SourceId s.next_id) ref, s {next_id = s.next_id + 1})
 
-elemVar :: MonadIO m => Int -> DynVar [a] -> a -> m (DynVar a)
-elemVar i var a = do
-  ref <- liftIO $ newIORef a
-  return $ ElemVar var i ref
+spyVar :: (UpdateFn a -> UpdateFn a) -> DynVar a -> DynVar a
+spyVar = SpyVar
 
 readVal :: DynVal a -> ClickM a
-readVal (ConstVal a) = pure a
-readVal (FromVar var) = readVar var
-readVal (MapVal val f) = fmap f $ readVal val
-readVal (SplatVal f a) = liftA2 ($) (readVal f) (readVal a)
+readVal = Internal.readVal
 
 readVar :: DynVar a -> ClickM a
-readVar (DynVar _ ref) = liftIO $ readIORef ref
-readVar (LensMap l var) = fmap (getConst . l Const) $ readVar var
-readVar (ElemVar _ _ ref) = liftIO $ readIORef ref
+readVar = Internal.readVar
 
 modifyVar :: DynVar s -> (s -> (s, a)) -> ClickM a
 modifyVar var@(DynVar varId ref) f = do
@@ -58,12 +51,8 @@ modifyVar var@(DynVar varId ref) f = do
   return a
   where
     g old = let (new, a) = f old in (new, (new, a))
-modifyVar (ElemVar var i _) f = modifyVar var $ overIx i f
-  where
-    overIx :: forall s a. Int -> (s -> (s, a)) -> [s] -> ([s], a)
-    overIx 0 f (x:xs) = let (s, a) = f x in (s : xs, a)
-    overIx n f (x:xs) = let (s, a) = overIx (pred n) f xs in (x : s, a)
-    overIx _ _ [] = error "ElemVar: invalid index"
+modifyVar (SpyVar ufn var) f =
+  ufn (modifyVar var) f
 modifyVar (LensMap l var) f = modifyVar var (swap . l (swap . f))
 
 modifyVar_ :: DynVar s -> (s -> s) -> ClickM ()
@@ -74,6 +63,19 @@ writeVar var s = modifyVar_ var $ const s
 
 subscribe :: DynVal a -> (a -> ClickM ()) -> ClickM ()
 subscribe val k = reactive_ $ Internal.subscribe val k
+
+modifyVarQuiet :: DynVar s -> (s -> (s, a)) -> ClickM a
+modifyVarQuiet var@(DynVar varId ref) f = do
+  (newVal, a) <- liftIO $ atomicModifyIORef' ref g
+  return a
+  where
+    g s = let (s', a) = f s in (s', (s', a))
+modifyVarQuiet (SpyVar ufn var) f =
+  ufn (modifyVarQuiet var) f
+modifyVarQuiet (LensMap l var) f = modifyVarQuiet var (swap . l (swap . f))
+
+modifyVarQuiet_ :: DynVar s -> (s -> s) -> ClickM ()
+modifyVarQuiet_ var f = modifyVarQuiet var ((,()) . f)
 
 --------------------------------------
 -- OPERATIONS OVER evaluation_queue --
@@ -208,20 +210,19 @@ dyn val = do
 
 -- | Auxilliary datatype used in 'simpleList' implementation
 data ElemEnv a = ElemEnv
-  { elem_boundary :: VarId
-  , elem_state_ref :: DynVar a
-  , reactive_scope :: ResourceScope
+  { boundary :: VarId
+  , state_var :: DynVar a
+  , elem_scope :: ResourceScope
   }
 
 simpleList
-  :: forall a. DynVar [a]
+  :: forall a. DynVal [a]
   -- ^ Some dynamic data from the above scope
   -> (Int -> DynVar a -> HtmlM ())
   -- ^ Function to build children widget. Accepts the index inside the
   -- collection and dynamic data for that particular element
   -> HtmlM ()
-simpleList listVar h = lift do
-  let listDyn = fromVar listVar
+simpleList listDyn h = lift do
   internalStateRef <- liftIO $ newIORef ([] :: [ElemEnv a])
   boundary <- insertBoundary
   let
@@ -236,7 +237,7 @@ simpleList listVar h = lift do
       -- New list is longer, append new elements
       ([], x:xs) -> do
         e <- newElem idx x
-        exec e.elem_boundary e.reactive_scope $ h idx e.elem_state_ref
+        exec e.boundary e.elem_scope $ h idx e.state_var
         fmap (e:) $ setup (idx + 1) xs []
       -- New list is shorter, delete the elements that no longer
       -- present in the new list
@@ -245,19 +246,19 @@ simpleList listVar h = lift do
         return []
       -- Update existing elements along the way
       (r:rs, y:ys) -> do
-        writeVar r.elem_state_ref y
+        writeVar r.state_var y
         fmap (r:) $ setup (idx + 1) ys rs
     newElem :: Int -> a -> ClickM (ElemEnv a)
     newElem i a = do
-      scope <- newScope
-      local (\s -> s {scope}) do
-        elem_state_ref <- elemVar i listVar a
-        elem_boundary <- insertBoundary
-        return ElemEnv {reactive_scope = scope, elem_state_ref, elem_boundary}
+      elem_scope <- newScope
+      local (\s -> s {scope = elem_scope}) do
+        state_var <- newDynVar a
+        boundary <- insertBoundary
+        return ElemEnv {elem_scope, state_var, boundary}
     finalizeElems :: Bool -> [ElemEnv a] -> ClickM ()
     finalizeElems remove = mapM_ \ee -> do
-      when remove $ destroyBoundary ee.elem_boundary
-      freeScope True ee.reactive_scope
+      when remove $ destroyBoundary ee.boundary
+      freeScope True ee.elem_scope
     updateList new = do
       eenvs <- liftIO $ readIORef internalStateRef
       newEenvs <- setup 0 new eenvs

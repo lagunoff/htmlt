@@ -71,9 +71,7 @@ eval = \case
   where
     deleteIx :: Int -> [a] -> [a]
     deleteIx _ []     = []
-    deleteIx i (a:as)
-      | i == 0    = as
-      | otherwise = a : deleteIx (i-1) as
+    deleteIx i (a:as) | i == 0 = as | otherwise = a : deleteIx (i-1) as
     mkNewItem t =
       TodoItem.emptyTodoItemState {TodoItem.title = t}
 
@@ -102,9 +100,7 @@ html cfg = do
       ul_ [class_ "todo-list"] do
         simpleList itemsDyn \idx todoRef ->
           TodoItem.html $ TodoItem.TodoItemConfig
-            { TodoItem.state_ref = todoRef
-              -- { modifier = todoItemModifier cfg idx todoRef.modifier
-              -- }
+            { TodoItem.state_ref = spyVar (todoItemUpdated cfg idx) todoRef
             , TodoItem.is_hidden_dyn =
               isTodoItemHidden <$> fromVar cfg.state_ref <*> fromVar todoRef
             , TodoItem.ask_delete_item = eval (DeleteItemAction cfg idx)
@@ -167,30 +163,33 @@ printFilter =  \case
   Active    -> "#/active"
   Completed -> "#/completed"
 
--- -- | Synchronize changes inside TodoItem widget with the outer
--- -- TodoList widget.
--- todoItemModifier
---   :: TodoListConfig
---   -> Int
---   -> Modifier TodoItem.TodoItemState
---   -> Modifier TodoItem.TodoItemState
--- todoItemModifier cfg idx elemModifier = Modifier \upd f -> do
---   -- Update the local TodoItem element widget
---   ((old, new), result) <- unModifier elemModifier upd \old ->
---     let (new, result) = f old in (new, ((old, new), result))
---   let
---     -- When False, the update event won't be propagated into the outer
---     -- widget for the sake of optimization
---     needsUpdate = upd && (old.completed /= new.completed)
---   -- Update the outer widget
---   unModifier cfg.state_ref.modifier needsUpdate \old ->
---     (old {items = overIx idx (const new) old.items}, ())
---   return result
---   where
---     overIx :: Int -> (a -> a) -> [a] -> [a]
---     overIx 0 f (x:xs) = f x : xs
---     overIx n f (x:xs) = x : overIx (pred n) f xs
---     overIx _ _ [] = []
+-- | Synchronize changes inside TodoItem widget with the outer
+-- TodoList widget.
+todoItemUpdated
+  :: TodoListConfig
+  -> Int
+  -> UpdateFn TodoItem.TodoItemState
+  -> UpdateFn TodoItem.TodoItemState
+todoItemUpdated cfg i next f = do
+  -- Update the local TodoItemState
+  ((old, new), result) <- next g
+  let
+    -- When False, the update event won't be propagated into the outer
+    -- widget for the sake of optimization
+    needsUpdate = old.completed /= new.completed
+  -- Update TodoItemState inside the larger state
+  if needsUpdate
+    then modifyVar cfg.state_ref $ h new
+    else modifyVarQuiet cfg.state_ref $ h new
+  return result
+  where
+    g s = let (s', a) = f s in (s', ((s, s'), a))
+    h e s = (s {items = updateIx i e s.items}, ())
+
+    updateIx :: Int -> a -> [a] -> [a]
+    updateIx 0 a (x:xs) = a : xs
+    updateIx n a (x:xs) = x : updateIx (pred n) a xs
+    updateIx _ _ [] = []
 
 styles :: Text
 styles = "\

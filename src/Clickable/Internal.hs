@@ -18,8 +18,8 @@ import Foreign.Ptr
 import Foreign.Storable
 import Unsafe.Coerce
 import Wasm.Compat.Prim
-import Debug.Trace
 import Data.Text qualified as Text
+import Control.Applicative
 
 import Clickable.FFI qualified as FFI
 import Clickable.Protocol
@@ -81,6 +81,7 @@ installFinalizer :: ClickM () -> ResourceScope -> InternalState -> InternalState
 installFinalizer k scope s = s
   {finalizers = (scope, CustomFinalizer k) : s.finalizers}
 
+
 subscribe ::
   DynVal a ->
   (a -> ClickM ()) ->
@@ -91,6 +92,8 @@ subscribe (FromVar (DynVar varId _)) fn scope s = s {subscriptions}
   where
     subscriptions = newSub : s.subscriptions
     newSub = (scope, varId, fn . unsafeCoerce)
+subscribe (FromVar (SpyVar _ var)) fn scope s =
+  subscribe (FromVar var) fn scope s
 subscribe (MapVal v f) fn scope s = subscribe v (fn . f) scope s
 subscribe (SplatVal fv av) fn scope s =
   subscribe av g scope $ subscribe fv f scope $ attachCb s
@@ -106,11 +109,17 @@ subscribe (SplatVal fv av) fn scope s =
       , next_id = s.next_id + 1
       }
     varid = SourceId s.next_id
-    readVal :: DynVal a -> ClickM a
-    readVal (ConstVal a) = pure a
-    readVal (FromVar (DynVar _ ref)) = liftIO $ readIORef ref
-    readVal (MapVal val f) = fmap f $ readVal val
-    readVal (SplatVal f a) = liftA2 ($) (readVal f) (readVal a)
+
+readVal :: DynVal a -> ClickM a
+readVal (ConstVal a) = pure a
+readVal (FromVar var) = readVar var
+readVal (MapVal val f) = fmap f $ readVal val
+readVal (SplatVal f a) = liftA2 ($) (readVal f) (readVal a)
+
+readVar :: DynVar a -> ClickM a
+readVar (DynVar _ ref) = liftIO $ readIORef ref
+readVar (LensMap l var) = fmap (getConst . l Const) $ readVar var
+readVar (SpyVar _ var) = readVar var
 
 sendMessage :: JSVal -> HaskellMessage -> IO JavaScriptMessage
 sendMessage receiveCb hmsg = do
