@@ -2,7 +2,7 @@ import { absurd } from './lib';
 import * as p from './protocol';
 import { HaskellMessage, JavaScriptMessage, JavaScriptMessageTag, HaskellMessageTag, Bindings, List } from './protocol';
 
-export function startClient(devSocketUri: string, startFlags: unknown = null) {
+export function startDev(devSocketUri: string, startFlags: unknown = null) {
   const websocket = new WebSocket(devSocketUri);
 
   const sendToHaskell = async (jsMsg: JavaScriptMessage, argScope: List<IArguments>) => {

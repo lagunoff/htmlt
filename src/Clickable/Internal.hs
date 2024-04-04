@@ -3,19 +3,10 @@ module Clickable.Internal where
 import Control.Applicative
 import Control.Monad.Reader
 import Control.Monad.State
-import Data.Binary (Binary)
-import Data.Binary qualified as Binary
-import Data.ByteString as BS
-import Data.ByteString.Lazy qualified as BSL
-import Data.ByteString.Unsafe qualified as BSU
 import Data.Foldable
 import Data.IORef
 import Data.List qualified as List
 import Data.Map qualified as Map
-import Data.Word
-import Foreign.Marshal.Alloc qualified as Alloc
-import Foreign.Ptr
-import Foreign.Storable
 import Unsafe.Coerce
 
 import Clickable.Protocol
@@ -51,8 +42,8 @@ newScope p s =
   in
     (s', scopeId)
 
-newVar :: ResourceScope -> InternalState -> (InternalState, VarId)
-newVar e s =
+newVarId :: ResourceScope -> InternalState -> (InternalState, VarId)
+newVarId e s =
   (s {next_id = s.next_id + 1}, VarId e s.next_id)
 
 freeScope ::
@@ -80,7 +71,7 @@ subscribe ::
   ResourceScope ->
   InternalState -> InternalState
 subscribe (ConstVal _) _ _ s = s
-subscribe (FromVar (DynVar varId _)) fn scope s = s {subscriptions}
+subscribe (FromVar (SourceVar varId _)) fn scope s = s {subscriptions}
   where
     subscriptions = newSub : s.subscriptions
     newSub = (scope, varId, fn . unsafeCoerce)
@@ -111,7 +102,7 @@ readVal (MapVal val f) = fmap f $ readVal val
 readVal (SplatVal f a) = liftA2 ($) (readVal f) (readVal a)
 
 readVar :: DynVar a -> ClickM a
-readVar (DynVar _ ref) = liftIO $ readIORef ref
+readVar (SourceVar _ ref) = liftIO $ readIORef ref
 readVar (LensMap l var) = fmap (getConst . l Const) $ readVar var
 readVar (OverrideVar _ var) = readVar var
 

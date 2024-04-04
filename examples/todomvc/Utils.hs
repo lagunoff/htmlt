@@ -16,3 +16,6 @@ saveLocalStorage :: ToJSValue v => Text -> v -> ClickM ()
 saveLocalStorage key val = do
   let stringify = Call (Id "JSON") "stringify" . (:[]) . valueToExpr . toJSValue
   enqueueExpr $ Call (Id "localStorage") "setItem" [String key, stringify val]
+
+assignFocus :: VarId -> ClickM ()
+assignFocus elem = enqueueExpr $ Call (Var elem) "focus" []

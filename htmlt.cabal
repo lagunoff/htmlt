@@ -117,22 +117,6 @@ library
       wai-websockets,
       warp,
       websockets,
-      
--- executable htmlt-counter
---   import: htmlt-common         
---   main-is: counter.hs
---   hs-source-dirs: ./examples/counter
---   ghc-options:
---     -no-hs-main -optl-mexec-model=reactor
---     -optl-Wl,--export=hs_init,--export=wasm_app
---   build-depends:
---     base,
---     htmlt,
---     text,
---     mtl,
---     transformers,
---   if !flag(examples)
---     buildable: False
 
 executable htmlt-todomvc
   import: htmlt-common         
@@ -146,6 +130,7 @@ executable htmlt-todomvc
     ghc-options: -threaded
     main-is: dev.hs
   other-modules:
+    App
     TodoItem
     TodoList
     Utils
@@ -156,37 +141,3 @@ executable htmlt-todomvc
     mtl,
   if !flag(examples)
     buildable: False
-
--- executable htmlt-simple-routing
---   import: htmlt-common         
---   main-is: simple-routing.hs
---   hs-source-dirs: ./examples/simple-routing
---   ghc-options:
---     -no-hs-main -optl-mexec-model=reactor
---     -optl-Wl,--export=hs_init,--export=wasm_app
---   other-modules:
---     Assets
---     Router
---     Pages
---     Utils
---   build-depends:
---     base,
---     bytestring,
---     mtl,
---     htmlt,
---     text,
---   if !flag(examples)
---     buildable: False
-  
--- executable htmlt-benchmarks
---   import: htmlt-common         
---   main-is: benchmarks.hs
---   hs-source-dirs: ./benchmarks/
---   build-depends:
---     base,
---     htmlt,
---     text,
---     gauge,
---   -- Fails to build with javascript-backend
---   buildable: False
-  

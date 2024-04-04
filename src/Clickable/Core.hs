@@ -26,10 +26,10 @@ import Clickable.Protocol.Value qualified as Value
 -- OPERATIONS OVER DYNAMIC VARIABLES --
 ---------------------------------------
 
-newDynVar :: a -> ClickM (DynVar a)
-newDynVar a = do
+newVar :: a -> ClickM (DynVar a)
+newVar a = do
   ref <- liftIO $ newIORef a
-  state \s -> (DynVar (SourceId s.next_id) ref, s {next_id = s.next_id + 1})
+  state \s -> (SourceVar (SourceId s.next_id) ref, s {next_id = s.next_id + 1})
 
 overrideVar :: (UpdateFn a -> UpdateFn a) -> DynVar a -> DynVar a
 overrideVar = OverrideVar
@@ -41,7 +41,7 @@ readVar :: DynVar a -> ClickM a
 readVar = Internal.readVar
 
 modifyVar :: DynVar s -> (s -> (s, a)) -> ClickM a
-modifyVar var@(DynVar varId ref) f = do
+modifyVar var@(SourceVar varId ref) f = do
   (newVal, a) <- liftIO $ atomicModifyIORef' ref g
   modify $ Internal.unsafeTrigger varId newVal
   return a
@@ -61,7 +61,7 @@ subscribe :: DynVal a -> (a -> ClickM ()) -> ClickM ()
 subscribe val k = reactive_ $ Internal.subscribe val k
 
 modifyVarQuiet :: DynVar s -> (s -> (s, a)) -> ClickM a
-modifyVarQuiet var@(DynVar varId ref) f = do
+modifyVarQuiet var@(SourceVar varId ref) f = do
   (newVal, a) <- liftIO $ atomicModifyIORef' ref g
   return a
   where
@@ -107,8 +107,8 @@ freeScope unlink s =
 installFinalizer :: ClickM () -> ClickM ()
 installFinalizer k = reactive_ $ Internal.installFinalizer k
 
-newVar :: ClickM VarId
-newVar = reactive Internal.newVar
+newVarId :: ClickM VarId
+newVarId = reactive Internal.newVarId
 
 ------------------
 -- BUILDING DOM --
@@ -141,7 +141,7 @@ dynText :: DynVal Text -> HtmlM ()
 dynText val = do
   scope <- lift $ asks (.scope)
   t <- lift $ readVal val
-  v <- lift $ newVar
+  v <- lift $ newVarId
   lift $ modify $ f v t
   lift $ subscribe val $ enqueueExpr . UpdateTextNode (Var v)
   where
@@ -205,7 +205,7 @@ dyn val = do
     exec $ update newVal
 
 -- | Auxilliary datatype used in 'simpleList' implementation
-data InternalElem a = InternalElem
+data ElemEnv a = ElemEnv
   { boundary :: VarId
   , state_var :: DynVar a
   , elem_scope :: ResourceScope
@@ -222,7 +222,7 @@ simpleList
   -- ^ Build HTML for each element in the list
   -> HtmlM ()
 simpleList listDyn h = lift do
-  internalStateRef <- liftIO $ newIORef ([] :: [InternalElem a])
+  internalStateRef <- liftIO $ newIORef ([] :: [ElemEnv a])
   boundary <- insertBoundary
   let
     exec boundary scope h = evalStateT h.unHtmlT Nothing
@@ -230,7 +230,7 @@ simpleList listDyn h = lift do
       & local (\s -> s {scope})
     exec1 boundary = htmlBuilder1 (Var boundary)
 
-    setup :: Int -> [a] -> [InternalElem a] -> ClickM [InternalElem a]
+    setup :: Int -> [a] -> [ElemEnv a] -> ClickM [ElemEnv a]
     setup idx new existing = case (existing, new) of
       ([], []) -> return []
       -- New list is longer, append new elements
@@ -247,14 +247,14 @@ simpleList listDyn h = lift do
       (r:rs, y:ys) -> do
         writeVar r.state_var y
         fmap (r:) $ setup (idx + 1) ys rs
-    newElem :: Int -> a -> ClickM (InternalElem a)
+    newElem :: Int -> a -> ClickM (ElemEnv a)
     newElem i a = do
       elem_scope <- newScope
       local (\s -> s {scope = elem_scope}) do
-        state_var <- newDynVar a
+        state_var <- newVar a
         boundary <- insertBoundary
-        return InternalElem {elem_scope, state_var, boundary}
-    finalizeElems :: Bool -> [InternalElem a] -> ClickM ()
+        return ElemEnv {elem_scope, state_var, boundary}
+    finalizeElems :: Bool -> [ElemEnv a] -> ClickM ()
     finalizeElems remove = mapM_ \ee -> do
       when remove $ destroyBoundary ee.boundary
       freeScope True ee.elem_scope
@@ -291,7 +291,7 @@ saveCurrentNode = do
   alreadySaved <- HtmlT get
   case alreadySaved of
     Nothing -> do
-      varId <- lift newVar
+      varId <- lift newVarId
       HtmlT $ put $ Just varId
       lift $ enqueueExpr $ AssignVar varId (Arg 0 0)
       return varId
@@ -299,7 +299,7 @@ saveCurrentNode = do
 
 insertBoundary :: ClickM VarId
 insertBoundary = do
-  boundary <- newVar
+  boundary <- newVarId
   enqueueExpr $ AssignVar boundary (InsertBoundary (Arg 0 0))
   return boundary
 

@@ -1,6 +1,7 @@
 module Clickable.Types where
 
 import Control.Monad.Reader
+import Control.Monad.Fix
 import Control.Monad.State
 import Data.IORef
 import Data.Int
@@ -12,7 +13,7 @@ import GHC.Exts
 import Clickable.Protocol
 
 data DynVar a where
-  DynVar :: SourceId -> IORef a -> DynVar a
+  SourceVar :: SourceId -> IORef a -> DynVar a
   OverrideVar :: (UpdateFn a -> UpdateFn a) -> DynVar a -> DynVar a
   LensMap :: Lens' s a -> DynVar s -> DynVar a
 
@@ -34,10 +35,10 @@ fromVar :: DynVar a -> DynVal a
 fromVar = FromVar
 
 newtype HtmlT m a = HtmlT {unHtmlT :: StateT (Maybe VarId) m a}
-  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadTrans)
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadFix, MonadTrans)
 
 newtype ClickT m a = ClickT {unClickT :: ReaderT InternalEnv m a}
-  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadReader InternalEnv, MonadTrans)
+  deriving newtype (Functor, Applicative, Monad, MonadIO, MonadFix, MonadReader InternalEnv, MonadTrans)
 
 type HtmlM = HtmlT ClickM
 type ClickM = ClickT IO

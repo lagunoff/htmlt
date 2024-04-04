@@ -25,31 +25,31 @@ data Filter = All | Active | Completed
   deriving (Show, Eq)
 
 data TodoListAction a where
-  ToggleAllAction :: TodoListConfig -> Bool -> TodoListAction ()
-  InputAction :: TodoListConfig -> Text -> TodoListAction ()
-  CommitAction :: TodoListConfig -> TodoListAction ()
-  KeydownAction :: TodoListConfig -> Int64 -> TodoListAction ()
-  DeleteItemAction :: TodoListConfig -> Int -> TodoListAction ()
-  ClearCompletedAction :: TodoListConfig -> TodoListAction ()
+  ToggleAllAction :: Bool -> TodoListAction ()
+  InputAction :: Text -> TodoListAction ()
+  CommitAction :: TodoListAction ()
+  KeydownAction :: Int64 -> TodoListAction ()
+  DeleteItemAction :: Int -> TodoListAction ()
+  ClearCompletedAction :: TodoListAction ()
 
 new :: [TodoItem.TodoItemState] -> ClickM (DynVar TodoListState)
 new items =
-  newDynVar TodoListState
+  newVar TodoListState
     { title = ""
     , items = items
     , filter = All
     }
 
-eval :: TodoListAction a -> ClickM a
-eval = \case
-  ToggleAllAction cfg isChecked ->
+eval :: TodoListConfig -> TodoListAction a -> ClickM a
+eval cfg = \case
+  ToggleAllAction isChecked ->
     modifyVar_ cfg.state_var \s -> s
       { items =
         fmap (\i -> i {TodoItem.completed = isChecked}) s.items
       }
-  InputAction cfg newVal -> do
+  InputAction newVal -> do
     modifyVar_ cfg.state_var \s -> s {title = newVal}
-  CommitAction cfg -> do
+  CommitAction -> do
     title <- Text.strip . (.title) <$> readVar cfg.state_var
     case title of
       "" -> return ()
@@ -57,16 +57,16 @@ eval = \case
         { items = s.items <> [mkNewTodo t]
         , title = ""
         }
-  KeydownAction cfg key -> do
+  KeydownAction key -> do
     case key of
-      13 {- Enter -} -> eval (CommitAction cfg)
+      13 {- Enter -} -> eval cfg CommitAction
       27 {- Escape -} -> do
         s <- readVar cfg.state_var
         consoleLog $ Text.pack $ show s
       _ -> return ()
-  DeleteItemAction cfg itemIx ->
+  DeleteItemAction itemIx ->
     modifyVar_ cfg.state_var \s -> s {items = deleteIx itemIx s.items}
-  ClearCompletedAction cfg ->
+  ClearCompletedAction ->
     modifyVar_ cfg.state_var \s -> s
       {items = (List.filter (not . TodoItem.completed)) s.items}
   where
@@ -88,22 +88,22 @@ html cfg = do
       h1_ (text "todos")
       input_ [class_ "new-todo", placeholder_ "What needs to be done?", autofocus_ True] do
         dynValue $ (.title) <$> fromVar cfg.state_var
-        on @"input" $ eval . InputAction cfg
-        on @"keydown" $ eval . KeydownAction cfg
+        on @"input" $ eval cfg . InputAction
+        on @"keydown" $ eval cfg . KeydownAction
     mainWidget = section_ [class_ "main"] do
       toggleClass "hidden" hiddenDyn
       input_ [id_ "toggle-all", class_ "toggle-all", type_ "checkbox"] do
-        on @"checkbox/change" $ eval . ToggleAllAction cfg
+        on @"checkbox/change" $ eval cfg . ToggleAllAction
       label_ do
         attribute "for" "toggle-all"
         text "Mark all as completed"
       ul_ [class_ "todo-list"] do
-        simpleList itemsDyn \idx todoRef ->
+        simpleList itemsDyn \i todoRef ->
           TodoItem.html $ TodoItem.TodoItemConfig
-            { TodoItem.state_var = overrideVar (todoItemUpdated cfg idx) todoRef
+            { TodoItem.state_var = overrideVar (todoItemUpdated cfg i) todoRef
             , TodoItem.is_hidden_dyn =
               isTodoItemHidden <$> fromVar cfg.state_var <*> fromVar todoRef
-            , TodoItem.ask_delete_item = eval (DeleteItemAction cfg idx)
+            , TodoItem.ask_delete_item = eval cfg $ DeleteItemAction i
             }
     footerWidget = footer_ [class_ "footer"] do
       toggleClass "hidden" hiddenDyn
@@ -113,7 +113,7 @@ html cfg = do
       ul_ [class_ "filters"] do
         forM_ [All, Active, Completed] filterWidget
       button_ [class_ "clear-completed"] do
-        on @"click" $ eval (ClearCompletedAction cfg)
+        on @"click" $ eval cfg ClearCompletedAction
         text "Clear completed"
     footerInfoWidget = footer_ [class_ "info"] do
       p_ "Double-click to edit a todo"
@@ -146,25 +146,8 @@ html cfg = do
         (Completed, False) -> True
         _                  -> False
 
-pluralize :: Text -> Text -> Int -> Text
-pluralize singular _plural 0 = singular
-pluralize _singular plural _ = plural
-
-parseFilter :: Text -> Maybe Filter
-parseFilter =  \case
-  "#/"          -> Just All
-  "#/active"    -> Just Active
-  "#/completed" -> Just Completed
-  _             -> Nothing
-
-printFilter :: Filter -> Text
-printFilter =  \case
-  All       -> "#/"
-  Active    -> "#/active"
-  Completed -> "#/completed"
-
--- | Synchronize changes inside TodoItem widget with the outer
--- TodoList widget.
+-- | Synchronize TodoItem state with the larger state of TodoList
+-- widget.
 todoItemUpdated
   :: TodoListConfig
   -> Int
@@ -190,6 +173,23 @@ todoItemUpdated cfg i next f = do
     updateIx 0 a (x:xs) = a : xs
     updateIx n a (x:xs) = x : updateIx (pred n) a xs
     updateIx _ _ [] = []
+
+pluralize :: Text -> Text -> Int -> Text
+pluralize singular _plural 0 = singular
+pluralize _singular plural _ = plural
+
+parseFilter :: Text -> Maybe Filter
+parseFilter =  \case
+  "#/"          -> Just All
+  "#/active"    -> Just Active
+  "#/completed" -> Just Completed
+  _             -> Nothing
+
+printFilter :: Filter -> Text
+printFilter =  \case
+  All       -> "#/"
+  Active    -> "#/active"
+  Completed -> "#/completed"
 
 styles :: Text
 styles = "\
