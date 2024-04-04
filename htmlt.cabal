@@ -85,7 +85,7 @@ library
     Clickable.DOM
     Clickable.Element
     Clickable.Property
-    Clickable.Main
+    Clickable.Main.WASM
     Clickable.Types
     Clickable.Internal
     Clickable.Protocol

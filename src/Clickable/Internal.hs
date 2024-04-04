@@ -14,27 +14,21 @@ import Data.List qualified as List
 import Data.Map qualified as Map
 import Data.Word
 import Foreign.Marshal.Alloc qualified as Alloc
-import Foreign.Marshal.Utils
 import Foreign.Ptr
 import Foreign.Storable
 import Unsafe.Coerce
-import Wasm.Compat.Prim
 
-import Clickable.FFI qualified as FFI
 import Clickable.Protocol
 import Clickable.Types
 
-emptyInternalState :: InternalState
-emptyInternalState = InternalState [] [] Map.empty [] 0
+emptyState :: InternalState
+emptyState = InternalState [] [] Map.empty [] 0
 
-newInternalEnv :: IO InternalEnv
-newInternalEnv = mdo
-  let state = emptyInternalState
-  let scope = ResourceScope state.next_id
-  internal_state_ref <- newIORef state {next_id = state.next_id + 1}
-  receiveCb <- FFI.js_exportCallback $ receiveMessage env
-  let env = InternalEnv {internal_state_ref, scope, send_message = sendMessage receiveCb}
-  return env
+newInternalEnv :: (HaskellMessage -> IO JavaScriptMessage) -> IO InternalEnv
+newInternalEnv send_message = do
+  let scope = ResourceScope emptyState.next_id
+  internal_state_ref <- newIORef emptyState {next_id = emptyState.next_id + 1}
+  return InternalEnv {internal_state_ref, scope, send_message}
 
 -- | Unsafe because there is no gurantee that @a@ matches @a@ in
 -- correspoding @DynVar a@ where SourceId comes from
@@ -121,45 +115,6 @@ readVar (DynVar _ ref) = liftIO $ readIORef ref
 readVar (LensMap l var) = fmap (getConst . l Const) $ readVar var
 readVar (OverrideVar _ var) = readVar var
 
-sendMessage :: JSVal -> HaskellMessage -> IO JavaScriptMessage
-sendMessage receiveCb hmsg = do
-  hptr <- storeByteString $ BSL.toStrict $ Binary.encode hmsg
-  jptr <- FFI.js_evalMessageFFI receiveCb hptr
-  Alloc.free hptr
-  Binary.decode . BSL.fromStrict <$> loadByteString jptr
-  where
-    storeByteString :: ByteString -> IO (Ptr a)
-    storeByteString bs = do
-      let len = BS.length bs
-      dest <- Alloc.callocBytes (len + 8)
-      poke @Word64 dest (fromIntegral len)
-      BSU.unsafeUseAsCStringLen bs $ \(src, _) ->
-        copyBytes (dest `plusPtr` 8) src len
-      return (castPtr dest)
-
-    loadByteString :: Ptr a -> IO ByteString
-    loadByteString ptr = do
-      len <- peek @Word64 (castPtr ptr)
-      let contentPtr = ptr `plusPtr` 8
-      BSU.unsafePackCStringFinalizer contentPtr (fromIntegral len) (Alloc.free ptr)
-
-receiveMessage :: InternalEnv -> Ptr Word8 -> IO ()
-receiveMessage e jptr = do
-  jbytes <- loadByteString jptr
-  let jmsg = Binary.decode $ BSL.fromStrict jbytes
-  case jmsg of
-    Start _value -> return ()
-    Return _value -> return ()
-    TriggerCallbackMsg arg sourceId ->
-      launchClickM e $ modify (unsafeTrigger sourceId arg)
-    BeforeUnload -> return ()
-  where
-    loadByteString :: Ptr a -> IO ByteString
-    loadByteString ptr = do
-      len <- peek @Word64 (castPtr ptr)
-      let contentPtr = ptr `plusPtr` 8
-      BSU.unsafePackCStringFinalizer contentPtr (fromIntegral len) (Alloc.free ptr)
-
 launchClickM :: InternalEnv -> ClickM a -> IO a
 launchClickM env = flip runReaderT env . unClickT . (<* syncPoint) . trampoline
 
@@ -208,12 +163,3 @@ data ClientMessage
   -- ^ Bypass protocol and inject a command directly into the
   -- DevServer instance (useful for delivering notifications under
   -- devserver)
-
-loadMessage :: Binary msg => Ptr a -> IO msg
-loadMessage = fmap (Binary.decode . BSL.fromStrict) . loadByteString
-  where
-    loadByteString :: Ptr a -> IO ByteString
-    loadByteString ptr = do
-      len <- peek @Word64 (castPtr ptr)
-      let contentPtr = ptr `plusPtr` 8
-      BSU.unsafePackCStringFinalizer contentPtr (fromIntegral len) (Alloc.free ptr)

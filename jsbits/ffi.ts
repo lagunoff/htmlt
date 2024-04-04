@@ -42,13 +42,13 @@ export function storeBuffer(exports: HaskellExports, u8array: Uint8Array): Haske
 
 type SendMessageCallback = (jptr: HaskellPointer) => void;
 
-export function evalMessageFFI(javascriptMessageCallback: SendMessageCallback, exports: HaskellExports, ptr: HaskellPointer): HaskellPointer {
+export function evalMessage(exports: HaskellExports, ptr: HaskellPointer): HaskellPointer {
   const inbuf = loadBuffer(exports, ptr);
   const haskMsg = p.haskellMessage.decode(inbuf);
   const jsCallback = (jsmsg: JavaScriptMessage, _argScope: List<IArguments>) => {
     const outbuf = p.javascriptMessage.encode(jsmsg);
     const ptr = storeBuffer(exports, outbuf);
-    javascriptMessageCallback(ptr);
+    exports.wasm_main(ptr);
   };
   switch (haskMsg.tag) {
     case HaskellMessageTag.EvalExpr: {
@@ -93,7 +93,8 @@ export async function startWasm(wasmUri: string, startFlags: unknown = null) {
   await inst.exports.hs_init();
 
   const startFlagsValue = p.unknownToValue(startFlags);
-  const startFlagsBuffer = p.jvalue.encode(startFlagsValue);
+  const startFlagsMessage: JavaScriptMessage = { tag: JavaScriptMessageTag.Start, 0: startFlagsValue };
+  const startFlagsBuffer = p.javascriptMessage.encode(startFlagsMessage);
   const startFlagsPtr = storeBuffer(__exports, startFlagsBuffer);
 
   // @ts-ignore
