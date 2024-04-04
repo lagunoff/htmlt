@@ -1,4 +1,4 @@
-import { evalMessage } from './ffi';
+import { evalMessage } from './wasm';
 
 // This file implements the JavaScript runtime logic for Haskell
 // modules that use JSFFI. It is not an ESM module, but the template

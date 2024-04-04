@@ -1,5 +1,5 @@
-import Clickable.Main.DevServer
+import Clickable.Main.Dev
 import App (app)
 
 main :: IO ()
-main = runServer app
+main = runDev app

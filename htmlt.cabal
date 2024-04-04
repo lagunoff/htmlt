@@ -85,7 +85,7 @@ library
     Clickable.DOM
     Clickable.Element
     Clickable.Property
-    Clickable.Main.WASM
+    Clickable.Main.Wasm
     Clickable.Types
     Clickable.Internal
     Clickable.Protocol
@@ -107,7 +107,7 @@ library
     ghc-prim,
   if !arch(wasm32)
     exposed-modules:
-      Clickable.Main.DevServer
+      Clickable.Main.Dev
     build-depends:
       async,
       foreign-store,
@@ -124,7 +124,7 @@ library
 --   hs-source-dirs: ./examples/counter
 --   ghc-options:
 --     -no-hs-main -optl-mexec-model=reactor
---     -optl-Wl,--export=hs_init,--export=wasm_main
+--     -optl-Wl,--export=hs_init,--export=wasm_app
 --   build-depends:
 --     base,
 --     htmlt,
@@ -140,7 +140,7 @@ executable htmlt-todomvc
   if arch(wasm32)
     ghc-options:
       -no-hs-main -optl-mexec-model=reactor
-      -optl-Wl,--export=hs_init,--export=wasm_main,--export=malloc
+      -optl-Wl,--export=hs_init,--export=wasm_app,--export=malloc
     main-is: wasm.hs
   else
     ghc-options: -threaded
@@ -163,7 +163,7 @@ executable htmlt-todomvc
 --   hs-source-dirs: ./examples/simple-routing
 --   ghc-options:
 --     -no-hs-main -optl-mexec-model=reactor
---     -optl-Wl,--export=hs_init,--export=wasm_main
+--     -optl-Wl,--export=hs_init,--export=wasm_app
 --   other-modules:
 --     Assets
 --     Router

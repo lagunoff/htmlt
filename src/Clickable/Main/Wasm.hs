@@ -1,4 +1,4 @@
-module Clickable.Main.WASM where
+module Clickable.Main.Wasm where
 
 import Control.Monad.State
 import Data.Binary (Binary)
@@ -19,8 +19,8 @@ import Clickable.Core
 import Clickable.Internal qualified as Internal
 import Clickable.Types
 
-runApp :: (StartFlags -> ClickM ()) -> Ptr Word8 -> IO ()
-runApp app p = mdo
+runWasm :: (StartFlags -> ClickM ()) -> Ptr Word8 -> IO ()
+runWasm app p = mdo
   jmsg <- loadMessage p
   case jmsg of
     Start flags ->

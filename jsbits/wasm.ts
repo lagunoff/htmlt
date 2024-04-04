@@ -8,7 +8,7 @@ export type HaskellPointer = number;
 
 export type HaskellExports = {
   hs_init: () => void;
-  wasm_main: (flags: HaskellPointer) => void;
+  wasm_app: (flags: HaskellPointer) => void;
   malloc: (size: number) => HaskellPointer;
   memory: WebAssembly.Memory;
 };
@@ -40,15 +40,13 @@ export function storeBuffer(exports: HaskellExports, u8array: Uint8Array): Haske
   return ptr;
 }
 
-type SendMessageCallback = (jptr: HaskellPointer) => void;
-
 export function evalMessage(exports: HaskellExports, ptr: HaskellPointer): HaskellPointer {
   const inbuf = loadBuffer(exports, ptr);
   const haskMsg = p.haskellMessage.decode(inbuf);
   const jsCallback = (jsmsg: JavaScriptMessage, _argScope: List<IArguments>) => {
     const outbuf = p.javascriptMessage.encode(jsmsg);
     const ptr = storeBuffer(exports, outbuf);
-    exports.wasm_main(ptr);
+    exports.wasm_app(ptr);
   };
   switch (haskMsg.tag) {
     case HaskellMessageTag.EvalExpr: {
@@ -98,5 +96,12 @@ export async function startWasm(wasmUri: string, startFlags: unknown = null) {
   const startFlagsPtr = storeBuffer(__exports, startFlagsBuffer);
 
   // @ts-ignore
-  await inst.exports.wasm_main(startFlagsPtr);
+  await inst.exports.wasm_app(startFlagsPtr);
+
+  window.addEventListener("beforeunload", () => {
+    const unloadMessage: JavaScriptMessage = { tag: JavaScriptMessageTag.BeforeUnload };
+    const unloadBuffer = p.javascriptMessage.encode(unloadMessage);
+    const unloadPtr = storeBuffer(__exports, unloadBuffer);
+    __exports.wasm_app(unloadPtr);
+  });
 };

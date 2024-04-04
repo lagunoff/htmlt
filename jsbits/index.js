@@ -1,5 +1,5 @@
-import * as ffi from './ffi';
-import * as devserver from './devserver';
+import * as wasm from './wasm';
+import * as dev from './dev';
 
-window.startWasm = ffi.startWasm;
-window.startClient = devserver.startClient;
+window.startWasm = wasm.startWasm;
+window.startDev = devserver.startDev;
