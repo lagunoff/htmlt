@@ -8,13 +8,12 @@ module Clickable.Core
 import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.State
-import Data.IORef
-import Data.Tuple
 import Data.Function ((&))
+import Data.IORef
+import Data.String
 import Data.Text (Text)
 import Data.Text qualified as Text
-import Data.String
-import Control.Applicative
+import Data.Tuple
 
 import Clickable.Internal (reactive, reactive_)
 import Clickable.Internal qualified as Internal
@@ -27,16 +26,13 @@ import Clickable.Protocol.Value qualified as Value
 -- OPERATIONS OVER DYNAMIC VARIABLES --
 ---------------------------------------
 
-mapVar :: DynVar a -> (a -> b) -> DynVal b
-mapVar var = MapVal (FromVar var)
-
 newDynVar :: a -> ClickM (DynVar a)
 newDynVar a = do
   ref <- liftIO $ newIORef a
   state \s -> (DynVar (SourceId s.next_id) ref, s {next_id = s.next_id + 1})
 
-spyVar :: (UpdateFn a -> UpdateFn a) -> DynVar a -> DynVar a
-spyVar = SpyVar
+overrideVar :: (UpdateFn a -> UpdateFn a) -> DynVar a -> DynVar a
+overrideVar = OverrideVar
 
 readVal :: DynVal a -> ClickM a
 readVal = Internal.readVal
@@ -51,7 +47,7 @@ modifyVar var@(DynVar varId ref) f = do
   return a
   where
     g old = let (new, a) = f old in (new, (new, a))
-modifyVar (SpyVar ufn var) f =
+modifyVar (OverrideVar ufn var) f =
   ufn (modifyVar var) f
 modifyVar (LensMap l var) f = modifyVar var (swap . l (swap . f))
 
@@ -70,7 +66,7 @@ modifyVarQuiet var@(DynVar varId ref) f = do
   return a
   where
     g s = let (s', a) = f s in (s', (s', a))
-modifyVarQuiet (SpyVar ufn var) f =
+modifyVarQuiet (OverrideVar ufn var) f =
   ufn (modifyVarQuiet var) f
 modifyVarQuiet (LensMap l var) f = modifyVarQuiet var (swap . l (swap . f))
 
@@ -147,7 +143,7 @@ dynText val = do
   t <- lift $ readVal val
   v <- lift $ newVar
   lift $ modify $ f v t
-  lift $ subscribe val $ enqueueIfAlive scope . UpdateTextNode (Var v)
+  lift $ subscribe val $ enqueueExpr . UpdateTextNode (Var v)
   where
     f v t s = s {evaluation_queue = expr v t : s.evaluation_queue }
     expr v t = InsertNode (Arg 0 0) $ AssignVar v $ CreateTextNode t
@@ -158,7 +154,7 @@ dynProp k val = do
   t <- lift $ readVal val
   v <- saveCurrentNode
   lift $ modify $ f t
-  lift $ subscribe val $ enqueueIfAlive scope . ElementProp (Var v) k . String
+  lift $ subscribe val $ enqueueExpr . ElementProp (Var v) k . String
   where
     f v s = s {evaluation_queue = expr v : s.evaluation_queue }
     expr v = ElementProp (Arg 0 0) k (String v)
@@ -169,7 +165,7 @@ dynBoolProp k val = do
   t <- lift $ readVal val
   v <- saveCurrentNode
   lift $ modify $ f t
-  lift $ subscribe val $ enqueueIfAlive scope . ElementProp (Var v) k . Boolean
+  lift $ subscribe val $ enqueueExpr . ElementProp (Var v) k . Boolean
   where
     f v s = s {evaluation_queue = expr v : s.evaluation_queue }
     expr v = ElementProp (Arg 0 0) k (Boolean v)
@@ -185,7 +181,7 @@ toggleClass className val = do
     updateCmd False = RemoveClassList (Var n) [className]
     updateCmd True = InsertClassList (Var n) [className]
   lift $ modify \s -> s {evaluation_queue = initCmd v s.evaluation_queue}
-  lift $ subscribe val $ enqueueIfAlive scope . updateCmd
+  lift $ subscribe val $ enqueueExpr . updateCmd
 
 ---------------------
 -- DYNAMIC CONTENT --
@@ -209,21 +205,24 @@ dyn val = do
     exec $ update newVal
 
 -- | Auxilliary datatype used in 'simpleList' implementation
-data ElemEnv a = ElemEnv
+data InternalElem a = InternalElem
   { boundary :: VarId
   , state_var :: DynVar a
   , elem_scope :: ResourceScope
   }
 
+-- | Display dynamic collection of widgets. NOTE: changes in `DynVar
+-- a` do not automatically propagate into the larger state. See
+-- `OverrideVar` and todomvc example to see one way to upstream
+-- changes into the larger state.
 simpleList
   :: forall a. DynVal [a]
-  -- ^ Some dynamic data from the above scope
+  -- ^ Dynamic collection
   -> (Int -> DynVar a -> HtmlM ())
-  -- ^ Function to build children widget. Accepts the index inside the
-  -- collection and dynamic data for that particular element
+  -- ^ Build HTML for each element in the list
   -> HtmlM ()
 simpleList listDyn h = lift do
-  internalStateRef <- liftIO $ newIORef ([] :: [ElemEnv a])
+  internalStateRef <- liftIO $ newIORef ([] :: [InternalElem a])
   boundary <- insertBoundary
   let
     exec boundary scope h = evalStateT h.unHtmlT Nothing
@@ -231,7 +230,7 @@ simpleList listDyn h = lift do
       & local (\s -> s {scope})
     exec1 boundary = htmlBuilder1 (Var boundary)
 
-    setup :: Int -> [a] -> [ElemEnv a] -> ClickM [ElemEnv a]
+    setup :: Int -> [a] -> [InternalElem a] -> ClickM [InternalElem a]
     setup idx new existing = case (existing, new) of
       ([], []) -> return []
       -- New list is longer, append new elements
@@ -248,14 +247,14 @@ simpleList listDyn h = lift do
       (r:rs, y:ys) -> do
         writeVar r.state_var y
         fmap (r:) $ setup (idx + 1) ys rs
-    newElem :: Int -> a -> ClickM (ElemEnv a)
+    newElem :: Int -> a -> ClickM (InternalElem a)
     newElem i a = do
       elem_scope <- newScope
       local (\s -> s {scope = elem_scope}) do
         state_var <- newDynVar a
         boundary <- insertBoundary
-        return ElemEnv {elem_scope, state_var, boundary}
-    finalizeElems :: Bool -> [ElemEnv a] -> ClickM ()
+        return InternalElem {elem_scope, state_var, boundary}
+    finalizeElems :: Bool -> [InternalElem a] -> ClickM ()
     finalizeElems remove = mapM_ \ee -> do
       when remove $ destroyBoundary ee.boundary
       freeScope True ee.elem_scope
@@ -287,16 +286,6 @@ htmlBuilder1 builder content = do
   modify \s -> s {evaluation_queue = mkExpr s.evaluation_queue : prevQueue}
   return result
 
-enqueueIfAlive :: ResourceScope -> Expr -> ClickM ()
-enqueueIfAlive scope e = modify \s ->
-  let
-    evaluation_queue =
-      -- if Map.member scope s.finalizers
-      if True
-        then e : s.evaluation_queue else s.evaluation_queue
-  in
-    s {evaluation_queue}
-
 saveCurrentNode :: HtmlM VarId
 saveCurrentNode = do
   alreadySaved <- HtmlT get
@@ -326,9 +315,8 @@ attachHtml rootElm contents = do
   evalStateT contents.unHtmlT Nothing
     <* modify (enqueueHtml savedQueue)
   where
-    enqueueHtml savedQueue s = s {evaluation_queue = e : savedQueue}
-      where
-        e = Lam (RevSeq (Arg 0 0 : s.evaluation_queue)) `Apply` [rootElm]
+    enqueueHtml saved s = s {evaluation_queue = e : saved} where
+      e = Lam (RevSeq (Arg 0 0 : s.evaluation_queue)) `Apply` [rootElm]
     saveQueue s =
       (s.evaluation_queue, s {evaluation_queue = []})
 

@@ -1,6 +1,5 @@
 import Clickable.Main.DevServer
-
-import "this" JsMain (jsMain)
+import App (app)
 
 main :: IO ()
-main = runServer jsMain
+main = runServer app

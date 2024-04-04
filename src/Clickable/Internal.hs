@@ -1,13 +1,14 @@
 module Clickable.Internal where
 
+import Control.Applicative
 import Control.Monad.Reader
 import Control.Monad.State
-import Data.Binary qualified as Binary
 import Data.Binary (Binary)
-import Data.Foldable
+import Data.Binary qualified as Binary
 import Data.ByteString as BS
 import Data.ByteString.Lazy qualified as BSL
 import Data.ByteString.Unsafe qualified as BSU
+import Data.Foldable
 import Data.IORef
 import Data.List qualified as List
 import Data.Map qualified as Map
@@ -18,8 +19,6 @@ import Foreign.Ptr
 import Foreign.Storable
 import Unsafe.Coerce
 import Wasm.Compat.Prim
-import Data.Text qualified as Text
-import Control.Applicative
 
 import Clickable.FFI qualified as FFI
 import Clickable.Protocol
@@ -81,7 +80,6 @@ installFinalizer :: ClickM () -> ResourceScope -> InternalState -> InternalState
 installFinalizer k scope s = s
   {finalizers = (scope, CustomFinalizer k) : s.finalizers}
 
-
 subscribe ::
   DynVal a ->
   (a -> ClickM ()) ->
@@ -92,8 +90,10 @@ subscribe (FromVar (DynVar varId _)) fn scope s = s {subscriptions}
   where
     subscriptions = newSub : s.subscriptions
     newSub = (scope, varId, fn . unsafeCoerce)
-subscribe (FromVar (SpyVar _ var)) fn scope s =
+subscribe (FromVar (OverrideVar _ var)) fn scope s =
   subscribe (FromVar var) fn scope s
+subscribe (FromVar (LensMap l var)) fn scope s =
+  subscribe (FromVar var) (fn . getConst . l Const) scope s
 subscribe (MapVal v f) fn scope s = subscribe v (fn . f) scope s
 subscribe (SplatVal fv av) fn scope s =
   subscribe av g scope $ subscribe fv f scope $ attachCb s
@@ -119,7 +119,7 @@ readVal (SplatVal f a) = liftA2 ($) (readVal f) (readVal a)
 readVar :: DynVar a -> ClickM a
 readVar (DynVar _ ref) = liftIO $ readIORef ref
 readVar (LensMap l var) = fmap (getConst . l Const) $ readVar var
-readVar (SpyVar _ var) = readVar var
+readVar (OverrideVar _ var) = readVar var
 
 sendMessage :: JSVal -> HaskellMessage -> IO JavaScriptMessage
 sendMessage receiveCb hmsg = do
@@ -150,8 +150,7 @@ receiveMessage e jptr = do
   case jmsg of
     Start _value -> return ()
     Return _value -> return ()
-    TriggerCallbackMsg arg sourceId -> do
-      FFI.consoleLog $ Text.pack $ show (arg, sourceId)
+    TriggerCallbackMsg arg sourceId ->
       launchClickM e $ modify (unsafeTrigger sourceId arg)
     BeforeUnload -> return ()
   where

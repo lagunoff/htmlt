@@ -13,7 +13,7 @@ import Clickable.Protocol
 
 data DynVar a where
   DynVar :: SourceId -> IORef a -> DynVar a
-  SpyVar :: (UpdateFn a -> UpdateFn a) -> DynVar a -> DynVar a
+  OverrideVar :: (UpdateFn a -> UpdateFn a) -> DynVar a -> DynVar a
   LensMap :: Lens' s a -> DynVar s -> DynVar a
 
 type UpdateFn s = forall a. (s -> (s, a)) -> ClickM a

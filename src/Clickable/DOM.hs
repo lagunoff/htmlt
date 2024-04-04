@@ -29,7 +29,11 @@ addEventListener :: ConnectResourceArgs callback -> callback -> HtmlM ()
 addEventListener args k = lift $ connectResource args k
 
 data ConnectResourceArgs callback = ConnectResourceArgs
-  { aquire_fn :: ResourceScope -> SourceId -> Expr
+  { aquire_resource :: ResourceScope -> SourceId -> Expr
+  -- ^ When evaluated, as a side-effect resulting `Expr` must
+  -- initialize some resource (could be DOM event, WebSocket
+  -- connection etc) also must return a function that frees that
+  -- resource
   , mk_callback :: callback -> Value -> ClickM ()
   }
 
@@ -40,7 +44,7 @@ connectResource args k = reactive_ \scope s ->
     callback = local (\e -> e {scope}) . args.mk_callback k
     sourceId = SourceId s.next_id
     newSub = (scope, sourceId, callback . unsafeCoerce)
-    connectExpr = ConnectResource scope $ args.aquire_fn scope sourceId
+    connectExpr = ConnectResource scope $ args.aquire_resource scope sourceId
   in
     s { evaluation_queue = connectExpr : s.evaluation_queue
       , subscriptions = newSub : s.subscriptions
@@ -113,7 +117,7 @@ instance IsEventName "select/change" where
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/click_event
 pointerConnectArgs :: Text -> ConnectResourceArgs (ClickM ())
 pointerConnectArgs eventName = ConnectResourceArgs
-  { aquire_fn = \scope sourceId ->
+  { aquire_resource = \scope sourceId ->
     Eval (normalEventWrapper eventName defaultEventListenerOptions)
       `Apply` [Arg 0 0, Lam (TriggerCallback sourceId (Arg 0 0))]
   , mk_callback = \k _ -> k
@@ -122,7 +126,7 @@ pointerConnectArgs eventName = ConnectResourceArgs
 -- https://developer.mozilla.org/en-US/docs/Web/API/HTMLFormElement/submit_event
 submitConnectArgs :: ConnectResourceArgs (ClickM ())
 submitConnectArgs = ConnectResourceArgs
-  { aquire_fn = \scope sourceId ->
+  { aquire_resource = \scope sourceId ->
     Eval (normalEventWrapper "submit" EventListenerOptions
     { prevent_default = True
     , stop_propagation = True
@@ -133,7 +137,7 @@ submitConnectArgs = ConnectResourceArgs
 -- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/input_event
 inputConnectArgs :: Text -> ConnectResourceArgs (Text -> ClickM ())
 inputConnectArgs eventName  = ConnectResourceArgs
-  { aquire_fn = \scope sourceId -> Eval
+  { aquire_resource = \scope sourceId -> Eval
       ("(function(target, haskellCb){\n\
       \  function listener(target){\n\
       \    haskellCb(event.target.value);\n\
@@ -148,7 +152,7 @@ inputConnectArgs eventName  = ConnectResourceArgs
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/keyup_event
 keyboardConnectArgs :: Text -> ConnectResourceArgs (Int64 -> ClickM ())
 keyboardConnectArgs eventName = ConnectResourceArgs
-  { aquire_fn = \scope sourceId -> Eval (
+  { aquire_resource = \scope sourceId -> Eval (
       "(function(target, haskellCb){\n\
       \  function listener(target){\n\
       \    haskellCb(event.keyCode);\n\
@@ -165,7 +169,7 @@ keyboardConnectArgs eventName = ConnectResourceArgs
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/focusout_event
 focusConnectArgs :: Text -> ConnectResourceArgs (ClickM ())
 focusConnectArgs eventName = ConnectResourceArgs
-  { aquire_fn = \scope sourceId ->
+  { aquire_resource = \scope sourceId ->
     Eval (normalEventWrapper eventName defaultEventListenerOptions)
       `Apply` [Arg 0 0, Lam (TriggerCallback sourceId (Arg 0 0))]
   , mk_callback = \k _ -> k
@@ -174,7 +178,7 @@ focusConnectArgs eventName = ConnectResourceArgs
 -- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/change_event
 checkboxChangeConnectArgs :: ConnectResourceArgs (Bool -> ClickM ())
 checkboxChangeConnectArgs = ConnectResourceArgs
-  { aquire_fn = \scope sourceId -> Eval
+  { aquire_resource = \scope sourceId -> Eval
       "(function(target, haskellCb){\n\
       \  function listener(target){\n\
       \    haskellCb(event.target.checked);\n\
@@ -188,7 +192,7 @@ checkboxChangeConnectArgs = ConnectResourceArgs
 -- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/change_event
 selectChangeConnectArgs :: ConnectResourceArgs (Text -> ClickM ())
 selectChangeConnectArgs = ConnectResourceArgs
-  { aquire_fn = \scope sourceId -> Eval
+  { aquire_resource = \scope sourceId -> Eval
       "(function(target, haskellCb){\n\
       \  function listener(target){\n\
       \    haskellCb(event.target.value);\n\
@@ -237,13 +241,20 @@ data Location = Location
 -- https://developer.mozilla.org/en-US/docs/Web/API/Window/popstate_event
 popstateConnectArgs :: ConnectResourceArgs (Location -> ClickM ())
 popstateConnectArgs = ConnectResourceArgs
-  { aquire_fn = \scope sourceId -> Eval
+  { aquire_resource = \scope sourceId -> Eval
       "(function(target, haskellCb){\n\
       \  function listener(){\n\
-      \    haskellCb(location);\n\
+      \    haskellCb({\n\
+      \      protocol: location.protocol,\n\
+      \      hostname: location.hostname,\n\
+      \      port: location.port,\n\
+      \      pathname: location.pathname,\n\
+      \      search: location.search,\n\
+      \      hash: location.hash\n\
+      \    });\n\
       \  }\n\
       \  target.addEventListener('popstate', listener);\n\
       \  return () => target.removeEventListener('popstate', listener);\n\
-      \})" `Apply` [Arg 0 0, Lam (TriggerCallback sourceId (Arg 0 0))]
+      \})" `Apply` [Id "window", Lam (TriggerCallback sourceId (Arg 0 0))]
   , mk_callback = \k event -> forM_ (fromJSValue event) k
   }

@@ -157,29 +157,6 @@ executable htmlt-todomvc
   if !flag(examples)
     buildable: False
 
-executable htmlt-charts
-  import: htmlt-common         
-  hs-source-dirs: ./examples/charts
-  if arch(wasm32)
-    ghc-options:
-      -no-hs-main -optl-mexec-model=reactor
-      -optl-Wl,--export=hs_init,--export=wasm_main,--export=malloc
-    main-is: charts.hs
-  else
-    ghc-options: -threaded
-    main-is: dev-server.hs
-  build-depends:
-    base,
-    htmlt,
-    text,
-    mtl,
-  other-modules:
-    App
-    Charts
-    PairSelector
-  if !flag(examples)
-    buildable: False
-  
 -- executable htmlt-simple-routing
 --   import: htmlt-common         
 --   main-is: simple-routing.hs

@@ -12,7 +12,7 @@ import "this" TodoItem qualified as TodoItem
 
 
 data TodoListConfig = TodoListConfig
-  { state_ref :: DynVar TodoListState
+  { state_var :: DynVar TodoListState
   }
 
 data TodoListState = TodoListState
@@ -25,7 +25,6 @@ data Filter = All | Active | Completed
   deriving (Show, Eq)
 
 data TodoListAction a where
-  InitAction :: [TodoItem.TodoItemState] -> TodoListAction (DynVar TodoListState)
   ToggleAllAction :: TodoListConfig -> Bool -> TodoListAction ()
   InputAction :: TodoListConfig -> Text -> TodoListAction ()
   CommitAction :: TodoListConfig -> TodoListAction ()
@@ -33,47 +32,48 @@ data TodoListAction a where
   DeleteItemAction :: TodoListConfig -> Int -> TodoListAction ()
   ClearCompletedAction :: TodoListConfig -> TodoListAction ()
 
+new :: [TodoItem.TodoItemState] -> ClickM (DynVar TodoListState)
+new items =
+  newDynVar TodoListState
+    { title = ""
+    , items = items
+    , filter = All
+    }
+
 eval :: TodoListAction a -> ClickM a
 eval = \case
-  InitAction items -> do
-    newDynVar TodoListState
-      { title = ""
-      , items = items
-      , filter = All
-      }
   ToggleAllAction cfg isChecked ->
-    modifyVar_ cfg.state_ref \s -> s
+    modifyVar_ cfg.state_var \s -> s
       { items =
         fmap (\i -> i {TodoItem.completed = isChecked}) s.items
       }
   InputAction cfg newVal -> do
-    modifyVar_ cfg.state_ref \s -> s {title = newVal}
+    modifyVar_ cfg.state_var \s -> s {title = newVal}
   CommitAction cfg -> do
-    title <- Text.strip . (.title) <$> readVar cfg.state_ref
+    title <- Text.strip . (.title) <$> readVar cfg.state_var
     case title of
       "" -> return ()
-      t -> modifyVar_ cfg.state_ref \s -> s
-        { items = s.items <> [mkNewItem t]
+      t -> modifyVar_ cfg.state_var \s -> s
+        { items = s.items <> [mkNewTodo t]
         , title = ""
         }
   KeydownAction cfg key -> do
     case key of
       13 {- Enter -} -> eval (CommitAction cfg)
       27 {- Escape -} -> do
-        s <- readVar cfg.state_ref
+        s <- readVar cfg.state_var
         consoleLog $ Text.pack $ show s
       _ -> return ()
   DeleteItemAction cfg itemIx ->
-    modifyVar_ cfg.state_ref \s -> s {items = deleteIx itemIx s.items}
+    modifyVar_ cfg.state_var \s -> s {items = deleteIx itemIx s.items}
   ClearCompletedAction cfg ->
-    modifyVar_ cfg.state_ref \s -> s
+    modifyVar_ cfg.state_var \s -> s
       {items = (List.filter (not . TodoItem.completed)) s.items}
   where
     deleteIx :: Int -> [a] -> [a]
     deleteIx _ []     = []
     deleteIx i (a:as) | i == 0 = as | otherwise = a : deleteIx (i-1) as
-    mkNewItem t =
-      TodoItem.emptyTodoItemState {TodoItem.title = t}
+    mkNewTodo t = TodoItem.emptyState {TodoItem.title = t}
 
 html :: TodoListConfig -> HtmlM ()
 html cfg = do
@@ -87,7 +87,7 @@ html cfg = do
     headerWidget = header_ [class_ "header"] do
       h1_ (text "todos")
       input_ [class_ "new-todo", placeholder_ "What needs to be done?", autofocus_ True] do
-        dynValue $ (.title) <$> fromVar cfg.state_ref
+        dynValue $ (.title) <$> fromVar cfg.state_var
         on @"input" $ eval . InputAction cfg
         on @"keydown" $ eval . KeydownAction cfg
     mainWidget = section_ [class_ "main"] do
@@ -100,9 +100,9 @@ html cfg = do
       ul_ [class_ "todo-list"] do
         simpleList itemsDyn \idx todoRef ->
           TodoItem.html $ TodoItem.TodoItemConfig
-            { TodoItem.state_ref = spyVar (todoItemUpdated cfg idx) todoRef
+            { TodoItem.state_var = overrideVar (todoItemUpdated cfg idx) todoRef
             , TodoItem.is_hidden_dyn =
-              isTodoItemHidden <$> fromVar cfg.state_ref <*> fromVar todoRef
+              isTodoItemHidden <$> fromVar cfg.state_var <*> fromVar todoRef
             , TodoItem.ask_delete_item = eval (DeleteItemAction cfg idx)
             }
     footerWidget = footer_ [class_ "footer"] do
@@ -129,13 +129,13 @@ html cfg = do
         toggleClass "selected" $ filterSelectedDyn flt
         text $ Text.pack $ show flt
     hiddenDyn =
-      Prelude.null . (.items) <$> fromVar cfg.state_ref
+      Prelude.null . (.items) <$> fromVar cfg.state_var
     itemsLeftDyn =
-      countItemsLeft <$> fromVar cfg.state_ref
+      countItemsLeft <$> fromVar cfg.state_var
     filterSelectedDyn flt =
-      (==flt) . (.filter) <$> fromVar cfg.state_ref
+      (==flt) . (.filter) <$> fromVar cfg.state_var
     itemsDyn =
-      (.items) <$> fromVar cfg.state_ref
+      (.items) <$> fromVar cfg.state_var
     countItemsLeft TodoListState{items} =
       foldl (\acc TodoItem.TodoItemState{completed} ->
         if not completed then acc + 1 else acc) 0 items
@@ -179,8 +179,8 @@ todoItemUpdated cfg i next f = do
     needsUpdate = old.completed /= new.completed
   -- Update TodoItemState inside the larger state
   if needsUpdate
-    then modifyVar cfg.state_ref $ h new
-    else modifyVarQuiet cfg.state_ref $ h new
+    then modifyVar cfg.state_var $ h new
+    else modifyVarQuiet cfg.state_var $ h new
   return result
   where
     g s = let (s', a) = f s in (s', ((s, s'), a))
