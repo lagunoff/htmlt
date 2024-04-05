@@ -10,6 +10,7 @@ import Data.Map qualified as Map
 import Unsafe.Coerce
 
 import Clickable.Protocol
+import Clickable.Protocol.Value (Value)
 import Clickable.Types
 
 emptyState :: InternalState
@@ -71,15 +72,19 @@ subscribe ::
   ResourceScope ->
   InternalState -> InternalState
 subscribe (ConstVal _) _ _ s = s
-subscribe (FromVar (SourceVar varId _)) fn scope s = s {subscriptions}
+subscribe (FromVar (SourceVar srcId _)) fn scope s = s {subscriptions}
   where
     subscriptions = newSub : s.subscriptions
-    newSub = (scope, varId, fn . unsafeCoerce)
+    newSub = (scope, srcId, fn . unsafeCoerce)
 subscribe (FromVar (OverrideVar _ var)) fn scope s =
   subscribe (FromVar var) fn scope s
 subscribe (FromVar (LensMap l var)) fn scope s =
   subscribe (FromVar var) (fn . getConst . l Const) scope s
 subscribe (MapVal v f) fn scope s = subscribe v (fn . f) scope s
+subscribe (MapHoldVal _ _ srcId ref) fn scope s = s {subscriptions}
+  where
+    subscriptions = newSub : s.subscriptions
+    newSub = (scope, srcId, fn . unsafeCoerce)
 subscribe (SplatVal fv av) fn scope s =
   subscribe av g scope $ subscribe fv f scope $ attachCb s
   where
@@ -99,12 +104,24 @@ readVal :: DynVal a -> ClickM a
 readVal (ConstVal a) = pure a
 readVal (FromVar var) = readVar var
 readVal (MapVal val f) = fmap f $ readVal val
+readVal (MapHoldVal _ _ _ ref) = liftIO $ readIORef ref
 readVal (SplatVal f a) = liftA2 ($) (readVal f) (readVal a)
 
 readVar :: DynVar a -> ClickM a
 readVar (SourceVar _ ref) = liftIO $ readIORef ref
 readVar (LensMap l var) = fmap (getConst . l Const) $ readVar var
 readVar (OverrideVar _ var) = readVar var
+
+newCallback ::
+  (Value -> ClickM ()) ->
+  ResourceScope ->
+  InternalState -> (InternalState, SourceId)
+newCallback k rscope s =
+  let
+    new = (rscope, SourceId s.next_id, k . unsafeCoerce)
+    subscriptions = new : s.subscriptions
+  in
+    (s { next_id = s.next_id + 1, subscriptions}, SourceId s.next_id)
 
 launchClickM :: InternalEnv -> ClickM a -> IO a
 launchClickM env = flip runReaderT env . unClickT . (<* syncPoint) . trampoline
@@ -154,3 +171,19 @@ data ClientMessage
   -- ^ Bypass protocol and inject a command directly into the
   -- DevServer instance (useful for delivering notifications under
   -- devserver)
+
+mapHoldVal :: (a -> b) -> DynVal a -> ClickM (DynVal b)
+mapHoldVal f a = do
+  a <- readVal a
+  ref <- liftIO $ newIORef $ f a
+  reactive $ g ref
+  where
+    g ref scope s = (s', val) where
+      srcId = SourceId s.next_id
+      newSub = (scope, srcId, k . unsafeCoerce)
+      k a = do
+        let b = f a
+        liftIO $ writeIORef ref b
+        modify $ unsafeTrigger srcId b
+      s' = s {subscriptions = newSub : s.subscriptions, next_id = succ s.next_id}
+      val = MapHoldVal a f srcId ref

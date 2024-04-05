@@ -4,17 +4,17 @@ import Data.Text (Text)
 
 import Clickable
 import Clickable.Protocol
-import Clickable.Protocol.Value (FromJSValue(..), ToJSValue(..))
+import Clickable.Protocol.Value (FromValue(..), ToValue(..))
 
-readLocalStorage :: FromJSValue v => Text -> ClickM (Maybe v)
+readLocalStorage :: FromValue v => Text -> ClickM (Maybe v)
 readLocalStorage key = do
   let jsonParse = Call (Id "JSON") "parse" . (:[])
   jsval <- evalExpr $ jsonParse $ Call (Id "localStorage") "getItem" [String key]
-  return $ fromJSValue jsval
+  return $ fromValue jsval
 
-saveLocalStorage :: ToJSValue v => Text -> v -> ClickM ()
+saveLocalStorage :: ToValue v => Text -> v -> ClickM ()
 saveLocalStorage key val = do
-  let stringify = Call (Id "JSON") "stringify" . (:[]) . valueToExpr . toJSValue
+  let stringify = Call (Id "JSON") "stringify" . (:[]) . valueToExpr . toValue
   enqueueExpr $ Call (Id "localStorage") "setItem" [String key, stringify val]
 
 assignFocus :: VarId -> ClickM ()

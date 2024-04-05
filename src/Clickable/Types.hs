@@ -25,6 +25,7 @@ data DynVal a where
   ConstVal :: a -> DynVal a
   FromVar :: DynVar a -> DynVal a
   MapVal :: DynVal a -> (a -> b) -> DynVal b
+  MapHoldVal :: DynVal a -> (a -> b) -> SourceId -> IORef b -> DynVal b
   SplatVal :: DynVal (a -> b) -> DynVal a -> DynVal b
 
 instance Functor DynVal where fmap = flip MapVal

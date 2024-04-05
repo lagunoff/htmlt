@@ -34,6 +34,9 @@ newVar a = do
 overrideVar :: (UpdateFn a -> UpdateFn a) -> DynVar a -> DynVar a
 overrideVar = OverrideVar
 
+mapHoldVal :: (a -> b) -> DynVal a -> ClickM (DynVal b)
+mapHoldVal = Internal.mapHoldVal
+
 readVal :: DynVal a -> ClickM a
 readVal = Internal.readVal
 
@@ -109,6 +112,9 @@ installFinalizer k = reactive_ $ Internal.installFinalizer k
 
 newVarId :: ClickM VarId
 newVarId = reactive Internal.newVarId
+
+newCallback :: (Value -> ClickM ()) -> ClickM SourceId
+newCallback k = reactive $ Internal.newCallback k
 
 ------------------
 -- BUILDING DOM --

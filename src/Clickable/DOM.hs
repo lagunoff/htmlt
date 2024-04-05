@@ -10,7 +10,7 @@ import Unsafe.Coerce
 
 import Clickable.Types
 import Clickable.Protocol
-import Clickable.Protocol.Value (Value, FromJSValue(..), ToJSValue(..))
+import Clickable.Protocol.Value (Value, FromValue(..), ToValue(..))
 import Clickable.Internal
 
 
@@ -114,12 +114,20 @@ instance IsEventName "select/change" where
   type EventListenerCb "select/change" = Text -> ClickM ()
   addEventListenerArgs = selectChangeConnectArgs
 
+eventListenerOptions :: Text -> Bool -> Bool -> ConnectResourceArgs (ClickM ())
+eventListenerOptions eventName preventDef stopProp = ConnectResourceArgs
+  { aquire_resource = \scope sourceId ->
+    Eval (normalEventWrapper eventName $ EventListenerOptions preventDef stopProp)
+      `Apply` [Arg 0 0, Lam (TriggerCallback sourceId Null)]
+  , mk_callback = \k _ -> k
+  }
+
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/click_event
 pointerConnectArgs :: Text -> ConnectResourceArgs (ClickM ())
 pointerConnectArgs eventName = ConnectResourceArgs
   { aquire_resource = \scope sourceId ->
     Eval (normalEventWrapper eventName defaultEventListenerOptions)
-      `Apply` [Arg 0 0, Lam (TriggerCallback sourceId (Arg 0 0))]
+      `Apply` [Arg 0 0, Lam (TriggerCallback sourceId Null)]
   , mk_callback = \k _ -> k
   }
 
@@ -136,16 +144,16 @@ submitConnectArgs = ConnectResourceArgs
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/input_event
 inputConnectArgs :: Text -> ConnectResourceArgs (Text -> ClickM ())
-inputConnectArgs eventName  = ConnectResourceArgs
+inputConnectArgs eventName = ConnectResourceArgs
   { aquire_resource = \scope sourceId -> Eval
       ("(function(target, haskellCb){\n\
-      \  function listener(target){\n\
+      \  function listener(event){\n\
       \    haskellCb(event.target.value);\n\
       \  }\n\
       \  target.addEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
       \  return () => window.removeEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
       \})") `Apply` [Arg 0 0, Lam (TriggerCallback sourceId (Arg 0 0))]
-  , mk_callback = \k event -> forM_ (fromJSValue event) k
+  , mk_callback = \k event -> forM_ (fromValue event) k
   }
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/keydown_event
@@ -154,13 +162,13 @@ keyboardConnectArgs :: Text -> ConnectResourceArgs (Int64 -> ClickM ())
 keyboardConnectArgs eventName = ConnectResourceArgs
   { aquire_resource = \scope sourceId -> Eval (
       "(function(target, haskellCb){\n\
-      \  function listener(target){\n\
-      \    haskellCb(event.keyCode);\n\
+      \  function listener(event){\n\
+      \    haskellCb(event.target.keyCode);\n\
       \  }\n\
       \  target.addEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
       \  return () => target.removeEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
       \})") `Apply` [Arg 0 0, Lam (TriggerCallback sourceId (Arg 0 0))]
-  , mk_callback = \k event -> forM_ (fromJSValue event) k
+  , mk_callback = \k event -> forM_ (fromValue event) k
   }
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/focus_event
@@ -180,13 +188,13 @@ checkboxChangeConnectArgs :: ConnectResourceArgs (Bool -> ClickM ())
 checkboxChangeConnectArgs = ConnectResourceArgs
   { aquire_resource = \scope sourceId -> Eval
       "(function(target, haskellCb){\n\
-      \  function listener(target){\n\
+      \  function listener(event){\n\
       \    haskellCb(event.target.checked);\n\
       \  }\n\
       \  target.addEventListener('change', listener);\n\
       \  return () => window.removeEventListener('change', listener);\n\
       \})" `Apply` [Arg 0 0, Lam (TriggerCallback sourceId (Arg 0 0))]
-  , mk_callback = \k event -> forM_ (fromJSValue event) k
+  , mk_callback = \k event -> forM_ (fromValue event) k
   }
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/change_event
@@ -194,13 +202,13 @@ selectChangeConnectArgs :: ConnectResourceArgs (Text -> ClickM ())
 selectChangeConnectArgs = ConnectResourceArgs
   { aquire_resource = \scope sourceId -> Eval
       "(function(target, haskellCb){\n\
-      \  function listener(target){\n\
+      \  function listener(event){\n\
       \    haskellCb(event.target.value);\n\
       \  }\n\
       \  target.addEventListener('change', listener);\n\
       \  return () => target.removeEventListener('change', listener);\n\
       \})" `Apply` [Arg 0 0, Lam (TriggerCallback sourceId (Arg 0 0))]
-  , mk_callback = \k event -> forM_ (fromJSValue event) k
+  , mk_callback = \k event -> forM_ (fromValue event) k
   }
 
 normalEventWrapper :: Text -> EventListenerOptions -> UnsafeJavaScript
@@ -236,7 +244,7 @@ data Location = Location
   -- ^ A string containing a '#' followed by the fragment identifier
   -- of the URL.
   } deriving stock (Show, Eq, Generic)
-    deriving anyclass (FromJSValue, ToJSValue)
+    deriving anyclass (FromValue, ToValue)
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/Window/popstate_event
 popstateConnectArgs :: ConnectResourceArgs (Location -> ClickM ())
@@ -256,5 +264,5 @@ popstateConnectArgs = ConnectResourceArgs
       \  target.addEventListener('popstate', listener);\n\
       \  return () => target.removeEventListener('popstate', listener);\n\
       \})" `Apply` [Id "window", Lam (TriggerCallback sourceId (Arg 0 0))]
-  , mk_callback = \k event -> forM_ (fromJSValue event) k
+  , mk_callback = \k event -> forM_ (fromValue event) k
   }

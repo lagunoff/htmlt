@@ -22,110 +22,110 @@ data Value
   deriving stock (Generic, Show)
   deriving anyclass (Binary)
 
-class ToJSValue a where
-  toJSValue :: a -> Value
-  default toJSValue :: (Generic a, GToJSValue (Rep a)) => a -> Value
-  toJSValue = gToJSValue . G.from
+class ToValue a where
+  toValue :: a -> Value
+  default toValue :: (Generic a, GToValue (Rep a)) => a -> Value
+  toValue = gToValue . G.from
 
-instance ToJSValue Value where toJSValue = Prelude.id
+instance ToValue Value where toValue = Prelude.id
 
-instance ToJSValue Bool where toJSValue = Bool
+instance ToValue Bool where toValue = Bool
 
-instance ToJSValue Int64 where toJSValue = I64
+instance ToValue Int64 where toValue = I64
 
-instance ToJSValue Double where toJSValue = F64
+instance ToValue Double where toValue = F64
 
-instance ToJSValue Char where
-  toJSValue c = String $ Text.cons c Text.empty
+instance ToValue Char where
+  toValue c = String $ Text.cons c Text.empty
 
-instance ToJSValue Text where toJSValue = String
+instance ToValue Text where toValue = String
 
-instance ToJSValue a => ToJSValue [a] where toJSValue = Array . fmap toJSValue
+instance ToValue a => ToValue [a] where toValue = Array . fmap toValue
 
-instance ToJSValue a => ToJSValue (Maybe a) where toJSValue = maybe Null toJSValue
+instance ToValue a => ToValue (Maybe a) where toValue = maybe Null toValue
 
-instance (ToJSValue a, ToJSValue b) => ToJSValue (a, b) where
-  toJSValue (a, b) = toJSValue [toJSValue a, toJSValue b]
+instance (ToValue a, ToValue b) => ToValue (a, b) where
+  toValue (a, b) = toValue [toValue a, toValue b]
 
-instance (ToJSValue a, ToJSValue b, ToJSValue c) => ToJSValue (a, b, c) where
-  toJSValue (a, b, c) = toJSValue [toJSValue a, toJSValue b, toJSValue c]
+instance (ToValue a, ToValue b, ToValue c) => ToValue (a, b, c) where
+  toValue (a, b, c) = toValue [toValue a, toValue b, toValue c]
 --------------------------------------------------------------------------------
 
-class FromJSValue a where
-  fromJSValue :: Value -> Maybe a
-  default fromJSValue :: (Generic a, GFromJSValue (Rep a)) => Value -> Maybe a
-  fromJSValue = fmap G.to . gFromJSValue
+class FromValue a where
+  fromValue :: Value -> Maybe a
+  default fromValue :: (Generic a, GFromValue (Rep a)) => Value -> Maybe a
+  fromValue = fmap G.to . gFromValue
 
-instance FromJSValue Value where fromJSValue = pure
+instance FromValue Value where fromValue = pure
 
-instance FromJSValue Bool where
-  fromJSValue = \case Bool a -> Just a; _ -> Nothing
+instance FromValue Bool where
+  fromValue = \case Bool a -> Just a; _ -> Nothing
 
-instance FromJSValue Int64 where
-  fromJSValue = \case
+instance FromValue Int64 where
+  fromValue = \case
     I64 j -> Just j
     F64 j -> Just $ floor j
     _ -> Nothing
 
-instance FromJSValue Double where
-  fromJSValue = \case
+instance FromValue Double where
+  fromValue = \case
     I64 j -> Just $ fromIntegral j
     F64 j -> Just j
     _ -> Nothing
 
-instance FromJSValue Char where
-  fromJSValue = \case
+instance FromValue Char where
+  fromValue = \case
     String a | Just (c, _) <- Text.uncons a -> Just c
              | otherwise -> Nothing
     _ -> Nothing
 
-instance FromJSValue Text where
-  fromJSValue = \case String a -> Just a; _ -> Nothing
+instance FromValue Text where
+  fromValue = \case String a -> Just a; _ -> Nothing
 
-instance FromJSValue a => FromJSValue [a] where
-  fromJSValue = \case
-    Array xs -> Just (mapMaybe fromJSValue xs)
+instance FromValue a => FromValue [a] where
+  fromValue = \case
+    Array xs -> Just (mapMaybe fromValue xs)
     _ -> Nothing
 
-instance FromJSValue a => FromJSValue (Maybe a) where
-  fromJSValue = fmap Just . fromJSValue @a
+instance FromValue a => FromValue (Maybe a) where
+  fromValue = fmap Just . fromValue @a
 
-instance (FromJSValue a, FromJSValue b) => FromJSValue (a, b) where
-  fromJSValue j = fromJSValue j >>= \case
-    Just (a:b:_) -> (,) <$> fromJSValue a <*> fromJSValue b
+instance (FromValue a, FromValue b) => FromValue (a, b) where
+  fromValue j = fromValue j >>= \case
+    Just (a:b:_) -> (,) <$> fromValue a <*> fromValue b
     _ -> Nothing
 
-instance (FromJSValue a, FromJSValue b, FromJSValue c) => FromJSValue (a, b, c) where
-  fromJSValue j = fromJSValue j >>= \case
-    Just (a:b:c:_) -> (,,) <$> fromJSValue a <*> fromJSValue b <*> fromJSValue c
+instance (FromValue a, FromValue b, FromValue c) => FromValue (a, b, c) where
+  fromValue j = fromValue j >>= \case
+    Just (a:b:c:_) -> (,,) <$> fromValue a <*> fromValue b <*> fromValue c
     _ -> Nothing
 --------------------------------------------------------------------------------
 
-class GFromJSValue (f :: Type -> Type) where
-  gFromJSValue :: Value -> Maybe (f a)
+class GFromValue (f :: Type -> Type) where
+  gFromValue :: Value -> Maybe (f a)
 
-instance GFromJSValue f => GFromJSValue (M1 m c f) where
-  gFromJSValue = fmap M1 . gFromJSValue @f
+instance GFromValue f => GFromValue (M1 m c f) where
+  gFromValue = fmap M1 . gFromValue @f
 
-instance GFromJSObject (x :*: y) => GFromJSValue (x :*: y) where
-  gFromJSValue (Object kvs) = gFromJSObject kvs
-  gFromJSValue _ = Nothing
+instance GFromJSObject (x :*: y) => GFromValue (x :*: y) where
+  gFromValue (Object kvs) = gFromJSObject kvs
+  gFromValue _ = Nothing
 
-instance {-# OVERLAPPING #-} FromJSValue a => GFromJSValue (S1 s (Rec0 a)) where
-  gFromJSValue = fmap (M1 . K1) . fromJSValue @a
+instance {-# OVERLAPPING #-} FromValue a => GFromValue (S1 s (Rec0 a)) where
+  gFromValue = fmap (M1 . K1) . fromValue @a
 --------------------------------------------------------------------------------
 
-class GToJSValue (f :: Type -> Type) where
-  gToJSValue :: f x -> Value
+class GToValue (f :: Type -> Type) where
+  gToValue :: f x -> Value
 
-instance GToJSValue f => GToJSValue (M1 m c f) where
-  gToJSValue (M1 f) = gToJSValue f
+instance GToValue f => GToValue (M1 m c f) where
+  gToValue (M1 f) = gToValue f
 
-instance GToJSObject (x :*: y) => GToJSValue (x :*: y) where
-  gToJSValue (x :*: y) = Object $ gToJSObject (x :*: y)
+instance GToJSObject (x :*: y) => GToValue (x :*: y) where
+  gToValue (x :*: y) = Object $ gToJSObject (x :*: y)
 
-instance {-# OVERLAPPING #-} (ToJSValue a) => GToJSValue (S1 s (Rec0 a)) where
-  gToJSValue (M1 (K1 a)) = toJSValue a
+instance {-# OVERLAPPING #-} (ToValue a) => GToValue (S1 s (Rec0 a)) where
+  gToValue (M1 (K1 a)) = toValue a
 --------------------------------------------------------------------------------
 
 class GToJSObject (f :: Type -> Type) where
@@ -137,8 +137,8 @@ instance (GToJSObject x, GToJSObject y) => GToJSObject (x :*: y) where
 instance (GToJSObject f) => GToJSObject (M1 m c f) where
   gToJSObject (M1 a) = gToJSObject a
 
-instance {-# OVERLAPPING #-} (ToJSValue a, Selector s) => GToJSObject (S1 s (Rec0 a)) where
-  gToJSObject (M1 (K1 a)) = [(key, toJSValue a)]
+instance {-# OVERLAPPING #-} (ToValue a, Selector s) => GToJSObject (S1 s (Rec0 a)) where
+  gToJSObject (M1 (K1 a)) = [(key, toValue a)]
     where
       key = Text.pack $ selName (undefined :: M1 S s (Rec0 a) x)
 --------------------------------------------------------------------------------
@@ -152,7 +152,7 @@ instance (GFromJSObject x, GFromJSObject y) => GFromJSObject (x :*: y) where
 instance (GFromJSObject f) => GFromJSObject (M1 m c f) where
   gFromJSObject = fmap M1 . gFromJSObject
 
-instance {-# OVERLAPPING #-} (FromJSValue a, Selector s) => GFromJSObject (S1 s (Rec0 a)) where
-  gFromJSObject kvs = List.lookup key kvs >>= fmap (M1 . K1) . fromJSValue
+instance {-# OVERLAPPING #-} (FromValue a, Selector s) => GFromJSObject (S1 s (Rec0 a)) where
+  gFromJSObject kvs = List.lookup key kvs >>= fmap (M1 . K1) . fromValue
     where
       key = Text.pack $ selName (undefined :: M1 S s (Rec0 a) x)

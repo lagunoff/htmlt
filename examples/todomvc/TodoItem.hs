@@ -85,15 +85,15 @@ html cfg = li_ mdo
     saveCurrentNode
   return ()
 
-instance ToJSValue TodoItemState where
-  toJSValue s = Object
-    [ ("title", toJSValue s.title)
-    , ("completed", toJSValue s.completed)
+instance ToValue TodoItemState where
+  toValue s = Object
+    [ ("title", toValue s.title)
+    , ("completed", toValue s.completed)
     ]
 
-instance FromJSValue TodoItemState where
-  fromJSValue (Object kv) = do
-    title <- fromJSValue =<< List.lookup "title" kv
-    completed <- fromJSValue =<< List.lookup "completed" kv
+instance FromValue TodoItemState where
+  fromValue (Object kv) = do
+    title <- fromValue =<< List.lookup "title" kv
+    completed <- fromValue =<< List.lookup "completed" kv
     return TodoItemState {editing=Nothing, ..}
-  fromJSValue _ = Nothing
+  fromValue _ = Nothing
