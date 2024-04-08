@@ -25,8 +25,14 @@ data DynVal a where
   ConstVal :: a -> DynVal a
   FromVar :: DynVar a -> DynVal a
   MapVal :: DynVal a -> (a -> b) -> DynVal b
+  FoldVal :: (a -> b -> b) -> b -> DynVal a -> SourceId -> IORef b -> DynVal b
+  -- ^ @DynVal a@ should really be @Event a@
   MapHoldVal :: DynVal a -> (a -> b) -> SourceId -> IORef b -> DynVal b
+  -- ^ todo: need redesign
   SplatVal :: DynVal (a -> b) -> DynVal a -> DynVal b
+  OverrideSub :: (SubscribeFn a -> SubscribeFn a) -> DynVal a -> DynVal a
+
+type SubscribeFn a = (a -> ClickM ()) -> ClickM ()
 
 instance Functor DynVal where fmap = flip MapVal
 

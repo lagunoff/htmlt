@@ -78,6 +78,9 @@ common htmlt-common
 
 library
   import: htmlt-common         
+  ghc-options:
+    -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches
+    -Wno-unused-do-bind
   hs-source-dirs: src ./examples/charts ./examples/todomvc
   exposed-modules:
     Clickable
@@ -92,7 +95,6 @@ library
     Clickable.Protocol.Value
     Clickable.FFI
     Wasm.Compat.Prim
-    
   other-modules: Paths_htmlt
   build-depends:
     base,

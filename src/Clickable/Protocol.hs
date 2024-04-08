@@ -162,6 +162,9 @@ valueToExpr = \case
   Value.Object kv -> Object $ fmap (\(k, v) -> (k, valueToExpr v)) kv
   Value.Uint8Array a -> Uint8Array a
 
+toExpr :: Value.ToValue a => a -> Expr
+toExpr = valueToExpr . Value.toValue
+
 data VarId = VarId ResourceScope Int64
   deriving stock (Generic, Show, Ord, Eq)
   deriving anyclass (Binary)

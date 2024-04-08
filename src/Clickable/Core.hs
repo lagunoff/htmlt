@@ -19,7 +19,7 @@ import Clickable.Internal (reactive, reactive_)
 import Clickable.Internal qualified as Internal
 import Clickable.Types
 import Clickable.Protocol
-import Clickable.Protocol.Value (Value)
+import Clickable.Protocol.Value (Value, ToValue(..))
 import Clickable.Protocol.Value qualified as Value
 
 ---------------------------------------
@@ -61,7 +61,7 @@ writeVar :: DynVar s -> s -> ClickM ()
 writeVar var s = modifyVar_ var $ const s
 
 subscribe :: DynVal a -> (a -> ClickM ()) -> ClickM ()
-subscribe val k = reactive_ $ Internal.subscribe val k
+subscribe = Internal.subscribe
 
 modifyVarQuiet :: DynVar s -> (s -> (s, a)) -> ClickM a
 modifyVarQuiet var@(SourceVar varId ref) f = do
@@ -75,6 +75,15 @@ modifyVarQuiet (LensMap l var) f = modifyVarQuiet var (swap . l (swap . f))
 
 modifyVarQuiet_ :: DynVar s -> (s -> s) -> ClickM ()
 modifyVarQuiet_ var f = modifyVarQuiet var ((,()) . f)
+
+-- todo: needs redesign
+holdUniqDyn :: Eq a => DynVal a -> DynVal a
+holdUniqDyn a = flip OverrideSub a \next k -> do
+  old <- readVal a
+  oldRef <- liftIO $ newIORef old
+  next \new -> do
+    old <- liftIO $ atomicModifyIORef' oldRef (new,)
+    unless (old == new) $ k new
 
 --------------------------------------
 -- OPERATIONS OVER evaluation_queue --
@@ -123,15 +132,13 @@ newCallback k = reactive $ Internal.newCallback k
 el :: Text -> HtmlM a -> HtmlM a
 el t ch = lift $ htmlBuilder (CreateElement t) $ evalStateT ch.unHtmlT Nothing
 
-property :: Text -> Text -> HtmlM ()
+elns :: Text -> Text -> HtmlM a -> HtmlM a
+elns ns t ch = lift $ htmlBuilder (CreateElementNS ns t) $ evalStateT ch.unHtmlT Nothing
+
+property :: ToValue a => Text -> a -> HtmlM ()
 property k v = lift $ modify f where
   f s = s {evaluation_queue = expr : s.evaluation_queue }
-  expr = ElementProp (Arg 0 0) k (String v)
-
-boolProperty :: Text -> Bool -> HtmlM ()
-boolProperty k v = lift $ modify f where
-  f s = s {evaluation_queue = expr : s.evaluation_queue }
-  expr = ElementProp (Arg 0 0) k (Boolean v)
+  expr = ElementProp (Arg 0 0) k (toExpr v)
 
 attribute :: Text -> Text -> HtmlM ()
 attribute k v = lift $ modify f where
@@ -145,7 +152,6 @@ text t = lift $ modify f where
 
 dynText :: DynVal Text -> HtmlM ()
 dynText val = do
-  scope <- lift $ asks (.scope)
   t <- lift $ readVal val
   v <- lift $ newVarId
   lift $ modify $ f v t
@@ -154,27 +160,25 @@ dynText val = do
     f v t s = s {evaluation_queue = expr v t : s.evaluation_queue }
     expr v t = InsertNode (Arg 0 0) $ AssignVar v $ CreateTextNode t
 
-dynProp :: Text -> DynVal Text -> HtmlM ()
+dynProp :: ToValue a => Text -> DynVal a -> HtmlM ()
 dynProp k val = do
-  scope <- lift $ asks (.scope)
   t <- lift $ readVal val
   v <- saveCurrentNode
   lift $ modify $ f t
-  lift $ subscribe val $ enqueueExpr . ElementProp (Var v) k . String
+  lift $ subscribe val $ enqueueExpr . ElementProp (Var v) k . toExpr
   where
     f v s = s {evaluation_queue = expr v : s.evaluation_queue }
-    expr v = ElementProp (Arg 0 0) k (String v)
+    expr v = ElementProp (Arg 0 0) k (toExpr v)
 
-dynBoolProp :: Text -> DynVal Bool -> HtmlM ()
-dynBoolProp k val = do
-  scope <- lift $ asks (.scope)
+dynAttr :: Text -> DynVal Text -> HtmlM ()
+dynAttr k val = do
   t <- lift $ readVal val
   v <- saveCurrentNode
   lift $ modify $ f t
-  lift $ subscribe val $ enqueueExpr . ElementProp (Var v) k . Boolean
+  lift $ subscribe val $ enqueueExpr . ElementAttr (Var v) k
   where
     f v s = s {evaluation_queue = expr v : s.evaluation_queue }
-    expr v = ElementProp (Arg 0 0) k (Boolean v)
+    expr v = ElementAttr (Arg 0 0) k v
 
 toggleClass :: Text -> DynVal Bool -> HtmlM ()
 toggleClass className val = do
@@ -188,6 +192,37 @@ toggleClass className val = do
     updateCmd True = InsertClassList (Var n) [className]
   lift $ modify \s -> s {evaluation_queue = initCmd v s.evaluation_queue}
   lift $ subscribe val $ enqueueExpr . updateCmd
+
+dynClassList :: DynVal [Text] -> HtmlM ()
+dynClassList dynList = undefined -- do
+  -- reactiveScope <- ask
+  -- currentNodeVar <- saveCurrentNode
+  -- initVal <- liftIO dynList.sample
+  -- let
+  --   compareList as bs =
+  --     (diffList as bs, diffList bs as)
+  --   diffList as bs = List.foldl'
+  --     (\xs k -> if List.elem k as then xs else k:xs) [] bs
+  --   f newList (_, _, oldList) =
+  --     let
+  --       (added, removed) = compareList oldList newList
+  --     in
+  --       Just (added, removed, newList)
+  -- lift do
+  --   dynListDiff <- foldDynMaybe f ([], [], []) dynList
+  --   let
+  --     initCmd = InsertClassList (Arg 0 0) initVal
+  --     updateCmd ([], [], _) queue = queue
+  --     updateCmd (added, [], _) queue = InsertClassList (Var currentNodeVar) added : queue
+  --     updateCmd ([], removed, _) queue = RemoveClassList (Var currentNodeVar) removed : queue
+  --     updateCmd (added, removed, _) queue = RemoveClassList (Var currentNodeVar) removed : InsertClassList (Var currentNodeVar) added : queue
+  --     modQueueIfAlive f = modify \s -> s
+  --       { evaluation_queue =
+  --         if Map.member reactiveScope s.finalizers
+  --           then f s.evaluation_queue else s.evaluation_queue
+  --       }
+  --   modify \s -> s {evaluation_queue = initCmd : s.evaluation_queue}
+  --   dynListDiff.updates.subscribe $ modQueueIfAlive . updateCmd
 
 ---------------------
 -- DYNAMIC CONTENT --
@@ -318,8 +353,8 @@ destroyBoundary boundary = enqueueExpr (ClearBoundary (Var boundary) True)
 attachHtml :: Expr -> HtmlM a -> ClickM a
 attachHtml rootElm contents = do
   savedQueue <- state saveQueue
-  evalStateT contents.unHtmlT Nothing
-    <* modify (enqueueHtml savedQueue)
+  evalStateT contents.unHtmlT Nothing <*
+    modify (enqueueHtml savedQueue)
   where
     enqueueHtml saved s = s {evaluation_queue = e : saved} where
       e = Lam (RevSeq (Arg 0 0 : s.evaluation_queue)) `Apply` [rootElm]

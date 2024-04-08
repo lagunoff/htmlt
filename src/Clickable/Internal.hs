@@ -66,39 +66,37 @@ installFinalizer :: ClickM () -> ResourceScope -> InternalState -> InternalState
 installFinalizer k scope s = s
   {finalizers = (scope, CustomFinalizer k) : s.finalizers}
 
-subscribe ::
-  DynVal a ->
-  (a -> ClickM ()) ->
-  ResourceScope ->
-  InternalState -> InternalState
-subscribe (ConstVal _) _ _ s = s
-subscribe (FromVar (SourceVar srcId _)) fn scope s = s {subscriptions}
+subscribe :: DynVal a -> (a -> ClickM ()) -> ClickM ()
+subscribe (ConstVal _) _ = return ()
+subscribe (FromVar (SourceVar srcid _)) k = reactive_ g where
+  g scope s = s {subscriptions = (scope, srcid, k . unsafeCoerce) : s.subscriptions }
+subscribe (FromVar (OverrideVar _ var)) k =
+  subscribe (FromVar var) k
+subscribe (FromVar (LensMap l var)) k =
+  subscribe (FromVar var) (k . getConst . l Const)
+subscribe (MapVal v f) k = subscribe v (k . f)
+subscribe (MapHoldVal _ _ srcid ref) k = reactive_ g where
+  g scope s = s {subscriptions = (scope, srcid, k . unsafeCoerce) : s.subscriptions }
+subscribe (SplatVal fv av) k = do
+  src <- reactive h
+  subscribe fv $ f src
+  subscribe av $ g src
   where
-    subscriptions = newSub : s.subscriptions
-    newSub = (scope, srcId, fn . unsafeCoerce)
-subscribe (FromVar (OverrideVar _ var)) fn scope s =
-  subscribe (FromVar var) fn scope s
-subscribe (FromVar (LensMap l var)) fn scope s =
-  subscribe (FromVar var) (fn . getConst . l Const) scope s
-subscribe (MapVal v f) fn scope s = subscribe v (fn . f) scope s
-subscribe (MapHoldVal _ _ srcId ref) fn scope s = s {subscriptions}
-  where
-    subscriptions = newSub : s.subscriptions
-    newSub = (scope, srcId, fn . unsafeCoerce)
-subscribe (SplatVal fv av) fn scope s =
-  subscribe av g scope $ subscribe fv f scope $ attachCb s
-  where
-    f fv' = do
+    h scope s = (s', SourceId s.next_id) where
+      s' = s
+        { subscriptions = newsub : s.subscriptions
+        , next_id = s.next_id + 1
+        }
+      newsub = (scope, SourceId s.next_id, k . unsafeCoerce)
+    f src fv' = do
       av' <- readVal av
-      modify $ unsafeTrigger varid $ fv' av'
-    g av' = do
+      modify $ unsafeTrigger src $ fv' av'
+    g src av' = do
       fv' <- readVal fv
-      modify $ unsafeTrigger varid $ fv' av'
-    attachCb s = s
-      { subscriptions = (scope, varid, fn . unsafeCoerce) : s.subscriptions
-      , next_id = s.next_id + 1
-      }
-    varid = SourceId s.next_id
+      modify $ unsafeTrigger src $ fv' av'
+subscribe (OverrideSub f a) k = f (subscribe a) k
+subscribe (FoldVal f a b srcid ref) k = reactive_ g where
+  g scope s = s {subscriptions = (scope, srcid, k . unsafeCoerce) : s.subscriptions }
 
 readVal :: DynVal a -> ClickM a
 readVal (ConstVal a) = pure a
@@ -106,6 +104,8 @@ readVal (FromVar var) = readVar var
 readVal (MapVal val f) = fmap f $ readVal val
 readVal (MapHoldVal _ _ _ ref) = liftIO $ readIORef ref
 readVal (SplatVal f a) = liftA2 ($) (readVal f) (readVal a)
+readVal (OverrideSub _ a) = readVal a
+readVal (FoldVal _ _ _ _ ref) = liftIO $ readIORef ref
 
 readVar :: DynVar a -> ClickM a
 readVar (SourceVar _ ref) = liftIO $ readIORef ref
@@ -173,8 +173,8 @@ data ClientMessage
   -- devserver)
 
 mapHoldVal :: (a -> b) -> DynVal a -> ClickM (DynVal b)
-mapHoldVal f a = do
-  a <- readVal a
+mapHoldVal f da = do
+  a <- readVal da
   ref <- liftIO $ newIORef $ f a
   reactive $ g ref
   where
@@ -186,4 +186,20 @@ mapHoldVal f a = do
         liftIO $ writeIORef ref b
         modify $ unsafeTrigger srcId b
       s' = s {subscriptions = newSub : s.subscriptions, next_id = succ s.next_id}
-      val = MapHoldVal a f srcId ref
+      val = MapHoldVal da f srcId ref
+
+foldVal :: (a -> b -> b) -> b -> DynVal a -> ClickM (DynVal b)
+foldVal f b da = do
+  ref <- liftIO $ newIORef b
+  reactive $ g ref
+  where
+    g ref scope s = (s', val) where
+      srcId = SourceId s.next_id
+      newSub = (scope, srcId, k . unsafeCoerce)
+      k a = do
+        b <- liftIO $ readIORef ref
+        let b' = f a b
+        liftIO $ writeIORef ref b'
+        modify $ unsafeTrigger srcId b'
+      s' = s {subscriptions = newSub : s.subscriptions, next_id = succ s.next_id}
+      val = FoldVal f b da srcId ref

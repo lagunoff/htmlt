@@ -26,11 +26,11 @@ dynClass = dynProp "className"
 {-# INLINE dynClass #-}
 
 dynChecked :: DynVal Bool -> HtmlM ()
-dynChecked = dynBoolProp "checked"
+dynChecked = dynProp "checked"
 {-# INLINE dynChecked #-}
 
 dynDisabled :: DynVal Bool -> HtmlM ()
-dynDisabled = dynBoolProp "disabled"
+dynDisabled = dynProp "disabled"
 {-# INLINE dynDisabled #-}
 
 title_ :: Text -> HtmlM ()
@@ -38,11 +38,11 @@ title_ = property "title"
 {-# INLINE title_ #-}
 
 selected_ :: Bool -> HtmlM ()
-selected_ = boolProperty "selected"
+selected_ = property "selected"
 {-# INLINE selected_ #-}
 
 hidden_ :: Bool -> HtmlM ()
-hidden_ = boolProperty "hidden"
+hidden_ = property "hidden"
 {-# INLINE hidden_ #-}
 
 value_ :: Text -> HtmlM ()
@@ -66,7 +66,7 @@ action_ = property "action"
 {-# INLINE action_ #-}
 
 autocomplete_ :: Bool -> HtmlM ()
-autocomplete_ b = property "autocomplete" (if b then "on" else "off")
+autocomplete_ b = property @Text "autocomplete" (if b then "on" else "off")
 {-# INLINE autocomplete_ #-}
 
 autosave_ :: Text -> HtmlM ()
@@ -74,7 +74,7 @@ autosave_ = property "autosave"
 {-# INLINE autosave_ #-}
 
 disabled_ :: Bool -> HtmlM ()
-disabled_ = boolProperty "disabled"
+disabled_ = property "disabled"
 {-# INLINE disabled_ #-}
 
 enctype_ :: Text -> HtmlM ()
@@ -102,11 +102,11 @@ method_ = property "method"
 {-# INLINE method_ #-}
 
 multiple_ :: Bool -> HtmlM ()
-multiple_ = boolProperty "multiple"
+multiple_ = property "multiple"
 {-# INLINE multiple_ #-}
 
 novalidate_ :: Bool -> HtmlM ()
-novalidate_ = boolProperty "noValidate"
+novalidate_ = property "noValidate"
 {-# INLINE novalidate_ #-}
 
 pattern_ :: Text -> HtmlM ()
@@ -114,11 +114,11 @@ pattern_ = property "pattern"
 {-# INLINE pattern_ #-}
 
 readonly_ :: Bool -> HtmlM ()
-readonly_ = boolProperty "readOnly"
+readonly_ = property "readOnly"
 {-# INLINE readonly_ #-}
 
 required_ :: Bool -> HtmlM ()
-required_ = boolProperty "required"
+required_ = property "required"
 {-# INLINE required_ #-}
 
 size_ :: Text -> HtmlM ()
@@ -222,15 +222,15 @@ alt_ = property "alt"
 {-# INLINE alt_ #-}
 
 autoplay_ :: Bool -> HtmlM ()
-autoplay_ = boolProperty "autoplay"
+autoplay_ = property "autoplay"
 {-# INLINE autoplay_ #-}
 
 controls_ :: Bool -> HtmlM ()
-controls_ = boolProperty "controls"
+controls_ = property "controls"
 {-# INLINE controls_ #-}
 
 loop_ :: Bool -> HtmlM ()
-loop_ = boolProperty "loop"
+loop_ = property "loop"
 {-# INLINE loop_ #-}
 
 preload_ :: Text -> HtmlM ()
@@ -242,7 +242,7 @@ poster_ = property "poster"
 {-# INLINE poster_ #-}
 
 default_ :: Bool -> HtmlM ()
-default_ = boolProperty "default"
+default_ = property "default"
 {-# INLINE default_ #-}
 
 kind_ :: Text -> HtmlM ()
@@ -342,11 +342,11 @@ placeholder_ = property "placeholder"
 {-# INLINE placeholder_ #-}
 
 checked_ :: Bool -> HtmlM ()
-checked_ = boolProperty "checked"
+checked_ = property "checked"
 {-# INLINE checked_ #-}
 
 autofocus_ :: Bool -> HtmlM ()
-autofocus_ = boolProperty "autofocus"
+autofocus_ = property "autofocus"
 {-# INLINE autofocus_ #-}
 
 class_ :: Text -> HtmlM ()
