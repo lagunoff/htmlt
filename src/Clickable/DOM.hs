@@ -114,6 +114,10 @@ instance IsEventName "select/change" where
   type EventListenerCb "select/change" = Text -> ClickM ()
   addEventListenerArgs = selectChangeConnectArgs
 
+instance IsEventName "mousewheel" where
+  type EventListenerCb "mousewheel" = MouseWheel -> ClickM ()
+  addEventListenerArgs = mouseWheelConnectArgs
+
 eventListenerOptions :: Text -> Bool -> Bool -> ConnectResourceArgs (ClickM ())
 eventListenerOptions eventName preventDef stopProp = ConnectResourceArgs
   { aquire_resource = \scope sourceId ->
@@ -265,4 +269,39 @@ popstateConnectArgs = ConnectResourceArgs
       \  return () => target.removeEventListener('popstate', listener);\n\
       \})" `Apply` [Id "window", Lam (TriggerCallback sourceId (Arg 0 0))]
   , mk_callback = \k event -> forM_ (fromValue event) k
+  }
+
+-- | Collection of deltaX, deltaY and deltaZ properties from WheelEvent
+-- https://developer.mozilla.org/en-US/docs/Web/API/WheelEvent
+data MouseWheel = MouseWheel
+  { mw_delta_x :: Int64
+  , mw_delta_y :: Int64
+  , mw_delta_z :: Int64
+  , mw_alt_key :: Bool
+  , mw_ctrl_key :: Bool
+  , mw_meta_key :: Bool
+  , mw_shift_key :: Bool
+  } deriving stock (Eq, Show, Generic)
+    deriving anyclass (FromValue, ToValue)
+
+-- https://developer.mozilla.org/en-US/docs/Web/API/WheelEvent
+mouseWheelConnectArgs :: ConnectResourceArgs (MouseWheel -> ClickM ())
+mouseWheelConnectArgs = ConnectResourceArgs
+  { mk_callback = \k j -> forM_ (fromValue j) k
+  , aquire_resource = \scope sourceId -> Eval
+      "(function(target, haskellCb){\n\
+      \  function listener(event){\n\
+      \    haskellCb({\n\
+      \      mw_delta_x: event.deltaX,\n\
+      \      mw_delta_y: event.deltaY,\n\
+      \      mw_delta_z: event.deltaZ,\n\
+      \      mw_alt_key: event.altKey,\n\
+      \      mw_ctrl_key: event.ctrlKey,\n\
+      \      mw_meta_key: event.metaKey,\n\
+      \      mw_shift_key: event.shiftKey\n\
+      \    });\n\
+      \  }\n\
+      \  target.addEventListener('popstate', listener);\n\
+      \  return () => target.removeEventListener('popstate', listener);\n\
+      \})" `Apply` [Arg 0 0, Lam (TriggerCallback sourceId (Arg 0 0))]
   }

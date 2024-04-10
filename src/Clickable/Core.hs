@@ -13,6 +13,7 @@ import Data.IORef
 import Data.String
 import Data.Text (Text)
 import Data.Text qualified as Text
+import Data.List qualified as List
 import Data.Tuple
 
 import Clickable.Internal (reactive, reactive_)
@@ -34,13 +35,16 @@ newVar a = do
 overrideVar :: (UpdateFn a -> UpdateFn a) -> DynVar a -> DynVar a
 overrideVar = OverrideVar
 
+lensMap :: Lens' s a -> DynVar s -> DynVar a
+lensMap = LensMap
+
 mapHoldVal :: (a -> b) -> DynVal a -> ClickM (DynVal b)
 mapHoldVal = Internal.mapHoldVal
 
-readVal :: DynVal a -> ClickM a
+readVal :: MonadIO m => DynVal a -> m a
 readVal = Internal.readVal
 
-readVar :: DynVar a -> ClickM a
+readVar :: MonadIO m => DynVar a -> m a
 readVar = Internal.readVar
 
 modifyVar :: DynVar s -> (s -> (s, a)) -> ClickM a
@@ -194,35 +198,33 @@ toggleClass className val = do
   lift $ subscribe val $ enqueueExpr . updateCmd
 
 dynClassList :: DynVal [Text] -> HtmlM ()
-dynClassList dynList = undefined -- do
-  -- reactiveScope <- ask
-  -- currentNodeVar <- saveCurrentNode
-  -- initVal <- liftIO dynList.sample
-  -- let
-  --   compareList as bs =
-  --     (diffList as bs, diffList bs as)
-  --   diffList as bs = List.foldl'
-  --     (\xs k -> if List.elem k as then xs else k:xs) [] bs
-  --   f newList (_, _, oldList) =
-  --     let
-  --       (added, removed) = compareList oldList newList
-  --     in
-  --       Just (added, removed, newList)
-  -- lift do
-  --   dynListDiff <- foldDynMaybe f ([], [], []) dynList
-  --   let
-  --     initCmd = InsertClassList (Arg 0 0) initVal
-  --     updateCmd ([], [], _) queue = queue
-  --     updateCmd (added, [], _) queue = InsertClassList (Var currentNodeVar) added : queue
-  --     updateCmd ([], removed, _) queue = RemoveClassList (Var currentNodeVar) removed : queue
-  --     updateCmd (added, removed, _) queue = RemoveClassList (Var currentNodeVar) removed : InsertClassList (Var currentNodeVar) added : queue
-  --     modQueueIfAlive f = modify \s -> s
-  --       { evaluation_queue =
-  --         if Map.member reactiveScope s.finalizers
-  --           then f s.evaluation_queue else s.evaluation_queue
-  --       }
-  --   modify \s -> s {evaluation_queue = initCmd : s.evaluation_queue}
-  --   dynListDiff.updates.subscribe $ modQueueIfAlive . updateCmd
+dynClassList dynList = do
+  scope <- lift $ asks (.scope)
+  n <- saveCurrentNode
+  initVal <- lift $ readVal dynList
+  let
+    compareList as bs =
+      (diffList as bs, diffList bs as)
+    diffList as bs = List.foldl'
+      (\xs k -> if List.elem k as then xs else k:xs) [] bs
+    f newList (_, _, oldList) =
+      let
+        (added, removed) = compareList oldList newList
+      in
+        (added, removed, newList)
+  lift do
+    dynListDiff <- Internal.foldVal f ([], [], []) dynList
+    let
+      initCmd = InsertClassList (Arg 0 0) initVal
+      updateCmd ([], [], _) queue = queue
+      updateCmd (added, [], _) queue = InsertClassList (Var n) added : queue
+      updateCmd ([], removed, _) queue = RemoveClassList (Var n) removed : queue
+      updateCmd (added, removed, _) queue = RemoveClassList (Var n) removed : InsertClassList (Var n) added : queue
+      modQueue f = modify \s -> s
+        { evaluation_queue = f s.evaluation_queue
+        }
+    modify \s -> s {evaluation_queue = initCmd : s.evaluation_queue}
+    subscribe dynListDiff $ modQueue . updateCmd
 
 ---------------------
 -- DYNAMIC CONTENT --

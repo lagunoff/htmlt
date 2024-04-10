@@ -98,7 +98,7 @@ subscribe (OverrideSub f a) k = f (subscribe a) k
 subscribe (FoldVal f a b srcid ref) k = reactive_ g where
   g scope s = s {subscriptions = (scope, srcid, k . unsafeCoerce) : s.subscriptions }
 
-readVal :: DynVal a -> ClickM a
+readVal :: MonadIO m => DynVal a -> m a
 readVal (ConstVal a) = pure a
 readVal (FromVar var) = readVar var
 readVal (MapVal val f) = fmap f $ readVal val
@@ -107,7 +107,7 @@ readVal (SplatVal f a) = liftA2 ($) (readVal f) (readVal a)
 readVal (OverrideSub _ a) = readVal a
 readVal (FoldVal _ _ _ _ ref) = liftIO $ readIORef ref
 
-readVar :: DynVar a -> ClickM a
+readVar :: MonadIO m => DynVar a -> m a
 readVar (SourceVar _ ref) = liftIO $ readIORef ref
 readVar (LensMap l var) = fmap (getConst . l Const) $ readVar var
 readVar (OverrideVar _ var) = readVar var
