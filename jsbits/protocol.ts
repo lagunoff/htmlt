@@ -66,7 +66,7 @@ export function evalExpr(hscb: HaskellCallback, idenScope: List<Bindings>, argSc
       const rhs: any = evalExpr(hscb, idenScope, argScope, exp.exp);
       return rhs[exp.ix];
     }
-    case ExprTag.Add: {
+    case ExprTag.Plus: {
       const lhs = evalExpr(hscb, idenScope, argScope, exp[0]) as number;
       const rhs = evalExpr(hscb, idenScope, argScope, exp[1]) as number;
       return lhs + rhs;
@@ -346,7 +346,7 @@ export enum ExprTag {
   SetProp,
   Ix,
 
-  Add,
+  Plus,
   Subtract,
   Multiply,
   Divide,
@@ -399,7 +399,7 @@ export type Expr =
   | { tag: ExprTag.SetProp, 0: Expr, 1: string, 2: Expr }
   | { tag: ExprTag.Ix, exp: Expr, ix: number }
 
-  | { tag: ExprTag.Add, 0: Expr, 1: Expr }
+  | { tag: ExprTag.Plus, 0: Expr, 1: Expr }
   | { tag: ExprTag.Subtract, 0: Expr, 1: Expr  }
   | { tag: ExprTag.Multiply, 0: Expr, 1: Expr  }
   | { tag: ExprTag.Divide, 0: Expr, 1: Expr  }
@@ -451,7 +451,7 @@ export const expr = b.recursive<Expr>(self => b.discriminate({
   [ExprTag.SetProp]: b.record({ 0: self, 1: b.string, 2: self }),
   [ExprTag.Ix]: b.record({ exp: self, ix: b.int64 }),
 
-  [ExprTag.Add]: b.record({ 0: self, 1: self }),
+  [ExprTag.Plus]: b.record({ 0: self, 1: self }),
   [ExprTag.Subtract]: b.record({ 0: self, 1: self }),
   [ExprTag.Multiply]: b.record({ 0: self, 1: self }),
   [ExprTag.Divide]: b.record({ 0: self, 1: self }),

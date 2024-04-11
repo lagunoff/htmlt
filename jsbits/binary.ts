@@ -146,23 +146,9 @@ export function runDecoder<A>(
     return [val as any as A, ptr + 8];
   }
   if (decoder instanceof Float64Decoder) {
-    // FFS: Data.Binary represents a Double as a tuple (Integer, Int)
-    // which is 25 bytes long!
-
-    // const buffer = new ArrayBuffer(8);
-    // const uint8View = new Uint8Array(buffer);
-    // uint8View[0] = mem[ptr];
-    // uint8View[1] = mem[ptr + 1];
-    // uint8View[2] = mem[ptr + 2];
-    // uint8View[3] = mem[ptr + 3];
-    // uint8View[4] = mem[ptr + 4];
-    // uint8View[5] = mem[ptr + 5];
-    // uint8View[6] = mem[ptr + 6];
-    // uint8View[7] = mem[ptr + 7];
-    // const float64View = new Float64Array(buffer);
-    // const val = float64View[0];
-    // return [val as any as A, ptr + 8];
-    throw new Error("Unimplemented");
+    const view = new DataView(mem.buffer);
+    const value = view.getFloat64(ptr, true) as any;
+    return [value, ptr + 8];
   }
   if (decoder instanceof StringDecoder) {
     const len = mem[ptr + 7] +
@@ -263,7 +249,9 @@ export function runEncoder<A>(
     return ptr + 8;
   }
   if (decoder instanceof Float64Decoder) {
-    throw new Error("Unimplemented");
+    const view = new DataView(mem.buffer);
+    view.setFloat64(ptr, value as number, true);
+    return ptr + 8;
   }
   if (decoder instanceof StringDecoder) {
     const str = value as any as string;

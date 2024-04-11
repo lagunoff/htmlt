@@ -1,6 +1,8 @@
 module Clickable.Protocol.Value where
 
 import Data.Binary
+import Data.Binary.Put
+import Data.Binary.Get
 import Data.ByteString
 import Data.Kind
 import Data.List qualified as List
@@ -14,13 +16,20 @@ data Value
   = Null
   | Bool Bool
   | I64 Int64
-  | F64 Double
+  | F64 Float64
   | String Text
   | Array [Value]
   | Object [(Text, Value)]
   | Uint8Array ByteString
   deriving stock (Generic, Show)
   deriving anyclass (Binary)
+
+newtype Float64 = Float64 {unFloat64 :: Double}
+  deriving newtype (Show, Ord, Eq, Floating, RealFloat, Fractional, Num, RealFrac, Real)
+
+instance Binary Float64 where
+  put = putDoublele . unFloat64
+  get = fmap Float64 getDoublele
 
 class ToValue a where
   toValue :: a -> Value
@@ -33,7 +42,7 @@ instance ToValue Bool where toValue = Bool
 
 instance ToValue Int64 where toValue = I64
 
-instance ToValue Double where toValue = F64
+instance ToValue Double where toValue = F64 . Float64
 
 instance ToValue Char where
   toValue c = String $ Text.cons c Text.empty
@@ -70,7 +79,7 @@ instance FromValue Int64 where
 instance FromValue Double where
   fromValue = \case
     I64 j -> Just $ fromIntegral j
-    F64 j -> Just j
+    F64 (Float64 j) -> Just j
     _ -> Nothing
 
 instance FromValue Char where

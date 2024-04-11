@@ -44,7 +44,7 @@ data Expr
   -- ^ JavaScript boolean value
   | I64 Int64
   -- ^ JavaScript integer number
-  | F64 Double
+  | F64 Value.Float64
   -- ^ JavaScript floating point number
   | String Text
   -- ^ JavaScript string
@@ -67,7 +67,7 @@ data Expr
   -- ^ Read value from an integer index of an object. @(Ix (Id
   -- "foo") 0)@ is equivalent to @foo[0]@ JavaScript expression
 
-  | Add Expr Expr
+  | Plus Expr Expr
   -- ^ Binary addition @(Add 256 5647)@ is equivalent to @256 + 5647@
   | Subtract Expr Expr
   -- ^ Binary substraction @(Subtract 256 5647)@ is equivalent to @256 - 5647@
