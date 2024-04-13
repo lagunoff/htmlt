@@ -7,8 +7,8 @@ export function startDev(devSocketUri: string, startFlags: unknown = null) {
 
   const sendToHaskell = async (jsMsg: JavaScriptMessage, argScope: List<IArguments>) => {
     websocket.send(p.javascriptMessage.encode(jsMsg));
-    const haskMsg = await awaitWebsocketMessage();
-    await haskellApp(haskMsg, argScope, sendToHaskell);
+    // const haskMsg = await awaitWebsocketMessage();
+    // await haskellApp(haskMsg, argScope, sendToHaskell);
   };
 
   websocket.onopen = (_event) => {

@@ -1,6 +1,7 @@
 module Clickable.Internal where
 
 import Control.Applicative
+import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.State
 import Data.Foldable
@@ -155,8 +156,9 @@ syncPoint :: ClickM ()
 syncPoint = do
   send_message <- asks (.send_message)
   queue <- state \s -> (s.evaluation_queue, s {evaluation_queue = []})
-  liftIO $ send_message $ EvalExpr $ RevSeq queue
-  return ()
+  unless (List.null queue) do
+    liftIO $ send_message $ EvalExpr $ RevSeq queue
+    return ()
 
 reactive :: (ResourceScope -> InternalState -> (InternalState, a)) -> ClickM a
 reactive f = ClickT $ ReaderT $ \e -> atomicModifyIORef' e.internal_state_ref $ f e.scope
