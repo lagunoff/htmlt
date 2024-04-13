@@ -26,7 +26,7 @@ export class DecoderBase<A> {
 
 export type Decoder<A> =
   | Int8Decoder<A>
-  | Int64Decoder<A>
+  | Int32Decoder<A>
   | Float64Decoder<A>
   | Uint8ArrayDecoder<A>
   | StringDecoder<A>
@@ -39,7 +39,7 @@ export type Decoder<A> =
 
 export class Int8Decoder<A> extends DecoderBase<A> {
 }
-export class Int64Decoder<A> extends DecoderBase<A> {
+export class Int32Decoder<A> extends DecoderBase<A> {
 }
 export class Float64Decoder<A> extends DecoderBase<A> {
 }
@@ -79,8 +79,8 @@ export function computeSize<A>(
   if (decoder instanceof Int8Decoder) {
     return 1;
   }
-  if (decoder instanceof Int64Decoder) {
-    return 8;
+  if (decoder instanceof Int32Decoder) {
+    return 4;
   }
   if (decoder instanceof Float64Decoder) {
     return 8;
@@ -132,18 +132,10 @@ export function runDecoder<A>(
     const result = mem[ptr] as any as A;
     return [result, ptr + 1];
   }
-  if (decoder instanceof Int64Decoder) {
-    // Data.Binary encodes the integers with Big Endian encoding, what
-    // the heck?
-    const val = mem[ptr + 7] +
-      (mem[ptr + 6] << 8) +
-      (mem[ptr + 5] << 16) +
-      (mem[ptr + 4] << 24) +
-      (mem[ptr + 3] << 32) +
-      (mem[ptr + 2] << 40) +
-      (mem[ptr + 1] << 48) +
-      (mem[ptr] << 56);
-    return [val as any as A, ptr + 8];
+  if (decoder instanceof Int32Decoder) {
+    const view = new DataView(mem.buffer);
+    const value = view.getInt32(ptr, true) as any;
+    return [value as any as A, ptr + 4];
   }
   if (decoder instanceof Float64Decoder) {
     const view = new DataView(mem.buffer);
@@ -236,17 +228,10 @@ export function runEncoder<A>(
     mem[ptr] = value as any as number;
     return ptr + 1;
   }
-  if (decoder instanceof Int64Decoder) {
-    const val = value as any as number;
-    mem[ptr + 7] = val & 0xFF;
-    mem[ptr + 6] = (val >> 8) & 0xFF;
-    mem[ptr + 5] = (val >> 16) & 0xFF;
-    mem[ptr + 4] = (val >> 24) & 0xFF;
-    // mem[ptr + 3] = (val >> 32) & 0xFF;
-    // mem[ptr + 2] = (val >> 40) & 0xFF;
-    // mem[ptr + 1] = (val >> 48) & 0xFF;
-    // mem[ptr] = (val >> 56) & 0xFF;
-    return ptr + 8;
+  if (decoder instanceof Int32Decoder) {
+    const view = new DataView(mem.buffer);
+    view.setInt32(ptr, value as number, true);
+    return ptr + 4;
   }
   if (decoder instanceof Float64Decoder) {
     const view = new DataView(mem.buffer);
@@ -342,7 +327,7 @@ function readDiscriminator(dscrSize: number, mem: Uint8Array, ix: HaskellPointer
 
 export const int8 = new Int8Decoder<number>();
 
-export const int64 = new Int64Decoder<number>();
+export const int32 = new Int32Decoder<number>();
 
 export const float64 = new Float64Decoder<number>();
 

@@ -42,7 +42,7 @@ data Expr
   -- ^ Represents null or undefined values
   | Boolean Bool
   -- ^ JavaScript boolean value
-  | I64 Int64
+  | I32 Value.Int32Le
   -- ^ JavaScript integer number
   | F64 Value.Float64
   -- ^ JavaScript floating point number
@@ -155,7 +155,7 @@ valueToExpr :: Value.Value -> Expr
 valueToExpr = \case
   Value.Null -> Null
   Value.Bool a -> Boolean a
-  Value.I64 a -> I64 a
+  Value.I32 a -> I32 a
   Value.F64 a -> F64 a
   Value.String a -> String a
   Value.Array xs -> Array $ fmap valueToExpr xs
@@ -165,18 +165,18 @@ valueToExpr = \case
 toExpr :: Value.ToValue a => a -> Expr
 toExpr = valueToExpr . Value.toValue
 
-data VarId = VarId ResourceScope Int64
+data VarId = VarId ResourceScope Value.Int32Le
   deriving stock (Generic, Show, Ord, Eq)
   deriving anyclass (Binary)
 
-newtype FinalizerId = FinalizerId { unFinalizerId :: Int64 }
-  deriving newtype (Show, Num, Binary, Ord, Eq)
+newtype FinalizerId = FinalizerId { unFinalizerId :: Value.Int32Le }
+  deriving newtype (Show, Num, Ord, Eq, Binary)
 
-newtype ResourceScope = ResourceScope {unResourceScope :: Int64}
-  deriving newtype (Show, Num, Binary, Ord, Eq)
+newtype ResourceScope = ResourceScope {unResourceScope :: Value.Int32Le}
+  deriving newtype (Show, Num, Ord, Eq, Binary)
 
-newtype SourceId = SourceId {unSourceId :: Int64}
-  deriving newtype (Show, Num, Binary, Ord, Eq)
+newtype SourceId = SourceId {unSourceId :: Value.Int32Le}
+  deriving newtype (Show, Num, Ord, Eq, Binary)
 
 newtype UnsafeJavaScript = UnsafeJavaScript {unUnsafeJavaScript :: Text}
   deriving newtype (IsString, Show, Semigroup, Monoid, Binary)

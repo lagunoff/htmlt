@@ -83,11 +83,11 @@ instance IsEventName "input" where
   addEventListenerArgs = inputConnectArgs "input"
 
 instance IsEventName "keydown" where
-  type EventListenerCb "keydown" = Int64 -> ClickM ()
+  type EventListenerCb "keydown" = Int32 -> ClickM ()
   addEventListenerArgs = keyboardConnectArgs "keydown"
 
 instance IsEventName "keyup" where
-  type EventListenerCb "keyup" = Int64 -> ClickM ()
+  type EventListenerCb "keyup" = Int32 -> ClickM ()
   addEventListenerArgs = keyboardConnectArgs "keyup"
 
 instance IsEventName "focus" where
@@ -162,7 +162,7 @@ inputConnectArgs eventName = ConnectResourceArgs
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/keydown_event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/keyup_event
-keyboardConnectArgs :: Text -> ConnectResourceArgs (Int64 -> ClickM ())
+keyboardConnectArgs :: Text -> ConnectResourceArgs (Int32 -> ClickM ())
 keyboardConnectArgs eventName = ConnectResourceArgs
   { aquire_resource = \scope sourceId -> Eval (
       "(function(target, haskellCb){\n\
@@ -274,9 +274,9 @@ popstateConnectArgs = ConnectResourceArgs
 -- | Collection of deltaX, deltaY and deltaZ properties from WheelEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/WheelEvent
 data MouseWheel = MouseWheel
-  { mw_delta_x :: Int64
-  , mw_delta_y :: Int64
-  , mw_delta_z :: Int64
+  { mw_delta_x :: Int32
+  , mw_delta_y :: Int32
+  , mw_delta_z :: Int32
   , mw_alt_key :: Bool
   , mw_ctrl_key :: Bool
   , mw_meta_key :: Bool

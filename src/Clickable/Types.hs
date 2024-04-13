@@ -11,6 +11,7 @@ import GHC.Generics
 import GHC.Exts
 
 import Clickable.Protocol
+import Clickable.Protocol.Value (Int32Le)
 
 data DynVar a where
   SourceVar :: SourceId -> IORef a -> DynVar a
@@ -64,7 +65,7 @@ data InternalState = InternalState
   , finalizers :: [(ResourceScope, FinalizerVal)]
   , transaction_queue :: Map SourceId (ClickM ())
   , evaluation_queue :: [Expr]
-  , next_id :: Int64
+  , next_id :: Int32Le
   } deriving (Generic)
 
 data FinalizerVal

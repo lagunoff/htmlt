@@ -15,7 +15,7 @@ import GHC.Int
 data Value
   = Null
   | Bool Bool
-  | I64 Int64
+  | I32 Int32Le
   | F64 Float64
   | String Text
   | Array [Value]
@@ -31,6 +31,13 @@ instance Binary Float64 where
   put = putDoublele . unFloat64
   get = fmap Float64 getDoublele
 
+newtype Int32Le = Int32Le {unInt32Le :: Int32}
+  deriving newtype (Show, Ord, Eq, Num, Real, Integral, Enum, Bounded)
+
+instance Binary Int32Le where
+  put = putInt32le . unInt32Le
+  get = fmap Int32Le getInt32le
+
 class ToValue a where
   toValue :: a -> Value
   default toValue :: (Generic a, GToValue (Rep a)) => a -> Value
@@ -40,7 +47,7 @@ instance ToValue Value where toValue = Prelude.id
 
 instance ToValue Bool where toValue = Bool
 
-instance ToValue Int64 where toValue = I64
+instance ToValue Int32 where toValue = I32 . Int32Le
 
 instance ToValue Double where toValue = F64 . Float64
 
@@ -70,15 +77,15 @@ instance FromValue Value where fromValue = pure
 instance FromValue Bool where
   fromValue = \case Bool a -> Just a; _ -> Nothing
 
-instance FromValue Int64 where
+instance FromValue Int32 where
   fromValue = \case
-    I64 j -> Just j
+    I32 (Int32Le j) -> Just j
     F64 j -> Just $ floor j
     _ -> Nothing
 
 instance FromValue Double where
   fromValue = \case
-    I64 j -> Just $ fromIntegral j
+    I32 j -> Just $ fromIntegral j
     F64 (Float64 j) -> Just j
     _ -> Nothing
 

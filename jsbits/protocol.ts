@@ -34,7 +34,7 @@ export function evalExpr(hscb: HaskellCallback, idenScope: List<Bindings>, argSc
     case ExprTag.Boolean: {
        return exp[0] != 0;
     }
-    case ExprTag.I64: {
+    case ExprTag.I32: {
       return exp[0];
     }
     case ExprTag.F64: {
@@ -274,7 +274,7 @@ export function unknownToValue(inp: unknown): Value {
   }
   if (typeof(inp) === 'number') {
     if (Number.isInteger(inp)) {
-      return { tag: ValueTag.I64, 0: inp };
+      return { tag: ValueTag.I32, 0: inp };
     } else {
       return { tag: ValueTag.F64, 0: inp };
     }
@@ -302,7 +302,7 @@ export function unknownToValue(inp: unknown): Value {
 export enum ValueTag {
   Null,
   Boolean,
-  I64,
+  I32,
   F64,
   String,
   Array,
@@ -313,7 +313,7 @@ export enum ValueTag {
 export type Value =
   | { tag: ValueTag.Null }
   | { tag: ValueTag.Boolean, 0: number }
-  | { tag: ValueTag.I64, 0: number }
+  | { tag: ValueTag.I32, 0: number }
   | { tag: ValueTag.F64, 0: number }
   | { tag: ValueTag.String, 0: string }
   | { tag: ValueTag.Array, 0: Value[] }
@@ -324,7 +324,7 @@ export type Value =
 export const jvalue = b.recursive<Value>(self => b.discriminate({
   [ValueTag.Null]: b.record({ }),
   [ValueTag.Boolean]: b.record({ 0: b.int8 }),
-  [ValueTag.I64]: b.record({ 0: b.int64 }),
+  [ValueTag.I32]: b.record({ 0: b.int32 }),
   [ValueTag.F64]: b.record({ 0: b.float64 }),
   [ValueTag.String]: b.record({ 0: b.string }),
   [ValueTag.Array]: b.record({ 0: b.array(self) }),
@@ -335,7 +335,7 @@ export const jvalue = b.recursive<Value>(self => b.discriminate({
 export enum ExprTag {
   Null,
   Boolean,
-  I64,
+  I32,
   F64,
   String,
   Array,
@@ -388,7 +388,7 @@ export enum ExprTag {
 export type Expr =
   | { tag: ExprTag.Null }
   | { tag: ExprTag.Boolean, 0: number }
-  | { tag: ExprTag.I64, 0: number }
+  | { tag: ExprTag.I32, 0: number }
   | { tag: ExprTag.F64, 0: number }
   | { tag: ExprTag.String, 0: string }
   | { tag: ExprTag.Array, 0: Expr[] }
@@ -441,7 +441,7 @@ export type Expr =
 export const expr = b.recursive<Expr>(self => b.discriminate({
   [ExprTag.Null]: b.record({}),
   [ExprTag.Boolean]: b.record({ 0: b.int8 }),
-  [ExprTag.I64]: b.record({ 0: b.int64 }),
+  [ExprTag.I32]: b.record({ 0: b.int32 }),
   [ExprTag.F64]: b.record({ 0: b.float64 }),
   [ExprTag.String]: b.record({ 0: b.string }),
   [ExprTag.Array]: b.record({ 0: b.array(self) }),
@@ -449,7 +449,7 @@ export const expr = b.recursive<Expr>(self => b.discriminate({
 
   [ExprTag.Dot]: b.record({ 0: self, 1: b.string }),
   [ExprTag.SetProp]: b.record({ 0: self, 1: b.string, 2: self }),
-  [ExprTag.Ix]: b.record({ exp: self, ix: b.int64 }),
+  [ExprTag.Ix]: b.record({ exp: self, ix: b.int32 }),
 
   [ExprTag.Plus]: b.record({ 0: self, 1: self }),
   [ExprTag.Subtract]: b.record({ 0: self, 1: self }),
@@ -462,10 +462,10 @@ export const expr = b.recursive<Expr>(self => b.discriminate({
   [ExprTag.Apply]: b.record({ 0: self, 1: b.array(self) }),
   [ExprTag.Call]: b.record({ 0: self, 1: b.string, 2: b.array(self) }),
 
-  [ExprTag.AssignVar]: b.record({ scopeId: b.int64, varId: b.int64, rhs: self }),
-  [ExprTag.FreeVar]: b.record({ scopeId: b.int64, varId: b.int64 }),
-  [ExprTag.Var]: b.record({ scopeId: b.int64, varId: b.int64 }),
-  [ExprTag.FreeScope]: b.record({ scopeId: b.int64 }),
+  [ExprTag.AssignVar]: b.record({ scopeId: b.int32, varId: b.int32, rhs: self }),
+  [ExprTag.FreeVar]: b.record({ scopeId: b.int32, varId: b.int32 }),
+  [ExprTag.Var]: b.record({ scopeId: b.int32, varId: b.int32 }),
+  [ExprTag.FreeScope]: b.record({ scopeId: b.int32 }),
 
   [ExprTag.InsertNode]: b.record({ parent: self, child: self }),
   [ExprTag.CreateElement]: b.record({ tagName: b.string }),
@@ -479,14 +479,14 @@ export const expr = b.recursive<Expr>(self => b.discriminate({
   [ExprTag.InsertBoundary]: b.record({ parent: self }),
   [ExprTag.ClearBoundary]: b.record({ boundary: self, detach: b.int8 }),
 
-  [ExprTag.AddEventListener]: b.record({ reactiveScope: b.int64, target: self, eventName: self, listener: self }),
-  [ExprTag.ConnectResource]: b.record({ reactiveScope: b.int64, aquire: self }),
-  [ExprTag.SetTimeout]: b.record({ reactiveScope: b.int64, callback: self, timeout: b.int64 }),
-  [ExprTag.ApplyFinalizer]: b.record({ reactiveScope: b.int64, finalizerId: self }),
+  [ExprTag.AddEventListener]: b.record({ reactiveScope: b.int32, target: self, eventName: self, listener: self }),
+  [ExprTag.ConnectResource]: b.record({ reactiveScope: b.int32, aquire: self }),
+  [ExprTag.SetTimeout]: b.record({ reactiveScope: b.int32, callback: self, timeout: b.int32 }),
+  [ExprTag.ApplyFinalizer]: b.record({ reactiveScope: b.int32, finalizerId: self }),
 
   [ExprTag.RevSeq]: b.record({ exprs: b.array(self) }),
   [ExprTag.Eval]: b.record({ rawJavaScript: b.string }),
-  [ExprTag.TriggerCallback]: b.record({ callbackId: b.int64, arg: self }),
+  [ExprTag.TriggerCallback]: b.record({ callbackId: b.int32, arg: self }),
   [ExprTag.UncaughtException]: b.record({ message: b.string }),
 }));
 
@@ -512,7 +512,7 @@ export enum JavaScriptMessageTag {
 export const javascriptMessage = b.discriminate({
   [JavaScriptMessageTag.Start]: b.record({ 0: jvalue }),
   [JavaScriptMessageTag.Return]: b.record({ 0: jvalue }),
-  [JavaScriptMessageTag.TriggerCallback]: b.record({ arg: jvalue, callbackId: b.int64 }),
+  [JavaScriptMessageTag.TriggerCallback]: b.record({ arg: jvalue, callbackId: b.int32 }),
   [JavaScriptMessageTag.BeforeUnload]: b.record({}),
 });
 
