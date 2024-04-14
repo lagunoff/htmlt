@@ -6,7 +6,7 @@ import Data.Text (Text)
 import GHC.Int
 import Clickable
 import Clickable.Protocol (VarId)
-import Clickable.Protocol.Value
+import Clickable.Protocol.Value qualified as Value
 
 import "this" Utils
 
@@ -28,7 +28,7 @@ data TodoItemAction a where
   InputAction :: Text -> TodoItemAction ()
   DoubleClickAction :: VarId -> TodoItemAction ()
   CheckedAction :: Bool -> TodoItemAction ()
-  KeydownAction :: Int64 -> TodoItemAction ()
+  KeydownAction :: Int32 -> TodoItemAction ()
 
 emptyState :: TodoItemState
 emptyState = TodoItemState "" False Nothing
@@ -85,15 +85,15 @@ html cfg = li_ mdo
     saveCurrentNode
   return ()
 
-instance ToValue TodoItemState where
-  toValue s = Object
-    [ ("title", toValue s.title)
-    , ("completed", toValue s.completed)
+instance Value.ToValue TodoItemState where
+  toValue s = Value.Object
+    [ ("title", Value.toValue s.title)
+    , ("completed", Value.toValue s.completed)
     ]
 
-instance FromValue TodoItemState where
-  fromValue (Object kv) = do
-    title <- fromValue =<< List.lookup "title" kv
-    completed <- fromValue =<< List.lookup "completed" kv
+instance Value.FromValue TodoItemState where
+  fromValue (Value.Object kv) = do
+    title <- Value.fromValue =<< List.lookup "title" kv
+    completed <- Value.fromValue =<< List.lookup "completed" kv
     return TodoItemState {editing=Nothing, ..}
   fromValue _ = Nothing

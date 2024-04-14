@@ -28,7 +28,7 @@ data TodoListAction a where
   ToggleAllAction :: Bool -> TodoListAction ()
   InputAction :: Text -> TodoListAction ()
   CommitAction :: TodoListAction ()
-  KeydownAction :: Int64 -> TodoListAction ()
+  KeydownAction :: Int32 -> TodoListAction ()
   DeleteItemAction :: Int -> TodoListAction ()
   ClearCompletedAction :: TodoListAction ()
 

@@ -4,7 +4,6 @@ import Control.Monad.Reader
 import Control.Monad.Fix
 import Control.Monad.State
 import Data.IORef
-import Data.Int
 import Data.Tuple
 import Data.Map (Map)
 import GHC.Generics
@@ -61,13 +60,40 @@ data InternalEnv = InternalEnv
   } deriving (Generic)
 
 data InternalState = InternalState
-  { subscriptions :: [(ResourceScope, SourceId, Any -> ClickM ())]
-  , finalizers :: [(ResourceScope, FinalizerVal)]
+  { subscriptions :: [Subscription Any]
+  , finalizers :: [Finalizer]
   , transaction_queue :: Map SourceId (ClickM ())
   , evaluation_queue :: [Expr]
   , next_id :: Int32Le
   } deriving (Generic)
 
-data FinalizerVal
-  = CustomFinalizer (ClickM ())
-  | ScopeFinalizer ResourceScope
+data Subscription a
+  = SubscriptionSimple
+    { ss_scope :: ResourceScope
+    , ss_event_id :: SourceId
+    , ss_callback :: a -> ClickM ()
+    }
+  | forall b. SubscriptionAccum
+    { sa_resource_scope :: ResourceScope
+    , sa_event_id :: SourceId
+    , sa_callback :: a -> b -> ClickM b
+    , sa_accum_ref :: IORef b
+    }
+
+data Finalizer
+  = CustomFinalizer
+    { cf_resource_scope :: ResourceScope
+    , cf_callback :: ClickM ()
+    }
+  | ScopeFinalizer
+    { sf_resource_scope :: ResourceScope
+    , sf_linked_scope :: ResourceScope
+    }
+
+finalizerScope :: Finalizer -> ResourceScope
+finalizerScope CustomFinalizer {cf_resource_scope} = cf_resource_scope
+finalizerScope ScopeFinalizer {sf_resource_scope} = sf_resource_scope
+
+subscriptionScope :: Subscription a -> ResourceScope
+subscriptionScope SubscriptionSimple {ss_scope} = ss_scope
+subscriptionScope SubscriptionAccum {sa_resource_scope} = sa_resource_scope
