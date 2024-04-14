@@ -4,11 +4,11 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.State
-import Data.Foldable
 import Data.IORef
 import Data.List qualified as List
 import Data.Map qualified as Map
 import Unsafe.Coerce
+import GHC.Exts
 
 import Clickable.Protocol
 import Clickable.Protocol.Value (Value)
@@ -30,54 +30,61 @@ unsafeTrigger sourceId a =
   defer sourceId $ gets (.subscriptions) >>= notify
   where
     notify [] = return ()
-    notify ((_, s, cb) : xs)
-      | s == sourceId = cb (unsafeCoerce a) >> notify xs
+    notify (SubscriptionSimple {ss_event_id, ss_callback} : xs)
+      | ss_event_id == sourceId = ss_callback (unsafeCoerce a) >> notify xs
       | otherwise = notify xs
+    notify (SubscriptionAccum {sa_event_id, sa_callback, sa_accum_ref} : xs)
+      | sa_event_id == sourceId = notifyAcc sa_callback sa_accum_ref >> notify xs
+      | otherwise = notify xs
+    notifyAcc :: forall b. (Any -> b -> ClickM b) -> IORef b ->  ClickM ()
+    notifyAcc k ref = do
+      acc <- liftIO $ readIORef ref
+      acc' <- k (unsafeCoerce a) acc
+      liftIO $ writeIORef ref acc'
     defer k act s = s {transaction_queue = Map.insert k act s.transaction_queue}
 
 newScope :: ResourceScope -> InternalState -> (InternalState, ResourceScope)
 newScope p s =
   let
     scopeId = ResourceScope s.next_id
-    finalizers = (p, ScopeFinalizer scopeId) : s.finalizers
+    finalizers = ScopeFinalizer p scopeId : s.finalizers
     s' = s {finalizers, next_id = s.next_id + 1}
   in
     (s', scopeId)
 
 newVarId :: ResourceScope -> InternalState -> (InternalState, VarId)
-newVarId e s =
-  (s {next_id = s.next_id + 1}, VarId e s.next_id)
+newVarId e s = (s {next_id = s.next_id + 1}, VarId e s.next_id)
 
 freeScope ::
   Bool ->
   ResourceScope ->
-  InternalState -> (InternalState, [(ResourceScope, FinalizerVal)])
+  InternalState -> (InternalState, [Finalizer])
 freeScope unlink rscope s =
   let
-    chkSub (s, _, _) = s /= rscope
-    chkFin True (s1, ScopeFinalizer s2) = s1 /= rscope && s2 /= rscope
-    chkFin True (s, _) = s /= rscope
-    chkFin False (s, _) = s /= rscope
+    chkSub s = subscriptionScope s /= rscope
+    chkFin True ScopeFinalizer{sf_resource_scope, sf_linked_scope} =
+      sf_resource_scope /= rscope && sf_linked_scope /= rscope
+    chkFin True CustomFinalizer{cf_resource_scope} = cf_resource_scope /= rscope
+    chkFin False f = finalizerScope f /= rscope
     (finalizers, scopeFns) = List.partition (chkFin unlink) s.finalizers
     subscriptions = List.filter chkSub s.subscriptions
   in
     (s {subscriptions, finalizers}, scopeFns)
 
 installFinalizer :: ClickM () -> ResourceScope -> InternalState -> InternalState
-installFinalizer k scope s = s
-  {finalizers = (scope, CustomFinalizer k) : s.finalizers}
+installFinalizer k scope s = s {finalizers = CustomFinalizer scope k : s.finalizers}
 
-subscribe :: DynVal a -> (a -> ClickM ()) -> ClickM ()
+subscribe :: forall a. DynVal a -> (a -> ClickM ()) -> ClickM ()
 subscribe (ConstVal _) _ = return ()
 subscribe (FromVar (SourceVar srcid _)) k = reactive_ g where
-  g scope s = s {subscriptions = (scope, srcid, k . unsafeCoerce) : s.subscriptions }
+  g scope s = s {subscriptions = SubscriptionSimple scope srcid (k . unsafeCoerce) : s.subscriptions }
 subscribe (FromVar (OverrideVar _ var)) k =
   subscribe (FromVar var) k
 subscribe (FromVar (LensMap l var)) k =
   subscribe (FromVar var) (k . getConst . l Const)
 subscribe (MapVal v f) k = subscribe v (k . f)
 subscribe (MapHoldVal _ _ srcid ref) k = reactive_ g where
-  g scope s = s {subscriptions = (scope, srcid, k . unsafeCoerce) : s.subscriptions }
+  g scope s = s {subscriptions = SubscriptionSimple scope srcid (k . unsafeCoerce) : s.subscriptions }
 subscribe (SplatVal fv av) k = do
   src <- reactive h
   subscribe fv $ f src
@@ -88,16 +95,53 @@ subscribe (SplatVal fv av) k = do
         { subscriptions = newsub : s.subscriptions
         , next_id = s.next_id + 1
         }
-      newsub = (scope, SourceId s.next_id, k . unsafeCoerce)
+      newsub = SubscriptionSimple scope (SourceId s.next_id) (k . unsafeCoerce)
     f src fv' = do
       av' <- readVal av
       modify $ unsafeTrigger src $ fv' av'
     g src av' = do
       fv' <- readVal fv
       modify $ unsafeTrigger src $ fv' av'
-subscribe (OverrideSub f a) k = f (subscribe a) k
-subscribe (FoldVal f a b srcid ref) k = reactive_ g where
-  g scope s = s {subscriptions = (scope, srcid, k . unsafeCoerce) : s.subscriptions }
+subscribe (OverrideSub f d) k = f subscribe' k' where
+  k' a _ = k a
+  subscribe' k = subscribe d \a -> k a ()
+
+subscribeAccum :: DynVal a -> (a -> b -> ClickM b) -> b -> ClickM ()
+subscribeAccum (ConstVal _) _ _ = return ()
+subscribeAccum (FromVar (SourceVar srcid _)) k b = do
+  ref <- liftIO $ newIORef b
+  let newSub scope = SubscriptionAccum scope srcid (k . unsafeCoerce) ref
+  let g scope s = s {subscriptions = newSub scope : s.subscriptions}
+  reactive_ g
+subscribeAccum (FromVar (OverrideVar _ var)) k b =
+  subscribeAccum (FromVar var) k b
+subscribeAccum (FromVar (LensMap l var)) k b =
+  subscribeAccum (FromVar var) (k . getConst . l Const) b
+subscribeAccum (MapVal v f) k b = subscribeAccum v (k . f) b
+subscribeAccum (MapHoldVal _ _ srcid ref) k b = do
+  ref <- liftIO $ newIORef b
+  let newSub scope = SubscriptionAccum scope srcid (k . unsafeCoerce) ref
+  let g scope s = s {subscriptions = newSub scope : s.subscriptions}
+  reactive_ g
+subscribeAccum (SplatVal fv av) k b = do
+  ref <- liftIO $ newIORef b
+  let
+    h scope s = (s', SourceId s.next_id) where
+      s' = s
+        { subscriptions = newsub : s.subscriptions
+        , next_id = s.next_id + 1
+        }
+      newsub = SubscriptionAccum scope (SourceId s.next_id) (k . unsafeCoerce) ref
+    f src fv' = do
+      av' <- readVal av
+      modify $ unsafeTrigger src $ fv' av'
+    g src av' = do
+      fv' <- readVal fv
+      modify $ unsafeTrigger src $ fv' av'
+  src <- reactive h
+  subscribe fv $ f src
+  subscribe av $ g src
+subscribeAccum (OverrideSub f a) k b = f (flip (subscribeAccum a) b) k
 
 readVal :: MonadIO m => DynVal a -> m a
 readVal (ConstVal a) = pure a
@@ -106,7 +150,6 @@ readVal (MapVal val f) = fmap f $ readVal val
 readVal (MapHoldVal _ _ _ ref) = liftIO $ readIORef ref
 readVal (SplatVal f a) = liftA2 ($) (readVal f) (readVal a)
 readVal (OverrideSub _ a) = readVal a
-readVal (FoldVal _ _ _ _ ref) = liftIO $ readIORef ref
 
 readVar :: MonadIO m => DynVar a -> m a
 readVar (SourceVar _ ref) = liftIO $ readIORef ref
@@ -119,7 +162,7 @@ newCallback ::
   InternalState -> (InternalState, SourceId)
 newCallback k rscope s =
   let
-    new = (rscope, SourceId s.next_id, k . unsafeCoerce)
+    new = SubscriptionSimple rscope (SourceId s.next_id) (k . unsafeCoerce)
     subscriptions = new : s.subscriptions
   in
     (s { next_id = s.next_id + 1, subscriptions}, SourceId s.next_id)
@@ -182,26 +225,10 @@ mapHoldVal f da = do
   where
     g ref scope s = (s', val) where
       srcId = SourceId s.next_id
-      newSub = (scope, srcId, k . unsafeCoerce)
+      newSub = SubscriptionSimple scope srcId (k . unsafeCoerce)
       k a = do
         let b = f a
         liftIO $ writeIORef ref b
         modify $ unsafeTrigger srcId b
       s' = s {subscriptions = newSub : s.subscriptions, next_id = succ s.next_id}
       val = MapHoldVal da f srcId ref
-
-foldVal :: (a -> b -> b) -> b -> DynVal a -> ClickM (DynVal b)
-foldVal f b da = do
-  ref <- liftIO $ newIORef b
-  reactive $ g ref
-  where
-    g ref scope s = (s', val) where
-      srcId = SourceId s.next_id
-      newSub = (scope, srcId, k . unsafeCoerce)
-      k a = do
-        b <- liftIO $ readIORef ref
-        let b' = f a b
-        liftIO $ writeIORef ref b'
-        modify $ unsafeTrigger srcId b'
-      s' = s {subscriptions = newSub : s.subscriptions, next_id = succ s.next_id}
-      val = FoldVal f b da srcId ref

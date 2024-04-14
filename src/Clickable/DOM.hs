@@ -40,10 +40,10 @@ data ConnectResourceArgs callback = ConnectResourceArgs
 connectResource :: ConnectResourceArgs callback -> callback -> ClickM ()
 connectResource args k = reactive_ \scope s ->
   let
-    callback :: Value -> ClickM ()
-    callback = local (\e -> e {scope}) . args.mk_callback k
+    k' :: Value -> ClickM ()
+    k' = local (\e -> e {scope}) . args.mk_callback k
     sourceId = SourceId s.next_id
-    newSub = (scope, sourceId, callback . unsafeCoerce)
+    newSub = SubscriptionSimple scope sourceId (k' . unsafeCoerce)
     connectExpr = ConnectResource scope $ args.aquire_resource scope sourceId
   in
     s { evaluation_queue = connectExpr : s.evaluation_queue
@@ -167,7 +167,7 @@ keyboardConnectArgs eventName = ConnectResourceArgs
   { aquire_resource = \scope sourceId -> Eval (
       "(function(target, haskellCb){\n\
       \  function listener(event){\n\
-      \    haskellCb(event.target.keyCode);\n\
+      \    haskellCb(event.keyCode);\n\
       \  }\n\
       \  target.addEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
       \  return () => target.removeEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\

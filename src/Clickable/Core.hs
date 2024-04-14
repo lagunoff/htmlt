@@ -81,13 +81,15 @@ modifyVarQuiet_ :: DynVar s -> (s -> s) -> ClickM ()
 modifyVarQuiet_ var f = modifyVarQuiet var ((,()) . f)
 
 -- todo: needs redesign
-holdUniqDyn :: Eq a => DynVal a -> DynVal a
-holdUniqDyn a = flip OverrideSub a \next k -> do
-  old <- readVal a
-  oldRef <- liftIO $ newIORef old
-  next \new -> do
-    old <- liftIO $ atomicModifyIORef' oldRef (new,)
-    unless (old == new) $ k new
+holdUniqDyn :: forall a. Eq a => DynVal a -> DynVal a
+holdUniqDyn a = OverrideSub g a where
+  g :: forall b. SubscribeFn a b -> SubscribeFn a b
+  g next k = do
+    old <- readVal a
+    oldRef <- liftIO $ newIORef old
+    next \new acc -> do
+      old <- liftIO $ atomicModifyIORef' oldRef (new,)
+      if (old /= new) then k new acc else return acc
 
 --------------------------------------
 -- OPERATIONS OVER evaluation_queue --
@@ -117,8 +119,8 @@ freeScope unlink s =
   reactive (const (Internal.freeScope unlink s)) >>= applyFin
   where
     applyFin [] = enqueueExpr $ FreeScope s
-    applyFin ((_, ScopeFinalizer s'):xs) = freeScope True s' >> applyFin xs
-    applyFin ((_, CustomFinalizer x):xs) = x >> applyFin xs
+    applyFin (ScopeFinalizer{sf_linked_scope}:xs) = freeScope True sf_linked_scope >> applyFin xs
+    applyFin (CustomFinalizer{cf_callback}:xs) = cf_callback >> applyFin xs
 
 installFinalizer :: ClickM () -> ClickM ()
 installFinalizer k = reactive_ $ Internal.installFinalizer k
@@ -199,32 +201,27 @@ toggleClass className val = do
 
 dynClassList :: DynVal [Text] -> HtmlM ()
 dynClassList dynList = do
-  scope <- lift $ asks (.scope)
   n <- saveCurrentNode
+  scope <- lift $ asks (.scope)
   initVal <- lift $ readVal dynList
   let
     compareList as bs =
       (diffList as bs, diffList bs as)
     diffList as bs = List.foldl'
       (\xs k -> if List.elem k as then xs else k:xs) [] bs
-    f newList (_, _, oldList) =
-      let
-        (added, removed) = compareList oldList newList
-      in
-        (added, removed, newList)
-  lift do
-    dynListDiff <- Internal.foldVal f ([], [], []) dynList
-    let
-      initCmd = InsertClassList (Arg 0 0) initVal
-      updateCmd ([], [], _) queue = queue
-      updateCmd (added, [], _) queue = InsertClassList (Var n) added : queue
-      updateCmd ([], removed, _) queue = RemoveClassList (Var n) removed : queue
-      updateCmd (added, removed, _) queue = RemoveClassList (Var n) removed : InsertClassList (Var n) added : queue
-      modQueue f = modify \s -> s
-        { evaluation_queue = f s.evaluation_queue
-        }
-    modify \s -> s {evaluation_queue = initCmd : s.evaluation_queue}
-    subscribe dynListDiff $ modQueue . updateCmd
+    k newList (_, _, oldList) = do
+      let (added, removed) = compareList oldList newList
+      modQueue $ updateCmd (added, removed, newList)
+      return (added, removed, newList)
+    updateCmd ([], [], _) queue = queue
+    updateCmd (added, [], _) queue = InsertClassList (Var n) added : queue
+    updateCmd ([], removed, _) queue = RemoveClassList (Var n) removed : queue
+    updateCmd (added, removed, _) queue = RemoveClassList (Var n) removed : InsertClassList (Var n) added : queue
+    modQueue f = modify \s -> s
+      { evaluation_queue = f s.evaluation_queue
+      }
+  lift $ enqueueExpr $ InsertClassList (Arg 0 0) initVal
+  lift $ Internal.subscribeAccum dynList k ([], [], initVal)
 
 ---------------------
 -- DYNAMIC CONTENT --
