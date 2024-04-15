@@ -130,7 +130,7 @@ data Expr
   -- will be freed with 'FreeScope'
   | ConnectResource ResourceScope Expr
   -- ^ Returns FinalizerId
-  | SetTimeout ResourceScope Expr Int64
+  | SetTimeout ResourceScope Expr Value.Int32Le
   -- ^ Returns FinalizerId
   | ApplyFinalizer ResourceScope Expr
   -- ^ Actuate given finalizer before the ResourceScope is freed
