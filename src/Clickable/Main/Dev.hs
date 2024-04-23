@@ -161,6 +161,9 @@ fallbackApp _ resp =
     \ </body>\n\
     \</html>\n"
 
+-- WebSocket server needs to be redesigned. Specifically I don't like
+-- the use of MVar to transfer the result of evaluation from the
+-- browser to haskell thread
 websocketApp :: DevInstance -> ServerApp
 websocketApp opt p =
   let
@@ -192,7 +195,7 @@ websocketApp opt p =
       BrowserMessage (Start flags) -> void $ forkIO
         $ Internal.launchClickM conn.internal_env
         $ app.client_app conn flags
-      BrowserMessage (Return val) -> putMVar conn.return_mvar val
+      BrowserMessage (Return val) -> void $ tryPutMVar conn.return_mvar val
       BrowserMessage (TriggerCallbackMsg arg sourceId) -> void $ forkIO
         $ Internal.launchClickM conn.internal_env
         $ modify (Internal.unsafeTrigger sourceId arg)
