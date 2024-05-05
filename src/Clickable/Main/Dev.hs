@@ -106,8 +106,8 @@ runSettings settings cfg = do
       staticApp (defaultFileServerSettings docroot)
         {ss404Handler = Just (withStaticApp docroots next)}
     forkIfRepl action = do
-      isRepl <- (== "<interactive>") <$> getProgName
-      if isRepl then void (forkIO action) else action
+      inRepl <- (== "<interactive>") <$> getProgName
+      if inRepl then void (forkIO action) else action
 
 runDev :: (StartFlags -> ClickM ()) -> IO ()
 runDev clientApp = runSettings
