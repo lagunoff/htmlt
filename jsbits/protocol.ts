@@ -1,5 +1,4 @@
 import * as b from './binary';
-import { Maybe, MaybeTag } from './binary';
 import { absurd, IntMap } from './lib';
 
 export type JSFunctionName = string;
@@ -497,7 +496,7 @@ export enum HaskellMessageTag {
 }
 
 export const haskellMessage = b.discriminate({
-  [HaskellMessageTag.EvalExpr]: b.record({ expr: expr }),
+  [HaskellMessageTag.EvalExpr]: b.record({ threadId: b.int32, expr: expr }),
   [HaskellMessageTag.HotReload]: b.record({ }),
   [HaskellMessageTag.Halt]: b.record({ }),
 });
@@ -511,7 +510,7 @@ export enum JavaScriptMessageTag {
 
 export const javascriptMessage = b.discriminate({
   [JavaScriptMessageTag.Start]: b.record({ 0: jvalue }),
-  [JavaScriptMessageTag.Return]: b.record({ 0: jvalue }),
+  [JavaScriptMessageTag.Return]: b.record({ threadId: b.int32, value: jvalue }),
   [JavaScriptMessageTag.TriggerCallback]: b.record({ arg: jvalue, callbackId: b.int32 }),
   [JavaScriptMessageTag.BeforeUnload]: b.record({}),
 });

@@ -11,7 +11,7 @@ import GHC.Generics
 import "this" Clickable.Protocol.Value qualified as Value
 
 data HaskellMessage
-  = EvalExpr Expr
+  = EvalExpr Value.Int32Le Expr
   -- ^ Evaluate expression, expect the result to be returned by
   -- 'Return' message
   | HotReload
@@ -23,7 +23,7 @@ data HaskellMessage
 
 data JavaScriptMessage
   = Start StartFlags
-  | Return Value.Value
+  | Return Value.Int32Le Value.Value
   | TriggerCallbackMsg Value.Value SourceId
   | BeforeUnload
   -- ^ Fired from addEventListener("beforeunload") listener. Won't

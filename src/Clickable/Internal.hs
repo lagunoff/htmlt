@@ -17,11 +17,11 @@ import Clickable.Types
 emptyState :: InternalState
 emptyState = InternalState [] [] Map.empty [] 0
 
-newInternalEnv :: (HaskellMessage -> IO JavaScriptMessage) -> IO InternalEnv
-newInternalEnv send_message = do
+newInternalEnv :: (Expr -> IO Value) -> IO InternalEnv
+newInternalEnv eval_expr = do
   let scope = ResourceScope emptyState.next_id
   internal_state_ref <- newIORef emptyState {next_id = emptyState.next_id + 1}
-  return InternalEnv {internal_state_ref, scope, send_message}
+  return InternalEnv {internal_state_ref, scope, eval_expr}
 
 -- | Unsafe because there is no gurantee that @a@ matches @a@ in
 -- correspoding @DynVar a@ where SourceId comes from
@@ -197,10 +197,10 @@ trampoline act = loop0 act where
 
 syncPoint :: ClickM ()
 syncPoint = do
-  send_message <- asks (.send_message)
+  eval_expr <- asks (.eval_expr)
   queue <- state \s -> (s.evaluation_queue, s {evaluation_queue = []})
   unless (List.null queue) do
-    liftIO $ send_message $ EvalExpr $ RevSeq queue
+    liftIO $ eval_expr $ RevSeq queue
     return ()
 
 reactive :: (ResourceScope -> InternalState -> (InternalState, a)) -> ClickM a

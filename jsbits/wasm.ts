@@ -42,29 +42,25 @@ export function storeBuffer(exports: HaskellExports, u8array: Uint8Array): Haske
 
 export function evalMessage(exports: HaskellExports, ptr: HaskellPointer): HaskellPointer {
   const inbuf = loadBuffer(exports, ptr);
-  const haskMsg = p.haskellMessage.decode(inbuf);
+  const hmsg = p.haskellMessage.decode(inbuf);
   const jsCallback = (jsmsg: JavaScriptMessage, _argScope: List<IArguments>) => {
     const outbuf = p.javascriptMessage.encode(jsmsg);
     const ptr = storeBuffer(exports, outbuf);
     exports.wasm_app(ptr);
   };
-  switch (haskMsg.tag) {
+  switch (hmsg.tag) {
     case HaskellMessageTag.EvalExpr: {
-      const result = p.evalExpr(jsCallback, [globalThis, null], null, haskMsg.expr);
-      const jsmsg: JavaScriptMessage = { tag: JavaScriptMessageTag.Return, 0: p.unknownToValue(result) };
+      const result = p.evalExpr(jsCallback, [globalThis, null], null, hmsg.expr);
+      const jsmsg: JavaScriptMessage = { tag: JavaScriptMessageTag.Return, value: p.unknownToValue(result), threadId: hmsg.threadId };
       const outbuf = p.javascriptMessage.encode(jsmsg);
       return storeBuffer(exports, outbuf);
     }
     case HaskellMessageTag.HotReload: {
       window.location.reload();
-      const jsmsg: JavaScriptMessage = { tag: JavaScriptMessageTag.Return, 0: p.unknownToValue(null) };
-      const outbuf = p.javascriptMessage.encode(jsmsg);
-      return storeBuffer(exports, outbuf);
+      return 0;
     }
     case HaskellMessageTag.Halt: {
-      const jsmsg: JavaScriptMessage = { tag: JavaScriptMessageTag.Return, 0: p.unknownToValue(null) };
-      const outbuf = p.javascriptMessage.encode(jsmsg);
-      return storeBuffer(exports, outbuf);
+      return 0;
     }
   }
 }

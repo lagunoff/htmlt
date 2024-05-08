@@ -11,7 +11,7 @@ import GHC.Generics
 import GHC.Exts
 
 import Clickable.Protocol
-import Clickable.Protocol.Value (Int32Le)
+import Clickable.Protocol.Value (Int32Le, Value)
 
 data DynVar a where
   SourceVar :: SourceId -> IORef a -> DynVar a
@@ -61,7 +61,7 @@ instance MonadState InternalState ClickM where
 data InternalEnv = InternalEnv
   { scope :: ResourceScope
   , internal_state_ref :: IORef InternalState
-  , send_message :: HaskellMessage -> IO JavaScriptMessage
+  , eval_expr :: Expr -> IO Value
   } deriving (Generic)
 
 data InternalState = InternalState

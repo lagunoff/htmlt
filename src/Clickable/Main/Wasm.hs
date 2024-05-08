@@ -15,6 +15,8 @@ import System.IO.Unsafe
 
 import Clickable.FFI qualified as FFI
 import Clickable.Protocol
+import Clickable.Protocol.Value (Value)
+import Clickable.Protocol.Value qualified as Value
 import Clickable.Core
 import Clickable.Internal qualified as Internal
 import Clickable.Types
@@ -23,23 +25,27 @@ runWasm :: (StartFlags -> ClickM ()) -> Ptr Word8 -> IO ()
 runWasm app p = mdo
   jmsg <- loadMessage p
   case jmsg of
-    Start flags ->
-      launchClickM internalEnv $ app flags <* syncPoint
-    Return _value -> return ()
-    TriggerCallbackMsg arg sourceId ->
+    Just (Start flags) ->
+      launchClickM internalEnv $ app flags
+    Just (TriggerCallbackMsg arg sourceId) ->
       launchClickM internalEnv $ modify $ Internal.unsafeTrigger sourceId arg
-    BeforeUnload ->
+    Just BeforeUnload ->
       launchClickM internalEnv $ freeScope True $ ResourceScope Internal.emptyState.next_id
+    _ ->
+      return ()
 
 internalEnv :: InternalEnv
 internalEnv = unsafePerformIO $ Internal.newInternalEnv sendMessage
 
-sendMessage :: HaskellMessage -> IO JavaScriptMessage
-sendMessage hmsg = do
-  hptr <- storeByteString $ BSL.toStrict $ Binary.encode hmsg
+sendMessage :: Expr -> IO Value
+sendMessage expr = do
+  hptr <- storeByteString $ BSL.toStrict $ Binary.encode $ EvalExpr 0 expr
   jptr <- FFI.js_evalMessage hptr
   Alloc.free hptr
-  loadMessage jptr
+  jmsg <- loadMessage jptr
+  case jmsg of
+    Just (Return _ v) -> return v
+    _ -> return Value.Null
   where
     storeByteString :: ByteString -> IO (Ptr a)
     storeByteString bs = do
@@ -50,8 +56,10 @@ sendMessage hmsg = do
         copyBytes (dest `plusPtr` 8) src len
       return (castPtr dest)
 
-loadMessage :: Binary msg => Ptr a -> IO msg
-loadMessage = fmap (Binary.decode . BSL.fromStrict) . loadByteString
+loadMessage :: Binary msg => Ptr a -> IO (Maybe msg)
+loadMessage p
+  | nullPtr /= p = fmap (Just . Binary.decode . BSL.fromStrict) . loadByteString $ p
+  | otherwise = return Nothing
   where
     loadByteString :: Ptr a -> IO ByteString
     loadByteString ptr = do

@@ -100,12 +100,9 @@ enqueueExpr e = modify \s -> s {evaluation_queue = e : s.evaluation_queue}
 
 evalExpr :: Expr -> ClickM Value
 evalExpr e = do
-  send_message <- asks (.send_message)
+  eval_expr <- asks (.eval_expr)
   queue <- state \s -> (s.evaluation_queue, s {evaluation_queue = []})
-  result <- liftIO $ send_message $ EvalExpr $ RevSeq $ e : queue
-  case result of
-    Return v -> return v
-    _ -> return Value.Null
+  liftIO $ eval_expr $ RevSeq $ e : queue
 
 -------------------------
 -- RESOURCE MANAGEMENT --
