@@ -363,5 +363,18 @@ attachToBody = attachHtml (Id "document" `Dot` "body")
 blank :: Applicative m => m ()
 blank = pure ()
 
+-- | Parse given text as HTML and attach the resulting tree to
+-- 'html_current_element'. This way you can create not only HTML but
+-- anything that @innerHTML@ property can create (e.g. SVG)
+--
+-- > -- Create a div with an SVG image inside that shows a black
+-- > -- circle
+-- > div_ [] do
+-- >   unsafeHtml "<svg viewBox="0 0 100 100">\
+-- >     \<circle cx="50" cy="50" r="50"/>\
+-- >     \</svg>"
+unsafeHtml :: Text -> HtmlM ()
+unsafeHtml rawHtml = lift $ enqueueExpr (Internal.unsafeInsertHtml rawHtml)
+
 instance (a ~ ()) => IsString (HtmlM a) where
   fromString = text . Text.pack

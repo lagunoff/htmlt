@@ -5,6 +5,7 @@ import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.State
 import Data.IORef
+import Data.Text (Text)
 import Data.List qualified as List
 import Data.Map qualified as Map
 import Unsafe.Coerce
@@ -232,3 +233,19 @@ mapHoldVal f da = do
         modify $ unsafeTrigger srcId b
       s' = s {subscriptions = newSub : s.subscriptions, next_id = succ s.next_id}
       val = MapHoldVal da f srcId ref
+
+unsafeInsertHtml :: Text -> Expr
+unsafeInsertHtml rawHtml = Eval
+  "(function(builder, rawHtml){\
+   \var div = document.createElement('div');\
+   \div.innerHTML = rawHtml;\
+   \var iter = div.childNodes[0];\
+   \for (; iter; iter = div.childNodes[0]) {\
+   \  div.removeChild(iter);\
+   \  if (builder instanceof Comment) {\
+   \    builder.parentElement.insertBefore(iter, builder);\
+   \  } else{\
+   \    builder.appendChild(iter);\
+   \  }\
+   \}\
+   \})" `Apply` [Arg 0 0, String rawHtml]

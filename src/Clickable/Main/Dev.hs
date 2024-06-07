@@ -164,9 +164,6 @@ fallbackApp _ resp =
     \ </body>\n\
     \</html>\n"
 
--- WebSocket server needs to be redesigned. Specifically I don't like
--- the use of MVar to transfer the result of evaluation from the
--- browser to haskell thread
 websocketApp :: DevInstance -> ServerApp
 websocketApp opt p =
   let
