@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 module Clickable.Core
   ( module Clickable.Core
   , Internal.trampoline
@@ -21,7 +22,6 @@ import Clickable.Internal qualified as Internal
 import Clickable.Types
 import Clickable.Protocol
 import Clickable.Protocol.Value (Value, ToValue(..))
-import Clickable.Protocol.Value qualified as Value
 
 ---------------------------------------
 -- OPERATIONS OVER DYNAMIC VARIABLES --
@@ -375,6 +375,19 @@ blank = pure ()
 -- >     \</svg>"
 unsafeHtml :: Text -> HtmlM ()
 unsafeHtml rawHtml = lift $ enqueueExpr (Internal.unsafeInsertHtml rawHtml)
+
+-- | Attach resulting DOM to the given node instead of where it
+-- supposed to go given the cotext it used in. Might be useful for
+-- implementing modal dialogs, tooltips etc. Similar to what called
+-- portals in React ecosystem
+portal :: Expr -> HtmlM a -> HtmlM a
+portal newRootEl html =
+  lift $ htmlBuilder1 newRootEl do
+    boundary <- insertBoundary
+    result <- htmlBuilder1 (Var boundary) $
+      evalStateT html.unHtmlT Nothing
+    installFinalizer $ destroyBoundary boundary
+    return result
 
 instance (a ~ ()) => IsString (HtmlM a) where
   fromString = text . Text.pack
