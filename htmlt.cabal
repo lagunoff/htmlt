@@ -119,27 +119,3 @@ library
       wai-websockets,
       warp,
       websockets,
-
-executable htmlt-todomvc
-  import: htmlt-common         
-  hs-source-dirs: ./examples/todomvc
-  if arch(wasm32)
-    ghc-options:
-      -no-hs-main -optl-mexec-model=reactor
-      -optl-Wl,--export=hs_init,--export=wasm_app,--export=malloc
-    main-is: wasm.hs
-  else
-    ghc-options: -threaded
-    main-is: dev.hs
-  other-modules:
-    App
-    TodoItem
-    TodoList
-    Utils
-  build-depends:
-    base,
-    htmlt,
-    text,
-    mtl,
-  if !flag(examples)
-    buildable: False
