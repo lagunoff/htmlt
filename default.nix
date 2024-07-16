@@ -1,5 +1,5 @@
 { pkgs ? import (builtins.fetchTarball {
-    url = "https://github.com/NixOS/nixpkgs/archive/f4429fde23e1fb20ee27f264e74c28c619d2cebb.tar.gz";
+    url = "https://github.com/NixOS/nixpkgs/archive/refs/tags/24.05.tar.gz";
 }) {}
 }:
 
@@ -11,33 +11,29 @@ let
       mkDerivation = args: super.mkDerivation ({
         doCheck = false;
         doBenchmark = false;
-        doHoogle = true;
-        doHaddock = true;
+        doHoogle = false;
+        doHaddock = false;
+        jailbreak = true;
         enableLibraryProfiling = false;
         enableExecutableProfiling = false;
       } // args);
 
       htmlt = self.callCabal2nix "htmlt" ./. {};
 
+      th-compat = self.callCabal2nix "th-compat" (builtins.fetchGit {
+        url = "https://github.com/haskell-compat/th-compat.git";
+        rev = "eec1edb9e09eba14e7ba17be29a9674431c63c05";
+      }) {};
 
-      th-compat = self.callCabal2nix "th-compat" ../fullstack-app/packages/th-compat {};
-      aeson = doJailbreak (self.callCabal2nix "aeson" ../fullstack-app/packages/aeson {});
-      bifunctors = doJailbreak super.bifunctors;
-      free = doJailbreak super.free;
-      generic-deriving = doJailbreak super.generic-deriving;
-      invariant = doJailbreak super.invariant;
-      lens = doJailbreak super.lens;
-      semigroupoids = doJailbreak super.semigroupoids;
-      tagged = self.callCabal2nix "tagged" ../fullstack-app/packages/tagged {};
-      text-short = self.callCabal2nix "text-short" ../fullstack-app/packages/text-short {};
-      th-abstraction = self.callCabal2nix "th-abstraction" ../fullstack-app/packages/th-abstraction {};
-      th-expand-syns = doJailbreak super.th-expand-syns;
-      th-lift = doJailbreak super.th-lift;
-      unordered-containers = self.callCabal2nix "unordered-containers" ../fullstack-app/packages/unordered-containers {};
-      vector = self.callCabal2nix "vector" ../fullstack-app/packages/vector/vector {};
-      vector-stream = self.callCabal2nix "vector-stream" ../fullstack-app/packages/vector/vector-stream {};
-      websockets = doJailbreak super.websockets;
-      wuss = doJailbreak super.wuss;
+      th-abstraction = self.callCabal2nix "th-abstraction" (builtins.fetchGit {
+        url = "https://github.com/glguy/th-abstraction.git";
+        rev = "1fb59d1651ac5462f44100c62e5806665d39b6c6";
+      }) {};
+
+      aeson = doJailbreak (self.callCabal2nix "aeson" (builtins.fetchGit {
+        url = "https://github.com/haskell/aeson.git";
+        rev = "0834ba7b081297d44c706914c92c31d264aef816";
+      }) {});
     };
   };
 

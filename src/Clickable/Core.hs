@@ -67,6 +67,12 @@ writeVar var s = modifyVar_ var $ const s
 subscribe :: DynVal a -> (a -> ClickM ()) -> ClickM ()
 subscribe = Internal.subscribe
 
+forDyn :: DynVal a -> (a -> ClickM ()) -> ClickM ()
+forDyn dval action = readVal dval >>= action >> subscribe dval action
+
+forVar :: DynVar a -> (a -> ClickM ()) -> ClickM ()
+forVar = forDyn . fromVar
+
 modifyVarQuiet :: DynVar s -> (s -> (s, a)) -> ClickM a
 modifyVarQuiet var@(SourceVar varId ref) f = do
   (newVal, a) <- liftIO $ atomicModifyIORef' ref g
