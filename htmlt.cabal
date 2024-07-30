@@ -4,6 +4,7 @@ name:                htmlt
 version:             0.1.0.0
 homepage:            https://github.com/lagunoff/htmlt
 license:             BSD-3-Clause
+license-file:        LICENSE
 author:              Vladislav Lagunov
 maintainer:          vlad.lagunoff@gmail.com
 copyright:           2019 Vladislav Lagunov
@@ -12,76 +13,12 @@ build-type:          Simple
 extra-source-files:
   README.md
 
-Flag production
-  default: True
-  description: Add optimisations
-
-Flag examples
-  default: False
-  description: Build examples
-
-Flag benchmarks
-  default: False
-  description: Build benchmarks
-
-common htmlt-common
-  ghc-options:
-    -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches
-    -Wno-unused-do-bind
-  if flag(production)
-    ghc-options: -O3
-  default-extensions:
-    AllowAmbiguousTypes
-    BangPatterns
-    BlockArguments
-    ConstraintKinds
-    DataKinds
-    DefaultSignatures
-    DeriveAnyClass
-    DeriveFunctor
-    DeriveGeneric
-    DerivingStrategies
-    DerivingVia
-    DoAndIfThenElse
-    DuplicateRecordFields
-    EmptyDataDecls
-    FlexibleContexts
-    FlexibleInstances
-    ForeignFunctionInterface
-    FunctionalDependencies
-    GADTs
-    GeneralizedNewtypeDeriving
-    ImplicitParams
-    ImportQualifiedPost
-    LambdaCase
-    NamedFieldPuns
-    OverloadedLabels
-    OverloadedRecordDot
-    OverloadedStrings
-    PackageImports
-    PartialTypeSignatures
-    PatternGuards
-    PolyKinds
-    QuasiQuotes
-    RankNTypes
-    RecordWildCards
-    RecursiveDo
-    ScopedTypeVariables
-    StandaloneDeriving
-    StrictData
-    TupleSections
-    TypeApplications
-    TypeFamilies
-    TypeOperators
-    UndecidableInstances
-    ViewPatterns
-
 library
-  import: htmlt-common         
   ghc-options:
+    -O3 -funbox-strict-fields -fstrictness
     -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches
     -Wno-unused-do-bind
-  hs-source-dirs: src ./examples/charts ./examples/todomvc
+  hs-source-dirs: src
   exposed-modules:
     Clickable
     Clickable.Core
@@ -119,3 +56,17 @@ library
       wai-websockets,
       warp,
       websockets,
+  default-extensions:
+    AllowAmbiguousTypes
+    BlockArguments
+    DefaultSignatures
+    DeriveAnyClass
+    DuplicateRecordFields
+    FunctionalDependencies
+    GHC2024
+    OverloadedRecordDot
+    OverloadedStrings
+    PackageImports
+    RecursiveDo
+    TypeFamilies
+    UndecidableInstances

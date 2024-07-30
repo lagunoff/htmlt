@@ -56,6 +56,10 @@ instance ToValue Char where
 
 instance ToValue Text where toValue = String
 
+instance ToValue ByteString where toValue = Uint8Array
+
+instance ToValue () where toValue _ = Null
+
 instance ToValue a => ToValue [a] where toValue = Array . fmap toValue
 
 instance ToValue a => ToValue (Maybe a) where toValue = maybe Null toValue
@@ -97,6 +101,12 @@ instance FromValue Char where
 
 instance FromValue Text where
   fromValue = \case String a -> Just a; _ -> Nothing
+
+instance FromValue ByteString where
+  fromValue = \case Uint8Array a -> Just a; _ -> Nothing
+
+instance FromValue () where
+  fromValue = \case Null -> Just (); _ -> Nothing
 
 instance FromValue a => FromValue [a] where
   fromValue = \case

@@ -23,6 +23,13 @@ export function cdr<T>(pair: Cons<T>): List<T> {
   return pair[1];
 }
 
+export type ClickablePublic = {
+  startWasm(wasmUri: string, startFlags?: unknown): void;
+  startDev(devSocketUri: string, startFlags?: unknown): void;
+  evalExpr(hscb: HaskellCallback, idenScope: List<Bindings>, argScope: List<IArguments>, exp: Expr): unknown;
+  evalUint8Array(hscb: HaskellCallback, idenScope: List<Bindings>, argScope: List<IArguments>, exp: Uint8Array): unknown;
+};
+
 export type HaskellCallback = (jsMsg: JavaScriptMessage, argScope: List<IArguments>) => void;
 
 export function evalExpr(hscb: HaskellCallback, idenScope: List<Bindings>, argScope: List<IArguments>, exp: Expr): unknown {
@@ -265,6 +272,11 @@ export function evalExpr(hscb: HaskellCallback, idenScope: List<Bindings>, argSc
     }
   }
   absurd(exp);
+}
+
+export function evalUint8Array(hscb: HaskellCallback, idenScope: List<Bindings>, argScope: List<IArguments>, exp: Uint8Array): unknown {
+  const decoded: Expr = expr.decode(exp);
+  return evalExpr(hscb, idenScope, argScope, decoded);
 }
 
 export function unknownToValue(inp: unknown): Value {
