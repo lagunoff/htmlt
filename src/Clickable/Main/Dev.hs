@@ -6,9 +6,12 @@ import Control.Exception
 import Control.Monad
 import Control.Monad.State
 import Data.Binary qualified as Binary
+import Data.ByteString.Builder (Builder)
+import Data.ByteString.Builder qualified as Builder
 import Data.ByteString as BS
 import Data.ByteString.Lazy qualified as BSL
 import Data.Function
+import Data.Maybe
 import Data.IORef
 import Data.List qualified as List
 import Data.Map (Map)
@@ -45,7 +48,7 @@ data DevConfig a = DevConfig
   , reload_app :: a -> IO ApplicationSpec
   -- ^ Given resource of type 'a', initialize instances of client and
   -- server applications. Runs each time ghci session reloads
-  , html_template :: BSL.ByteString -> BSL.ByteString
+  , html_template :: ByteString -> Builder
   -- ^ Template for index.html, receives the current URL origin
   -- (protocol + host)
   , docroots :: [FilePath]
@@ -109,8 +112,8 @@ runSettings settings cfg = do
       staticApp (defaultFileServerSettings docroot)
         {ss404Handler = Just (withStaticApp docroots next)}
     forkIfRepl action = do
-      inRepl <- (== "<interactive>") <$> getProgName
-      if inRepl then void (forkIO action) else action
+      isRepl <- (== "<interactive>") <$> getProgName
+      if isRepl then void (forkIO action) else action
 
 runDev :: (StartFlags -> ClickM ()) -> IO ()
 runDev clientApp = runSettings
@@ -131,25 +134,25 @@ middleware opts next req resp =
     indexHtml req resp = do
       let devSocket = mkWebsocketUrl req
       RunningApp{devserver_config} <- readIORef opts.app_state_ref
-      resp $ responseLBS status200
+      resp $ responseBuilder status200
         [(hContentType, "text/html; charset=utf-8")] $
         devserver_config.html_template devSocket
 
-mkWebsocketUrl :: WAI.Request -> BSL.ByteString
+mkWebsocketUrl :: WAI.Request -> ByteString
 mkWebsocketUrl req =
   WAI.requestHeaders req
     & List.lookup "Host"
-    & maybe "localhost" BSL.fromStrict
+    & fromMaybe "localhost"
     & ((if WAI.isSecure req then "wss://" else "ws://") <>)
     & (<> "/dev.sock")
 
-htmlTemplate :: BSL.ByteString -> BSL.ByteString
+htmlTemplate :: ByteString -> Builder
 htmlTemplate devUrl =
   "<html>\n\
   \ <body>\n\
   \  <script>\n\
-  \    " <> BSL.fromStrict indexBundleJs <> "\n\
-  \    clickable.startDev(\"" <> devUrl <> "\");\n\
+  \    " <> Builder.byteString indexBundleJs <> "\n\
+  \    clickable.startDev(\"" <> Builder.byteString devUrl <> "\");\n\
   \  </script>\n\
   \ </body>\n\
   \</html>\n"

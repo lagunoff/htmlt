@@ -41,6 +41,8 @@ let
     pkgs = haskellPackages;
     shell = pkgs.mkShell {
       inputsFrom = [haskellPackages.htmlt.env];
+      # fails to build, you have to have cabal installed on your system
+      # buildDepends = [haskellPackages.cabal-install];
     };
   };
 in
