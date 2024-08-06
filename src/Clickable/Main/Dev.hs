@@ -203,9 +203,9 @@ websocketApp opt p =
           swap . Map.alterF (,Nothing) (fromIntegral tid)
         forM_ mmvar \mvar ->
           void $ tryPutMVar mvar val
-      BrowserMessage (TriggerCallbackMsg arg sourceId) -> void $ forkIO
+      BrowserMessage (TriggerCallbackMsg arg eid) -> void $ forkIO
         $ Internal.launchClickM conn.internal_env
-        $ modify (Internal.unsafeTrigger sourceId arg)
+        $ modify (Internal.triggerEvent (unsafeFromEventId eid) arg)
       BrowserMessage BeforeUnload ->
         return ()
       DevServerMessage a -> void $ forkIO

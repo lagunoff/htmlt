@@ -14,11 +14,17 @@ import GHC.Exts
 import Clickable.Protocol
 import Clickable.Protocol.Value (Int32Le, Value)
 
-newtype EventId a = EventId {unEventId :: Int32Le}
+newtype Event a = Event {unEvent :: EventId}
   deriving newtype (Show, Num, Ord, Eq, Binary)
 
+unsafeFromEventId :: EventId -> Event a
+unsafeFromEventId = Event
+
+unsafeToEventId :: Event a -> EventId
+unsafeToEventId = unEvent
+
 data DynVar a where
-  SourceVar :: EventId a -> IORef a -> DynVar a
+  SourceVar :: Event a -> IORef a -> DynVar a
   OverrideVar :: (UpdateFn a -> UpdateFn a) -> DynVar a -> DynVar a
   LensMap :: Lens' s a -> DynVar s -> DynVar a
 
@@ -30,7 +36,7 @@ data DynVal a where
   ConstVal :: a -> DynVal a
   FromVar :: DynVar a -> DynVal a
   MapVal :: DynVal a -> (a -> b) -> DynVal b
-  MapHoldVal :: DynVal a -> (a -> b) -> EventId b -> IORef b -> DynVal b
+  MapHoldVal :: DynVal a -> (a -> b) -> Event b -> IORef b -> DynVal b
   -- ^ todo: need redesign
   SplatVal :: DynVal (a -> b) -> DynVal a -> DynVal b
   OverrideSub :: (forall b. SubscribeFn a b -> SubscribeFn a b) -> DynVal a -> DynVal a
@@ -71,7 +77,7 @@ data InternalEnv = InternalEnv
 data InternalState = InternalState
   { subscriptions :: [Subscription Any]
   , finalizers :: [Finalizer]
-  , transaction_queue :: Map AnyEventId (ClickM ())
+  , transaction_queue :: Map EventId (ClickM ())
   , evaluation_queue :: [Expr]
   , next_id :: Int32Le
   } deriving (Generic)
@@ -79,12 +85,12 @@ data InternalState = InternalState
 data Subscription a
   = SubscriptionSimple
     { ss_scope :: ResourceScope
-    , ss_event_id :: EventId a
+    , ss_event_id :: Event a
     , ss_callback :: a -> ClickM ()
     }
   | forall b. SubscriptionAccum
     { sa_resource_scope :: ResourceScope
-    , sa_event_id :: EventId a
+    , sa_event_id :: Event a
     , sa_callback :: a -> b -> ClickM b
     , sa_accum_ref :: IORef b
     }

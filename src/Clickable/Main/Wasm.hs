@@ -27,8 +27,8 @@ runWasm app p = mdo
   case jmsg of
     Just (Start flags) ->
       launchClickM internalEnv $ app flags
-    Just (TriggerCallbackMsg arg sourceId) ->
-      launchClickM internalEnv $ modify $ Internal.unsafeTrigger sourceId arg
+    Just (TriggerCallbackMsg arg eid) ->
+      launchClickM internalEnv $ modify $ Internal.triggerEvent (unsafeFromEventId eid) arg
     Just BeforeUnload ->
       launchClickM internalEnv $ freeScope True $ ResourceScope Internal.emptyState.next_id
     _ ->

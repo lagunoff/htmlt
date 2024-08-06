@@ -24,11 +24,11 @@ newInternalEnv eval_expr = do
   internal_state_ref <- newIORef emptyState {next_id = emptyState.next_id + 1}
   return InternalEnv {internal_state_ref, scope, eval_expr}
 
-triggerEvent :: EventId a -> a -> InternalState -> InternalState
+triggerEvent :: Event a -> a -> InternalState -> InternalState
 triggerEvent eventId a =
   defer eventId $ gets (.subscriptions) >>= notify
   where
-    anyEventId :: EventId Any = coerce eventId
+    anyEventId :: Event Any = coerce eventId
     notify :: [Subscription Any] -> ClickM ()
     notify [] = return ()
     notify (SubscriptionSimple {ss_event_id, ss_callback} : xs)
@@ -42,7 +42,7 @@ triggerEvent eventId a =
       acc <- liftIO $ readIORef ref
       acc' <- k (unsafeCoerce a) acc
       liftIO $ writeIORef ref acc'
-    defer :: EventId a -> ClickM () -> InternalState -> InternalState
+    defer :: Event a -> ClickM () -> InternalState -> InternalState
     defer k act s = s {transaction_queue = Map.insert (coerce k) act s.transaction_queue}
 
 newScope :: ResourceScope -> InternalState -> (InternalState, ResourceScope)
@@ -92,12 +92,13 @@ subscribe (SplatVal fv av) k = do
   subscribe fv $ f src
   subscribe av $ g src
   where
-    h scope s = (s', EventId s.next_id) where
+    h scope s = (s', coerce event) where
       s' = s
         { subscriptions = newsub : s.subscriptions
         , next_id = s.next_id + 1
         }
-      newsub = SubscriptionSimple scope (EventId s.next_id) (k . unsafeCoerce)
+      event = unsafeFromEventId $ EventId s.next_id
+      newsub = SubscriptionSimple scope event (k . unsafeCoerce)
     f src fv' = do
       av' <- readVal av
       modify $ triggerEvent src $ fv' av'
@@ -128,12 +129,13 @@ subscribeAccum (MapHoldVal _ _ srcid ref) k b = do
 subscribeAccum (SplatVal fv av) k b = do
   ref <- liftIO $ newIORef b
   let
-    h scope s = (s', EventId s.next_id) where
+    h scope s = (s', coerce event) where
       s' = s
         { subscriptions = newsub : s.subscriptions
         , next_id = s.next_id + 1
         }
-      newsub = SubscriptionAccum scope (EventId s.next_id) (k . unsafeCoerce) ref
+      event = unsafeFromEventId $ EventId s.next_id
+      newsub = SubscriptionAccum scope event (k . unsafeCoerce) ref
     f src fv' = do
       av' <- readVal av
       modify $ triggerEvent src $ fv' av'
@@ -161,13 +163,14 @@ readVar (OverrideVar _ var) = readVar var
 newCallback ::
   (Value -> ClickM ()) ->
   ResourceScope ->
-  InternalState -> (InternalState, EventId Value)
+  InternalState -> (InternalState, Event Value)
 newCallback k rscope s =
   let
-    new = SubscriptionSimple rscope (EventId s.next_id) (k . unsafeCoerce)
+    event = unsafeFromEventId $ EventId s.next_id
+    new = SubscriptionSimple rscope (coerce event) (k . unsafeCoerce)
     subscriptions = new : s.subscriptions
   in
-    (s { next_id = s.next_id + 1, subscriptions}, EventId s.next_id)
+    (s { next_id = s.next_id + 1, subscriptions}, event)
 
 launchClickM :: InternalEnv -> ClickM a -> IO a
 launchClickM env = flip runReaderT env . unClickT . (<* syncPoint) . trampoline
@@ -226,14 +229,14 @@ mapHoldVal f da = do
   reactive $ g ref
   where
     g ref scope s = (s', val) where
-      srcId = EventId s.next_id
-      newSub = SubscriptionSimple scope (coerce srcId) (k . unsafeCoerce)
+      event = unsafeFromEventId $ EventId s.next_id
+      newSub = SubscriptionSimple scope (coerce event) (k . unsafeCoerce)
       k a = do
         let b = f a
         liftIO $ writeIORef ref b
-        modify $ triggerEvent srcId b
+        modify $ triggerEvent event b
       s' = s {subscriptions = newSub : s.subscriptions, next_id = succ s.next_id}
-      val = MapHoldVal da f srcId ref
+      val = MapHoldVal da f event ref
 
 unsafeInsertHtml :: Text -> Expr
 unsafeInsertHtml rawHtml = Eval

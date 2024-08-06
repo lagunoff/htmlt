@@ -1,13 +1,12 @@
 module Clickable.DOM where
 
 import Control.Monad.Reader
-import Data.Text (Text)
 import Data.Foldable
-import Data.Kind
 import Data.Int
+import Data.Kind
+import Data.Text (Text)
 import GHC.Generics
 import Unsafe.Coerce
-import Data.Coerce
 
 import Clickable.Types
 import Clickable.Protocol
@@ -30,7 +29,7 @@ addEventListener :: ConnectResourceArgs callback -> callback -> HtmlM ()
 addEventListener args k = lift $ connectResource args k
 
 data ConnectResourceArgs callback = ConnectResourceArgs
-  { aquire_resource :: ResourceScope -> AnyEventId -> Expr
+  { aquire_resource :: ResourceScope -> EventId -> Expr
   -- ^ When evaluated, as a side-effect resulting `Expr` must
   -- initialize some resource (could be DOM event, WebSocket
   -- connection etc) also must return a function that frees that
@@ -43,10 +42,10 @@ connectResource args k = reactive_ \scope s ->
   let
     k' :: Value -> ClickM ()
     k' = local (\e -> e {scope}) . args.mk_callback k
-    sourceId = EventId s.next_id
-    anyEventId = AnyEventId s.next_id
-    newSub = SubscriptionSimple scope (coerce sourceId) (k' . unsafeCoerce)
-    connectExpr = ConnectResource scope $ args.aquire_resource scope anyEventId
+    event = unsafeFromEventId eventId
+    eventId = EventId s.next_id
+    newSub = SubscriptionSimple scope event (k' . unsafeCoerce)
+    connectExpr = ConnectResource scope $ args.aquire_resource scope eventId
   in
     s { evaluation_queue = connectExpr : s.evaluation_queue
       , subscriptions = newSub : s.subscriptions
