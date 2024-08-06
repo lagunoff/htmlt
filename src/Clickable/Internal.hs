@@ -161,9 +161,9 @@ readVar (LensMap l var) = fmap (getConst . l Const) $ readVar var
 readVar (OverrideVar _ var) = readVar var
 
 newCallback ::
-  (Value -> ClickM ()) ->
+  (a -> ClickM ()) ->
   ResourceScope ->
-  InternalState -> (InternalState, Event Value)
+  InternalState -> (InternalState, Event a)
 newCallback k rscope s =
   let
     event = unsafeFromEventId $ EventId s.next_id

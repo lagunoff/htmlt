@@ -132,7 +132,7 @@ installFinalizer k = reactive_ $ Internal.installFinalizer k
 newVarId :: ClickM VarId
 newVarId = reactive Internal.newVarId
 
-newCallback :: (Value -> ClickM ()) -> ClickM (Event Value)
+newCallback :: (a -> ClickM ()) -> ClickM (Event a)
 newCallback k = reactive $ Internal.newCallback k
 
 ------------------
