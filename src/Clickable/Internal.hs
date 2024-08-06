@@ -24,25 +24,26 @@ newInternalEnv eval_expr = do
   internal_state_ref <- newIORef emptyState {next_id = emptyState.next_id + 1}
   return InternalEnv {internal_state_ref, scope, eval_expr}
 
--- | Unsafe because there is no gurantee that @a@ matches @a@ in
--- correspoding @DynVar a@ where SourceId comes from
-unsafeTrigger :: SourceId -> a -> InternalState -> InternalState
-unsafeTrigger sourceId a =
-  defer sourceId $ gets (.subscriptions) >>= notify
+triggerEvent :: EventId a -> a -> InternalState -> InternalState
+triggerEvent eventId a =
+  defer eventId $ gets (.subscriptions) >>= notify
   where
+    anyEventId :: EventId Any = coerce eventId
+    notify :: [Subscription Any] -> ClickM ()
     notify [] = return ()
     notify (SubscriptionSimple {ss_event_id, ss_callback} : xs)
-      | ss_event_id == sourceId = ss_callback (unsafeCoerce a) >> notify xs
+      | ss_event_id == anyEventId = ss_callback (unsafeCoerce a) >> notify xs
       | otherwise = notify xs
     notify (SubscriptionAccum {sa_event_id, sa_callback, sa_accum_ref} : xs)
-      | sa_event_id == sourceId = notifyAcc sa_callback sa_accum_ref >> notify xs
+      | sa_event_id == anyEventId = notifyAcc sa_callback sa_accum_ref >> notify xs
       | otherwise = notify xs
     notifyAcc :: forall b. (Any -> b -> ClickM b) -> IORef b ->  ClickM ()
     notifyAcc k ref = do
       acc <- liftIO $ readIORef ref
       acc' <- k (unsafeCoerce a) acc
       liftIO $ writeIORef ref acc'
-    defer k act s = s {transaction_queue = Map.insert k act s.transaction_queue}
+    defer :: EventId a -> ClickM () -> InternalState -> InternalState
+    defer k act s = s {transaction_queue = Map.insert (coerce k) act s.transaction_queue}
 
 newScope :: ResourceScope -> InternalState -> (InternalState, ResourceScope)
 newScope p s =
@@ -78,31 +79,31 @@ installFinalizer k scope s = s {finalizers = CustomFinalizer scope k : s.finaliz
 subscribe :: forall a. DynVal a -> (a -> ClickM ()) -> ClickM ()
 subscribe (ConstVal _) _ = return ()
 subscribe (FromVar (SourceVar srcid _)) k = reactive_ g where
-  g scope s = s {subscriptions = SubscriptionSimple scope srcid (k . unsafeCoerce) : s.subscriptions }
+  g scope s = s {subscriptions = SubscriptionSimple scope (coerce srcid) (k . unsafeCoerce) : s.subscriptions }
 subscribe (FromVar (OverrideVar _ var)) k =
   subscribe (FromVar var) k
 subscribe (FromVar (LensMap l var)) k =
   subscribe (FromVar var) (k . getConst . l Const)
 subscribe (MapVal v f) k = subscribe v (k . f)
 subscribe (MapHoldVal _ _ srcid ref) k = reactive_ g where
-  g scope s = s {subscriptions = SubscriptionSimple scope srcid (k . unsafeCoerce) : s.subscriptions }
+  g scope s = s {subscriptions = SubscriptionSimple scope (coerce srcid) (k . unsafeCoerce) : s.subscriptions }
 subscribe (SplatVal fv av) k = do
   src <- reactive h
   subscribe fv $ f src
   subscribe av $ g src
   where
-    h scope s = (s', SourceId s.next_id) where
+    h scope s = (s', EventId s.next_id) where
       s' = s
         { subscriptions = newsub : s.subscriptions
         , next_id = s.next_id + 1
         }
-      newsub = SubscriptionSimple scope (SourceId s.next_id) (k . unsafeCoerce)
+      newsub = SubscriptionSimple scope (EventId s.next_id) (k . unsafeCoerce)
     f src fv' = do
       av' <- readVal av
-      modify $ unsafeTrigger src $ fv' av'
+      modify $ triggerEvent src $ fv' av'
     g src av' = do
       fv' <- readVal fv
-      modify $ unsafeTrigger src $ fv' av'
+      modify $ triggerEvent src $ fv' av'
 subscribe (OverrideSub f d) k = f subscribe' k' where
   k' a _ = k a
   subscribe' k = subscribe d \a -> k a ()
@@ -111,7 +112,7 @@ subscribeAccum :: DynVal a -> (a -> b -> ClickM b) -> b -> ClickM ()
 subscribeAccum (ConstVal _) _ _ = return ()
 subscribeAccum (FromVar (SourceVar srcid _)) k b = do
   ref <- liftIO $ newIORef b
-  let newSub scope = SubscriptionAccum scope srcid (k . unsafeCoerce) ref
+  let newSub scope = SubscriptionAccum scope (coerce srcid) (k . unsafeCoerce) ref
   let g scope s = s {subscriptions = newSub scope : s.subscriptions}
   reactive_ g
 subscribeAccum (FromVar (OverrideVar _ var)) k b =
@@ -121,24 +122,24 @@ subscribeAccum (FromVar (LensMap l var)) k b =
 subscribeAccum (MapVal v f) k b = subscribeAccum v (k . f) b
 subscribeAccum (MapHoldVal _ _ srcid ref) k b = do
   ref <- liftIO $ newIORef b
-  let newSub scope = SubscriptionAccum scope srcid (k . unsafeCoerce) ref
+  let newSub scope = SubscriptionAccum scope (coerce srcid) (k . unsafeCoerce) ref
   let g scope s = s {subscriptions = newSub scope : s.subscriptions}
   reactive_ g
 subscribeAccum (SplatVal fv av) k b = do
   ref <- liftIO $ newIORef b
   let
-    h scope s = (s', SourceId s.next_id) where
+    h scope s = (s', EventId s.next_id) where
       s' = s
         { subscriptions = newsub : s.subscriptions
         , next_id = s.next_id + 1
         }
-      newsub = SubscriptionAccum scope (SourceId s.next_id) (k . unsafeCoerce) ref
+      newsub = SubscriptionAccum scope (EventId s.next_id) (k . unsafeCoerce) ref
     f src fv' = do
       av' <- readVal av
-      modify $ unsafeTrigger src $ fv' av'
+      modify $ triggerEvent src $ fv' av'
     g src av' = do
       fv' <- readVal fv
-      modify $ unsafeTrigger src $ fv' av'
+      modify $ triggerEvent src $ fv' av'
   src <- reactive h
   subscribe fv $ f src
   subscribe av $ g src
@@ -160,13 +161,13 @@ readVar (OverrideVar _ var) = readVar var
 newCallback ::
   (Value -> ClickM ()) ->
   ResourceScope ->
-  InternalState -> (InternalState, SourceId)
+  InternalState -> (InternalState, EventId Value)
 newCallback k rscope s =
   let
-    new = SubscriptionSimple rscope (SourceId s.next_id) (k . unsafeCoerce)
+    new = SubscriptionSimple rscope (EventId s.next_id) (k . unsafeCoerce)
     subscriptions = new : s.subscriptions
   in
-    (s { next_id = s.next_id + 1, subscriptions}, SourceId s.next_id)
+    (s { next_id = s.next_id + 1, subscriptions}, EventId s.next_id)
 
 launchClickM :: InternalEnv -> ClickM a -> IO a
 launchClickM env = flip runReaderT env . unClickT . (<* syncPoint) . trampoline
@@ -225,12 +226,12 @@ mapHoldVal f da = do
   reactive $ g ref
   where
     g ref scope s = (s', val) where
-      srcId = SourceId s.next_id
-      newSub = SubscriptionSimple scope srcId (k . unsafeCoerce)
+      srcId = EventId s.next_id
+      newSub = SubscriptionSimple scope (coerce srcId) (k . unsafeCoerce)
       k a = do
         let b = f a
         liftIO $ writeIORef ref b
-        modify $ unsafeTrigger srcId b
+        modify $ triggerEvent srcId b
       s' = s {subscriptions = newSub : s.subscriptions, next_id = succ s.next_id}
       val = MapHoldVal da f srcId ref
 

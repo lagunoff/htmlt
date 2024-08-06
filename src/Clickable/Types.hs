@@ -4,6 +4,7 @@ import Control.Monad.Reader
 import Control.Monad.Catch
 import Control.Monad.Fix
 import Control.Monad.State
+import Data.Binary
 import Data.IORef
 import Data.Tuple
 import Data.Map (Map)
@@ -13,8 +14,11 @@ import GHC.Exts
 import Clickable.Protocol
 import Clickable.Protocol.Value (Int32Le, Value)
 
+newtype EventId a = EventId {unEventId :: Int32Le}
+  deriving newtype (Show, Num, Ord, Eq, Binary)
+
 data DynVar a where
-  SourceVar :: SourceId -> IORef a -> DynVar a
+  SourceVar :: EventId a -> IORef a -> DynVar a
   OverrideVar :: (UpdateFn a -> UpdateFn a) -> DynVar a -> DynVar a
   LensMap :: Lens' s a -> DynVar s -> DynVar a
 
@@ -26,7 +30,7 @@ data DynVal a where
   ConstVal :: a -> DynVal a
   FromVar :: DynVar a -> DynVal a
   MapVal :: DynVal a -> (a -> b) -> DynVal b
-  MapHoldVal :: DynVal a -> (a -> b) -> SourceId -> IORef b -> DynVal b
+  MapHoldVal :: DynVal a -> (a -> b) -> EventId b -> IORef b -> DynVal b
   -- ^ todo: need redesign
   SplatVal :: DynVal (a -> b) -> DynVal a -> DynVal b
   OverrideSub :: (forall b. SubscribeFn a b -> SubscribeFn a b) -> DynVal a -> DynVal a
@@ -67,7 +71,7 @@ data InternalEnv = InternalEnv
 data InternalState = InternalState
   { subscriptions :: [Subscription Any]
   , finalizers :: [Finalizer]
-  , transaction_queue :: Map SourceId (ClickM ())
+  , transaction_queue :: Map AnyEventId (ClickM ())
   , evaluation_queue :: [Expr]
   , next_id :: Int32Le
   } deriving (Generic)
@@ -75,12 +79,12 @@ data InternalState = InternalState
 data Subscription a
   = SubscriptionSimple
     { ss_scope :: ResourceScope
-    , ss_event_id :: SourceId
+    , ss_event_id :: EventId a
     , ss_callback :: a -> ClickM ()
     }
   | forall b. SubscriptionAccum
     { sa_resource_scope :: ResourceScope
-    , sa_event_id :: SourceId
+    , sa_event_id :: EventId a
     , sa_callback :: a -> b -> ClickM b
     , sa_accum_ref :: IORef b
     }
@@ -96,9 +100,9 @@ data Finalizer
     }
 
 finalizerScope :: Finalizer -> ResourceScope
-finalizerScope CustomFinalizer {cf_resource_scope} = cf_resource_scope
-finalizerScope ScopeFinalizer {sf_resource_scope} = sf_resource_scope
+finalizerScope CustomFinalizer{cf_resource_scope} = cf_resource_scope
+finalizerScope ScopeFinalizer{sf_resource_scope} = sf_resource_scope
 
 subscriptionScope :: Subscription a -> ResourceScope
-subscriptionScope SubscriptionSimple {ss_scope} = ss_scope
-subscriptionScope SubscriptionAccum {sa_resource_scope} = sa_resource_scope
+subscriptionScope SubscriptionSimple{ss_scope} = ss_scope
+subscriptionScope SubscriptionAccum{sa_resource_scope} = sa_resource_scope

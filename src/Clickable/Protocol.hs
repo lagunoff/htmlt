@@ -24,11 +24,11 @@ data HaskellMessage
 data JavaScriptMessage
   = Start StartFlags
   | Return Value.Int32Le Value.Value
-  | TriggerCallbackMsg Value.Value SourceId
+  | TriggerCallbackMsg Value.Value AnyEventId
   | BeforeUnload
   -- ^ Fired from addEventListener("beforeunload") listener. Won't
   -- work under the DevServer!
-  deriving stock (Generic, Show)
+  deriving (Generic, Show)
   deriving anyclass (Binary)
 
 newtype StartFlags = StartFlags {unStartFlags :: Value.Value}
@@ -145,7 +145,7 @@ data Expr
   -- ^ Evaluate arbitrary JavaScript code @(Eval "setTimeout(() =>
   -- console.log('Hi!'), 1000)")@ will print a message with one second
   -- delay
-  | TriggerCallback SourceId Expr
+  | TriggerCallback AnyEventId Expr
   -- ^ As a side-effect emits `TriggerCallbackMsg` message to Haskell
   | UncaughtException Text
   deriving stock (Generic, Show)
@@ -175,7 +175,7 @@ newtype FinalizerId = FinalizerId { unFinalizerId :: Value.Int32Le }
 newtype ResourceScope = ResourceScope {unResourceScope :: Value.Int32Le}
   deriving newtype (Show, Num, Ord, Eq, Binary)
 
-newtype SourceId = SourceId {unSourceId :: Value.Int32Le}
+newtype AnyEventId = AnyEventId {unAnyEventId :: Value.Int32Le}
   deriving newtype (Show, Num, Ord, Eq, Binary)
 
 newtype UnsafeJavaScript = UnsafeJavaScript {unUnsafeJavaScript :: Text}

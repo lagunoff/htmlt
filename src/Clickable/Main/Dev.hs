@@ -6,18 +6,21 @@ import Control.Exception
 import Control.Monad
 import Control.Monad.State
 import Data.Binary qualified as Binary
+import Data.ByteString as BS
 import Data.ByteString.Builder (Builder)
 import Data.ByteString.Builder qualified as Builder
-import Data.ByteString as BS
 import Data.ByteString.Lazy qualified as BSL
 import Data.Function
-import Data.Maybe
 import Data.IORef
 import Data.List qualified as List
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Maybe
+import Data.Tuple
 import Data.Typeable
+import Data.Word
 import Foreign.Store
+import GHC.Conc.Sync
 import GHC.Generics
 import GHC.IO.Exception
 import Network.HTTP.Types as H
@@ -28,15 +31,12 @@ import Network.Wai.Handler.WebSockets
 import Network.WebSockets
 import System.Environment
 import System.IO
-import Data.Tuple
-import Data.Word
-import GHC.Conc.Sync
 
-import "this" Clickable.Types
-import "this" Clickable.Protocol
-import "this" Clickable.Protocol.Value (Value(..))
 import "this" Clickable.Internal (ClientMessage(..))
 import "this" Clickable.Internal qualified as Internal
+import "this" Clickable.Protocol
+import "this" Clickable.Protocol.Value (Value(..))
+import "this" Clickable.Types
 
 
 data DevConfig a = DevConfig

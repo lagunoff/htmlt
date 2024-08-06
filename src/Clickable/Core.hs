@@ -30,7 +30,7 @@ import Clickable.Protocol.Value (Value, ToValue(..))
 newVar :: a -> ClickM (DynVar a)
 newVar a = do
   ref <- liftIO $ newIORef a
-  state \s -> (SourceVar (SourceId s.next_id) ref, s {next_id = s.next_id + 1})
+  state \s -> (SourceVar (EventId s.next_id) ref, s {next_id = s.next_id + 1})
 
 overrideVar :: (UpdateFn a -> UpdateFn a) -> DynVar a -> DynVar a
 overrideVar = OverrideVar
@@ -50,7 +50,7 @@ readVar = Internal.readVar
 modifyVar :: DynVar s -> (s -> (s, a)) -> ClickM a
 modifyVar var@(SourceVar varId ref) f = do
   (newVal, a) <- liftIO $ atomicModifyIORef' ref g
-  modify $ Internal.unsafeTrigger varId newVal
+  modify $ Internal.triggerEvent varId newVal
   return a
   where
     g old = let (new, a) = f old in (new, (new, a))
@@ -131,7 +131,7 @@ installFinalizer k = reactive_ $ Internal.installFinalizer k
 newVarId :: ClickM VarId
 newVarId = reactive Internal.newVarId
 
-newCallback :: (Value -> ClickM ()) -> ClickM SourceId
+newCallback :: (Value -> ClickM ()) -> ClickM (EventId Value)
 newCallback k = reactive $ Internal.newCallback k
 
 ------------------

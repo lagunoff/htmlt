@@ -7,6 +7,7 @@ import Data.Kind
 import Data.Int
 import GHC.Generics
 import Unsafe.Coerce
+import Data.Coerce
 
 import Clickable.Types
 import Clickable.Protocol
@@ -29,7 +30,7 @@ addEventListener :: ConnectResourceArgs callback -> callback -> HtmlM ()
 addEventListener args k = lift $ connectResource args k
 
 data ConnectResourceArgs callback = ConnectResourceArgs
-  { aquire_resource :: ResourceScope -> SourceId -> Expr
+  { aquire_resource :: ResourceScope -> AnyEventId -> Expr
   -- ^ When evaluated, as a side-effect resulting `Expr` must
   -- initialize some resource (could be DOM event, WebSocket
   -- connection etc) also must return a function that frees that
@@ -42,9 +43,10 @@ connectResource args k = reactive_ \scope s ->
   let
     k' :: Value -> ClickM ()
     k' = local (\e -> e {scope}) . args.mk_callback k
-    sourceId = SourceId s.next_id
-    newSub = SubscriptionSimple scope sourceId (k' . unsafeCoerce)
-    connectExpr = ConnectResource scope $ args.aquire_resource scope sourceId
+    sourceId = EventId s.next_id
+    anyEventId = AnyEventId s.next_id
+    newSub = SubscriptionSimple scope (coerce sourceId) (k' . unsafeCoerce)
+    connectExpr = ConnectResource scope $ args.aquire_resource scope anyEventId
   in
     s { evaluation_queue = connectExpr : s.evaluation_queue
       , subscriptions = newSub : s.subscriptions
