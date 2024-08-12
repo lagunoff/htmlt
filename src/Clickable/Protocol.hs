@@ -24,7 +24,7 @@ data HaskellMessage
 data JavaScriptMessage
   = Start StartFlags
   | Return Int32Le Value
-  | TriggerCallbackMsg Value EventId
+  | TriggerEventMsg Value EventId
   | BeforeUnload
   -- ^ Fired from addEventListener("beforeunload") listener. Won't
   -- work under the DevServer!
@@ -108,23 +108,23 @@ data Expr
   -- ^ Assign a value to VarId allocated in haskell side. This way
   -- haskell can save certain values between WASM reactor invocations
   | FreeVar VarId
-  -- ^ Free a variable allocated with @AssignVar@
+  -- ^ Free variable allocated with @AssignVar@
   | Var VarId
   -- ^ Retrieve the value of the variable
   | FreeScope ResourceScope
   -- ^ Free all the resources assosiated with the given ResourceScope
 
-  | InsertNode Expr Expr
+  | InsertNode DomBuilder Expr
   | CreateElement Text
   | CreateElementNS Text Text
   | CreateTextNode Text
-  | ElementProp Expr Text Expr
-  | ElementAttr Expr Text Text
-  | InsertClassList Expr [Text]
-  | RemoveClassList Expr [Text]
-  | UpdateTextNode Expr Text
-  | InsertBoundary Expr
-  | ClearBoundary Expr Bool
+  | ElementProp DomBuilder Text Expr
+  | ElementAttr DomBuilder Text Text
+  | InsertClassList DomBuilder [Text]
+  | RemoveClassList DomBuilder [Text]
+  | UpdateTextNode DomBuilder Text
+  | InsertBoundary DomBuilder
+  | ClearBoundary DomBuilder Bool
 
   | AddEventListener ResourceScope Expr Expr Expr
   -- ^ @AddEventListener rscope target eventName listener@ is
@@ -150,8 +150,8 @@ data Expr
   -- ^ Evaluate arbitrary JavaScript code @(Eval "setTimeout(() =>
   -- console.log('Hi!'), 1000)")@ will print a message with one second
   -- delay
-  | TriggerCallback EventId Expr
-  -- ^ As a side-effect emits `TriggerCallbackMsg` message to Haskell
+  | TriggerEvent EventId Expr
+  -- ^ Emits `TriggerEventMsg` as a side-effect
   | UncaughtException Text
   deriving stock (Generic, Show)
   deriving anyclass (Binary)
@@ -182,11 +182,17 @@ valueToExpr = \case
 toExpr :: ToValue a => a -> Expr
 toExpr = valueToExpr . toValue
 
+builderContext :: DomBuilder
+builderContext = DomBuilder $ Arg 0 0
+
+newtype DomBuilder = DomBuilder {unDomBuilder :: Expr}
+  deriving newtype (Show, Binary)
+
 data VarId = VarId ResourceScope Int32Le
   deriving stock (Generic, Show, Ord, Eq)
   deriving anyclass (Binary)
 
-newtype FinalizerId = FinalizerId { unFinalizerId :: Int32Le }
+newtype FinalizerId = FinalizerId {unFinalizerId :: Int32Le}
   deriving newtype (Show, Ord, Eq, Binary)
 
 newtype ResourceScope = ResourceScope {unResourceScope :: Int32Le}

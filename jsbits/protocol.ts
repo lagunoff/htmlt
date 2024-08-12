@@ -70,16 +70,16 @@ export function evalExpr(hscb: HaskellCallback, idenScope: List<Bindings>, argSc
     case ExprTag.F64: {
       return exp[0];
     }
-    case ExprTag.String: {
+    case ExprTag.Str: {
       return exp[0];
     }
-    case ExprTag.Array: {
+    case ExprTag.Arr: {
       return exp[0].map(evalExpr.bind(undefined, hscb, idenScope, argScope));
     }
-    case ExprTag.Object: {
+    case ExprTag.Obj: {
       return Object.fromEntries(exp[0].map(([k, e]) => [k, evalExpr(hscb, idenScope, argScope, e)]));
     }
-    case ExprTag.Uint8Array: {
+    case ExprTag.U8Arr: {
       return exp[0];
     }
     case ExprTag.Dot: {
@@ -282,10 +282,10 @@ export function evalExpr(hscb: HaskellCallback, idenScope: List<Bindings>, argSc
     case ExprTag.Eval: {
       return eval(exp.rawJavaScript);
     }
-    case ExprTag.TriggerCallback: {
+    case ExprTag.TriggerEvent: {
       const arg = evalExpr(hscb, idenScope, argScope, exp.arg);
       const jsMsg: JavaScriptMessage = {
-        tag: JavaScriptMessageTag.TriggerCallback,
+        tag: JavaScriptMessageTag.TriggerEventMsg,
         arg: unknownToValue(arg),
         callbackId: exp.callbackId,
       }
@@ -305,97 +305,97 @@ export function evalUint8Array(hscb: HaskellCallback, idenScope: List<Bindings>,
 
 export function unknownToValue(inp: unknown): Value {
   if (typeof(inp) === 'boolean') {
-    return { tag: ValueTag.Boolean, 0: inp ? 1 : 0 };
+    return { tag: ValueTag.Vbool, 0: inp ? 1 : 0 };
   }
   if (typeof(inp) === 'number') {
     if (Number.isInteger(inp)) {
-      return { tag: ValueTag.I32, 0: inp };
+      return { tag: ValueTag.Vi32, 0: inp };
     } else {
-      return { tag: ValueTag.F64, 0: inp };
+      return { tag: ValueTag.Vf64, 0: inp };
     }
   }
   if (typeof(inp) === 'string') {
-    return { tag: ValueTag.String, 0: inp };
+    return { tag: ValueTag.Vstr, 0: inp };
   }
   if (typeof(inp) === 'bigint') {
-    return { tag: ValueTag.I64, 0: inp };
+    return { tag: ValueTag.Vi64, 0: inp };
   }
   if (Array.isArray(inp)) {
-    return { tag: ValueTag.Array, 0: inp.map(unknownToValue) };
+    return { tag: ValueTag.Varr, 0: inp.map(unknownToValue) };
   }
   if (inp instanceof Uint8Array) {
-    return { tag: ValueTag.Uint8Array, 0: inp };
+    return { tag: ValueTag.Vu8arr, 0: inp };
   }
   if (inp === null || inp === undefined) {
-    return { tag: ValueTag.Null };
+    return { tag: ValueTag.Vnull };
   }
   const entries = Object.entries(inp)
     .map(([k, v]) => [k, unknownToValue(v)] as KV);
 
-  return { tag: ValueTag.Object, 0: entries }
+  return { tag: ValueTag.Vobj, 0: entries }
 
   type KV = [string, Value];
 }
 
 export enum ValueTag {
-  Null,
-  Boolean,
-  I8,
-  I16,
-  I32,
-  I64,
-  U8,
-  U16,
-  U32,
-  U64,
-  F32,
-  F64,
-  String,
-  Array,
-  Object,
-  Uint8Array,
+  Vnull,
+  Vbool,
+  Vi8,
+  Vi16,
+  Vi32,
+  Vi64,
+  Vu8,
+  Vu16,
+  Vu32,
+  Vu64,
+  Vf32,
+  Vf64,
+  Vstr,
+  Varr,
+  Vobj,
+  Vu8arr,
 }
 
 export type Value =
-  | { tag: ValueTag.Null }
-  | { tag: ValueTag.Boolean, 0: number }
-  | { tag: ValueTag.I8, 0: number }
-  | { tag: ValueTag.I16, 0: number }
-  | { tag: ValueTag.I32, 0: number }
-  | { tag: ValueTag.I64, 0: bigint }
-  | { tag: ValueTag.U8, 0: number }
-  | { tag: ValueTag.U16, 0: number }
-  | { tag: ValueTag.U32, 0: number }
-  | { tag: ValueTag.U64, 0: bigint }
-  | { tag: ValueTag.F32, 0: number }
-  | { tag: ValueTag.F64, 0: number }
-  | { tag: ValueTag.String, 0: string }
-  | { tag: ValueTag.Array, 0: Value[] }
-  | { tag: ValueTag.Object, 0: [string, Value][] }
-  | { tag: ValueTag.Uint8Array, 0: Uint8Array }
+  | { tag: ValueTag.Vnull }
+  | { tag: ValueTag.Vbool, 0: number }
+  | { tag: ValueTag.Vi8, 0: number }
+  | { tag: ValueTag.Vi16, 0: number }
+  | { tag: ValueTag.Vi32, 0: number }
+  | { tag: ValueTag.Vi64, 0: bigint }
+  | { tag: ValueTag.Vu8, 0: number }
+  | { tag: ValueTag.Vu16, 0: number }
+  | { tag: ValueTag.Vu32, 0: number }
+  | { tag: ValueTag.Vu64, 0: bigint }
+  | { tag: ValueTag.Vf32, 0: number }
+  | { tag: ValueTag.Vf64, 0: number }
+  | { tag: ValueTag.Vstr, 0: string }
+  | { tag: ValueTag.Varr, 0: Value[] }
+  | { tag: ValueTag.Vobj, 0: [string, Value][] }
+  | { tag: ValueTag.Vu8arr, 0: Uint8Array }
 ;
 
 export const jvalue = b.recursive<Value>(self => b.discriminate({
-  [ValueTag.Null]: b.record({ }),
-  [ValueTag.Boolean]: b.record({ 0: b.int8 }),
+  [ValueTag.Vnull]: b.record({ }),
+  [ValueTag.Vbool]: b.record({ 0: b.int8 }),
 
-  [ValueTag.I8]: b.record({ 0: b.int8 }),
-  [ValueTag.I16]: b.record({ 0: b.int16 }),
-  [ValueTag.I32]: b.record({ 0: b.int32 }),
-  [ValueTag.I64]: b.record({ 0: b.int64 }),
+  [ValueTag.Vi8]: b.record({ 0: b.int8 }),
+  [ValueTag.Vi16]: b.record({ 0: b.int16 }),
+  [ValueTag.Vi32]: b.record({ 0: b.int32 }),
+  [ValueTag.Vi64]: b.record({ 0: b.int64 }),
 
-  [ValueTag.U8]: b.record({ 0: b.word8 }),
-  [ValueTag.U16]: b.record({ 0: b.word16 }),
-  [ValueTag.U32]: b.record({ 0: b.word32 }),
-  [ValueTag.U64]: b.record({ 0: b.word64 }),
+  [ValueTag.Vu8]: b.record({ 0: b.word8 }),
+  [ValueTag.Vu16]: b.record({ 0: b.word16 }),
+  [ValueTag.Vu32]: b.record({ 0: b.word32 }),
+  [ValueTag.Vu64]: b.record({ 0: b.word64 }),
 
-  [ValueTag.F32]: b.record({ 0: b.float32 }),
-  [ValueTag.F64]: b.record({ 0: b.float64 }),
+  [ValueTag.Vf32]: b.record({ 0: b.float32 }),
+  [ValueTag.Vf64]: b.record({ 0: b.float64 }),
 
-  [ValueTag.String]: b.record({ 0: b.string }),
-  [ValueTag.Array]: b.record({ 0: b.array(self) }),
-  [ValueTag.Object]: b.record({ 0: b.array(b.tuple(b.string, self)) }),
-  [ValueTag.Uint8Array]: b.record({ 0: b.u8array }),
+  [ValueTag.Vstr]: b.record({ 0: b.string }),
+  [ValueTag.Varr]: b.record({ 0: b.array(self) }),
+  [ValueTag.Vobj]: b.record({ 0: b.array(b.tuple(b.string, self)) }),
+  [ValueTag.Vu8arr]: b.record({ 0: b.u8array }),
 }));
 
 export enum ExprTag {
@@ -415,10 +415,10 @@ export enum ExprTag {
   F32,
   F64,
 
-  String,
-  Array,
-  Object,
-  Uint8Array,
+  Str,
+  Arr,
+  Obj,
+  U8Arr,
 
   Dot,
   SetProp,
@@ -459,7 +459,7 @@ export enum ExprTag {
 
   RevSeq,
   Eval,
-  TriggerCallback,
+  TriggerEvent,
   UncaughtException,
 }
 
@@ -480,10 +480,10 @@ export type Expr =
   | { tag: ExprTag.F32, 0: number }
   | { tag: ExprTag.F64, 0: number }
 
-  | { tag: ExprTag.String, 0: string }
-  | { tag: ExprTag.Array, 0: Expr[] }
-  | { tag: ExprTag.Object, 0: [string, Expr][] }
-  | { tag: ExprTag.Uint8Array, 0: Uint8Array }
+  | { tag: ExprTag.Str, 0: string }
+  | { tag: ExprTag.Arr, 0: Expr[] }
+  | { tag: ExprTag.Obj, 0: [string, Expr][] }
+  | { tag: ExprTag.U8Arr, 0: Uint8Array }
 
   | { tag: ExprTag.Dot, 0: Expr, 1: string }
   | { tag: ExprTag.SetProp, 0: Expr, 1: string, 2: Expr }
@@ -524,7 +524,7 @@ export type Expr =
 
   | { tag: ExprTag.RevSeq, exprs: Expr[] }
   | { tag: ExprTag.Eval, rawJavaScript: string }
-  | { tag: ExprTag.TriggerCallback, callbackId: number, arg: Expr }
+  | { tag: ExprTag.TriggerEvent, callbackId: number, arg: Expr }
   | { tag: ExprTag.UncaughtException, message: string }
 ;
 
@@ -545,10 +545,10 @@ export const expr = b.recursive<Expr>(self => b.discriminate({
   [ExprTag.F32]: b.record({ 0: b.float32 }),
   [ExprTag.F64]: b.record({ 0: b.float64 }),
 
-  [ExprTag.String]: b.record({ 0: b.string }),
-  [ExprTag.Array]: b.record({ 0: b.array(self) }),
-  [ExprTag.Object]: b.record({ 0: b.array(b.tuple(b.string, self)) }),
-  [ExprTag.Uint8Array]: b.record({ 0: b.u8array }),
+  [ExprTag.Str]: b.record({ 0: b.string }),
+  [ExprTag.Arr]: b.record({ 0: b.array(self) }),
+  [ExprTag.Obj]: b.record({ 0: b.array(b.tuple(b.string, self)) }),
+  [ExprTag.U8Arr]: b.record({ 0: b.u8array }),
 
   [ExprTag.Dot]: b.record({ 0: self, 1: b.string }),
   [ExprTag.SetProp]: b.record({ 0: self, 1: b.string, 2: self }),
@@ -589,7 +589,7 @@ export const expr = b.recursive<Expr>(self => b.discriminate({
 
   [ExprTag.RevSeq]: b.record({ exprs: b.array(self) }),
   [ExprTag.Eval]: b.record({ rawJavaScript: b.string }),
-  [ExprTag.TriggerCallback]: b.record({ callbackId: b.int32, arg: self }),
+  [ExprTag.TriggerEvent]: b.record({ callbackId: b.int32, arg: self }),
   [ExprTag.UncaughtException]: b.record({ message: b.string }),
 }));
 
@@ -608,14 +608,14 @@ export const haskellMessage = b.discriminate({
 export enum JavaScriptMessageTag {
   Start,
   Return,
-  TriggerCallback,
+  TriggerEventMsg,
   BeforeUnload,
 }
 
 export const javascriptMessage = b.discriminate({
   [JavaScriptMessageTag.Start]: b.record({ 0: jvalue }),
   [JavaScriptMessageTag.Return]: b.record({ threadId: b.int32, value: jvalue }),
-  [JavaScriptMessageTag.TriggerCallback]: b.record({ arg: jvalue, callbackId: b.int32 }),
+  [JavaScriptMessageTag.TriggerEventMsg]: b.record({ arg: jvalue, callbackId: b.int32 }),
   [JavaScriptMessageTag.BeforeUnload]: b.record({}),
 });
 

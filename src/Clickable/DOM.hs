@@ -123,7 +123,7 @@ eventListenerOptions :: Text -> Bool -> Bool -> ConnectResourceArgs (ClickM ())
 eventListenerOptions eventName preventDef stopProp = ConnectResourceArgs
   { aquire_resource = \scope sourceId ->
     Eval (normalEventWrapper eventName $ EventListenerOptions preventDef stopProp)
-      `Apply` [Arg 0 0, Lam (TriggerCallback sourceId Null)]
+      `Apply` [Arg 0 0, Lam (TriggerEvent sourceId Null)]
   , mk_callback = \k _ -> k
   }
 
@@ -132,7 +132,7 @@ pointerConnectArgs :: Text -> ConnectResourceArgs (ClickM ())
 pointerConnectArgs eventName = ConnectResourceArgs
   { aquire_resource = \scope sourceId ->
     Eval (normalEventWrapper eventName defaultEventListenerOptions)
-      `Apply` [Arg 0 0, Lam (TriggerCallback sourceId Null)]
+      `Apply` [Arg 0 0, Lam (TriggerEvent sourceId Null)]
   , mk_callback = \k _ -> k
   }
 
@@ -143,7 +143,7 @@ submitConnectArgs = ConnectResourceArgs
     Eval (normalEventWrapper "submit" EventListenerOptions
     { prevent_default = True
     , stop_propagation = True
-    }) `Apply` [Arg 0 0, Lam (TriggerCallback sourceId (Arg 0 0))]
+    }) `Apply` [Arg 0 0, Lam (TriggerEvent sourceId (Arg 0 0))]
   , mk_callback = \k _ -> k
   }
 
@@ -157,7 +157,7 @@ inputConnectArgs eventName = ConnectResourceArgs
       \  }\n\
       \  target.addEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
       \  return () => window.removeEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
-      \})") `Apply` [Arg 0 0, Lam (TriggerCallback sourceId (Arg 0 0))]
+      \})") `Apply` [Arg 0 0, Lam (TriggerEvent sourceId (Arg 0 0))]
   , mk_callback = \k event -> forM_ (fromValue event) k
   }
 
@@ -172,7 +172,7 @@ keyboardConnectArgs eventName = ConnectResourceArgs
       \  }\n\
       \  target.addEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
       \  return () => target.removeEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
-      \})") `Apply` [Arg 0 0, Lam (TriggerCallback sourceId (Arg 0 0))]
+      \})") `Apply` [Arg 0 0, Lam (TriggerEvent sourceId (Arg 0 0))]
   , mk_callback = \k event -> forM_ (fromValue event) k
   }
 
@@ -184,7 +184,7 @@ focusConnectArgs :: Text -> ConnectResourceArgs (ClickM ())
 focusConnectArgs eventName = ConnectResourceArgs
   { aquire_resource = \scope sourceId ->
     Eval (normalEventWrapper eventName defaultEventListenerOptions)
-      `Apply` [Arg 0 0, Lam (TriggerCallback sourceId (Arg 0 0))]
+      `Apply` [Arg 0 0, Lam (TriggerEvent sourceId (Arg 0 0))]
   , mk_callback = \k _ -> k
   }
 
@@ -198,7 +198,7 @@ checkboxChangeConnectArgs = ConnectResourceArgs
       \  }\n\
       \  target.addEventListener('change', listener);\n\
       \  return () => window.removeEventListener('change', listener);\n\
-      \})" `Apply` [Arg 0 0, Lam (TriggerCallback sourceId (Arg 0 0))]
+      \})" `Apply` [Arg 0 0, Lam (TriggerEvent sourceId (Arg 0 0))]
   , mk_callback = \k event -> forM_ (fromValue event) k
   }
 
@@ -212,7 +212,7 @@ selectChangeConnectArgs = ConnectResourceArgs
       \  }\n\
       \  target.addEventListener('change', listener);\n\
       \  return () => target.removeEventListener('change', listener);\n\
-      \})" `Apply` [Arg 0 0, Lam (TriggerCallback sourceId (Arg 0 0))]
+      \})" `Apply` [Arg 0 0, Lam (TriggerEvent sourceId (Arg 0 0))]
   , mk_callback = \k event -> forM_ (fromValue event) k
   }
 
@@ -268,7 +268,7 @@ popstateConnectArgs = ConnectResourceArgs
       \  }\n\
       \  target.addEventListener('popstate', listener);\n\
       \  return () => target.removeEventListener('popstate', listener);\n\
-      \})" `Apply` [Id "window", Lam (TriggerCallback sourceId (Arg 0 0))]
+      \})" `Apply` [Id "window", Lam (TriggerEvent sourceId (Arg 0 0))]
   , mk_callback = \k event -> forM_ (fromValue event) k
   }
 
@@ -304,5 +304,5 @@ mouseWheelConnectArgs = ConnectResourceArgs
       \  }\n\
       \  target.addEventListener('popstate', listener);\n\
       \  return () => target.removeEventListener('popstate', listener);\n\
-      \})" `Apply` [Arg 0 0, Lam (TriggerCallback sourceId (Arg 0 0))]
+      \})" `Apply` [Arg 0 0, Lam (TriggerEvent sourceId (Arg 0 0))]
   }
