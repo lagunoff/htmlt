@@ -1,0 +1,44 @@
+cabal-version: 3.4
+
+name:                examples
+version:             0.1.0.0
+build-type:          Simple
+
+executable todomvc
+  ghc-options:
+    -O3 -funbox-strict-fields -fstrictness -ddump-splices
+    -Wall -Wno-missing-signatures -Wno-name-shadowing -Wno-unused-matches
+    -Wno-unused-do-bind
+  hs-source-dirs: todomvc
+  if arch(wasm32)
+    ghc-options:
+      -no-hs-main -optl-mexec-model=reactor
+      -optl-Wl,--export=hs_init,--export=wasm_app,--export=malloc,--export=free
+    main-is: wasm.hs
+  else
+    main-is: dev.hs
+  build-depends:
+    base,
+    text,
+    transformers,
+    mtl,
+    htmlt,
+  other-modules:
+    App
+    TodoItem
+    TodoList
+    Utils
+  default-extensions:
+    GHC2024
+    AllowAmbiguousTypes
+    BlockArguments
+    DefaultSignatures
+    DeriveAnyClass
+    FunctionalDependencies
+    OverloadedRecordDot
+    OverloadedStrings
+    PackageImports
+    RecordWildCards
+    RecursiveDo
+    TypeFamilies
+    UndecidableInstances

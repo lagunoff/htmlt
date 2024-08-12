@@ -5,5 +5,6 @@ import Clickable.Core as Exports
 import Clickable.Element as Exports
 import Clickable.Property as Exports
 import Clickable.Protocol as Exports
+import Clickable.Protocol.Value as Exports
 import Clickable.Types as Exports
 import Wasm.Compat.Prim as Exports

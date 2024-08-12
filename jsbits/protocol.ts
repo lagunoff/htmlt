@@ -40,7 +40,31 @@ export function evalExpr(hscb: HaskellCallback, idenScope: List<Bindings>, argSc
     case ExprTag.Boolean: {
        return exp[0] != 0;
     }
+    case ExprTag.I8: {
+      return exp[0];
+    }
+    case ExprTag.I16: {
+      return exp[0];
+    }
     case ExprTag.I32: {
+      return exp[0];
+    }
+    case ExprTag.I64: {
+      return exp[0];
+    }
+    case ExprTag.U8: {
+      return exp[0];
+    }
+    case ExprTag.U16: {
+      return exp[0];
+    }
+    case ExprTag.U32: {
+      return exp[0];
+    }
+    case ExprTag.U64: {
+      return exp[0];
+    }
+    case ExprTag.F32: {
       return exp[0];
     }
     case ExprTag.F64: {
@@ -293,6 +317,9 @@ export function unknownToValue(inp: unknown): Value {
   if (typeof(inp) === 'string') {
     return { tag: ValueTag.String, 0: inp };
   }
+  if (typeof(inp) === 'bigint') {
+    return { tag: ValueTag.I64, 0: inp };
+  }
   if (Array.isArray(inp)) {
     return { tag: ValueTag.Array, 0: inp.map(unknownToValue) };
   }
@@ -313,7 +340,15 @@ export function unknownToValue(inp: unknown): Value {
 export enum ValueTag {
   Null,
   Boolean,
+  I8,
+  I16,
   I32,
+  I64,
+  U8,
+  U16,
+  U32,
+  U64,
+  F32,
   F64,
   String,
   Array,
@@ -324,7 +359,15 @@ export enum ValueTag {
 export type Value =
   | { tag: ValueTag.Null }
   | { tag: ValueTag.Boolean, 0: number }
+  | { tag: ValueTag.I8, 0: number }
+  | { tag: ValueTag.I16, 0: number }
   | { tag: ValueTag.I32, 0: number }
+  | { tag: ValueTag.I64, 0: bigint }
+  | { tag: ValueTag.U8, 0: number }
+  | { tag: ValueTag.U16, 0: number }
+  | { tag: ValueTag.U32, 0: number }
+  | { tag: ValueTag.U64, 0: bigint }
+  | { tag: ValueTag.F32, 0: number }
   | { tag: ValueTag.F64, 0: number }
   | { tag: ValueTag.String, 0: string }
   | { tag: ValueTag.Array, 0: Value[] }
@@ -335,8 +378,20 @@ export type Value =
 export const jvalue = b.recursive<Value>(self => b.discriminate({
   [ValueTag.Null]: b.record({ }),
   [ValueTag.Boolean]: b.record({ 0: b.int8 }),
+
+  [ValueTag.I8]: b.record({ 0: b.int8 }),
+  [ValueTag.I16]: b.record({ 0: b.int16 }),
   [ValueTag.I32]: b.record({ 0: b.int32 }),
+  [ValueTag.I64]: b.record({ 0: b.int64 }),
+
+  [ValueTag.U8]: b.record({ 0: b.word8 }),
+  [ValueTag.U16]: b.record({ 0: b.word16 }),
+  [ValueTag.U32]: b.record({ 0: b.word32 }),
+  [ValueTag.U64]: b.record({ 0: b.word64 }),
+
+  [ValueTag.F32]: b.record({ 0: b.float32 }),
   [ValueTag.F64]: b.record({ 0: b.float64 }),
+
   [ValueTag.String]: b.record({ 0: b.string }),
   [ValueTag.Array]: b.record({ 0: b.array(self) }),
   [ValueTag.Object]: b.record({ 0: b.array(b.tuple(b.string, self)) }),
@@ -346,8 +401,20 @@ export const jvalue = b.recursive<Value>(self => b.discriminate({
 export enum ExprTag {
   Null,
   Boolean,
+
+  I8,
+  I16,
   I32,
+  I64,
+
+  U8,
+  U16,
+  U32,
+  U64,
+
+  F32,
   F64,
+
   String,
   Array,
   Object,
@@ -399,8 +466,20 @@ export enum ExprTag {
 export type Expr =
   | { tag: ExprTag.Null }
   | { tag: ExprTag.Boolean, 0: number }
+
+  | { tag: ExprTag.I8, 0: number }
+  | { tag: ExprTag.I16, 0: number }
   | { tag: ExprTag.I32, 0: number }
+  | { tag: ExprTag.I64, 0: bigint }
+
+  | { tag: ExprTag.U8, 0: number }
+  | { tag: ExprTag.U16, 0: number }
+  | { tag: ExprTag.U32, 0: number }
+  | { tag: ExprTag.U64, 0: bigint }
+
+  | { tag: ExprTag.F32, 0: number }
   | { tag: ExprTag.F64, 0: number }
+
   | { tag: ExprTag.String, 0: string }
   | { tag: ExprTag.Array, 0: Expr[] }
   | { tag: ExprTag.Object, 0: [string, Expr][] }
@@ -452,11 +531,24 @@ export type Expr =
 export const expr = b.recursive<Expr>(self => b.discriminate({
   [ExprTag.Null]: b.record({}),
   [ExprTag.Boolean]: b.record({ 0: b.int8 }),
+
+  [ExprTag.I8]: b.record({ 0: b.int8 }),
+  [ExprTag.I16]: b.record({ 0: b.int16 }),
   [ExprTag.I32]: b.record({ 0: b.int32 }),
+  [ExprTag.I64]: b.record({ 0: b.int64 }),
+
+  [ExprTag.U8]: b.record({ 0: b.word8 }),
+  [ExprTag.U16]: b.record({ 0: b.word16 }),
+  [ExprTag.U32]: b.record({ 0: b.word32 }),
+  [ExprTag.U64]: b.record({ 0: b.word64 }),
+
+  [ExprTag.F32]: b.record({ 0: b.float32 }),
   [ExprTag.F64]: b.record({ 0: b.float64 }),
+
   [ExprTag.String]: b.record({ 0: b.string }),
   [ExprTag.Array]: b.record({ 0: b.array(self) }),
   [ExprTag.Object]: b.record({ 0: b.array(b.tuple(b.string, self)) }),
+  [ExprTag.Uint8Array]: b.record({ 0: b.u8array }),
 
   [ExprTag.Dot]: b.record({ 0: self, 1: b.string }),
   [ExprTag.SetProp]: b.record({ 0: self, 1: b.string, 2: self }),

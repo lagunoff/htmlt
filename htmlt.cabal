@@ -68,5 +68,6 @@ library
     OverloadedStrings
     PackageImports
     RecursiveDo
+    StrictData
     TypeFamilies
     UndecidableInstances

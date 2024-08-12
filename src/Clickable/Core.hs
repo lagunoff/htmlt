@@ -21,7 +21,7 @@ import Clickable.Internal (reactive, reactive_)
 import Clickable.Internal qualified as Internal
 import Clickable.Types
 import Clickable.Protocol
-import Clickable.Protocol.Value (Value, ToValue(..))
+import Clickable.Protocol.Value
 
 ---------------------------------------
 -- OPERATIONS OVER DYNAMIC VARIABLES --
@@ -30,7 +30,7 @@ import Clickable.Protocol.Value (Value, ToValue(..))
 newVar :: a -> ClickM (DynVar a)
 newVar a = do
   ref <- liftIO $ newIORef a
-  let mkEv s = unsafeFromEventId $ EventId s.next_id
+  let mkEv s = unsafeFromEventId $ EventId $ Int32Le s.next_id
   state \s -> (SourceVar (mkEv s) ref, s {next_id = s.next_id + 1})
 
 overrideVar :: (UpdateFn a -> UpdateFn a) -> DynVar a -> DynVar a

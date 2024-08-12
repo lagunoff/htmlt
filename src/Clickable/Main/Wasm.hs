@@ -15,8 +15,7 @@ import System.IO.Unsafe
 
 import Clickable.FFI qualified as FFI
 import Clickable.Protocol
-import Clickable.Protocol.Value (Value)
-import Clickable.Protocol.Value qualified as Value
+import Clickable.Protocol.Value
 import Clickable.Core
 import Clickable.Internal qualified as Internal
 import Clickable.Types
@@ -30,7 +29,7 @@ runWasm app p = mdo
     Just (TriggerCallbackMsg arg eid) ->
       launchClickM internalEnv $ modify $ Internal.triggerEvent (unsafeFromEventId eid) arg
     Just BeforeUnload ->
-      launchClickM internalEnv $ freeScope True $ ResourceScope Internal.emptyState.next_id
+      launchClickM internalEnv $ freeScope True $ ResourceScope $ Int32Le Internal.emptyState.next_id
     _ ->
       return ()
 
@@ -39,13 +38,13 @@ internalEnv = unsafePerformIO $ Internal.newInternalEnv sendMessage
 
 sendMessage :: Expr -> IO Value
 sendMessage expr = do
-  hptr <- storeByteString $ BSL.toStrict $ Binary.encode $ EvalExpr 0 expr
+  hptr <- storeByteString $ BSL.toStrict $ Binary.encode $ EvalExpr (Int32Le 0) expr
   jptr <- FFI.js_evalMessage hptr
   Alloc.free hptr
   jmsg <- loadMessage jptr
   case jmsg of
     Just (Return _ v) -> return v
-    _ -> return Value.Null
+    _ -> return Vnull
   where
     storeByteString :: ByteString -> IO (Ptr a)
     storeByteString bs = do

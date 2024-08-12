@@ -26,7 +26,14 @@ export class DecoderBase<A> {
 
 export type Decoder<A> =
   | Int8Decoder<A>
+  | Int16Decoder<A>
   | Int32Decoder<A>
+  | Int64Decoder<A>
+  | Word8Decoder<A>
+  | Word16Decoder<A>
+  | Word32Decoder<A>
+  | Word64Decoder<A>
+  | Float32Decoder<A>
   | Float64Decoder<A>
   | Uint8ArrayDecoder<A>
   | StringDecoder<A>
@@ -37,16 +44,18 @@ export type Decoder<A> =
   | TupleDecoder<A>
 ;
 
-export class Int8Decoder<A> extends DecoderBase<A> {
-}
-export class Int32Decoder<A> extends DecoderBase<A> {
-}
-export class Float64Decoder<A> extends DecoderBase<A> {
-}
-export class Uint8ArrayDecoder<A> extends DecoderBase<A> {
-}
-export class StringDecoder<A> extends DecoderBase<A> {
-}
+export class Int8Decoder<A> extends DecoderBase<A> {}
+export class Int16Decoder<A> extends DecoderBase<A> {}
+export class Int32Decoder<A> extends DecoderBase<A> {}
+export class Int64Decoder<A> extends DecoderBase<A> {}
+export class Word8Decoder<A> extends DecoderBase<A> {}
+export class Word16Decoder<A> extends DecoderBase<A> {}
+export class Word32Decoder<A> extends DecoderBase<A> {}
+export class Word64Decoder<A> extends DecoderBase<A> {}
+export class Float32Decoder<A> extends DecoderBase<A> {}
+export class Float64Decoder<A> extends DecoderBase<A> {}
+export class Uint8ArrayDecoder<A> extends DecoderBase<A> {}
+export class StringDecoder<A> extends DecoderBase<A> {}
 export class ArrayDecoder<A> extends DecoderBase<A> {
   constructor(
     readonly _element: Decoder<any>,
@@ -79,7 +88,28 @@ export function computeSize<A>(
   if (decoder instanceof Int8Decoder) {
     return 1;
   }
+  if (decoder instanceof Int16Decoder) {
+    return 2;
+  }
   if (decoder instanceof Int32Decoder) {
+    return 4;
+  }
+  if (decoder instanceof Int64Decoder) {
+    return 8;
+  }
+  if (decoder instanceof Word8Decoder) {
+    return 1;
+  }
+  if (decoder instanceof Word16Decoder) {
+    return 2;
+  }
+  if (decoder instanceof Word32Decoder) {
+    return 4;
+  }
+  if (decoder instanceof Word64Decoder) {
+    return 8;
+  }
+  if (decoder instanceof Float32Decoder) {
     return 4;
   }
   if (decoder instanceof Float64Decoder) {
@@ -128,17 +158,44 @@ export function runDecoder<A>(
   mem: Uint8Array,
   ptr: HaskellPointer,
 ): [A, HaskellPointer] {
+  const view = new DataView(mem.buffer);
   if (decoder instanceof Int8Decoder) {
-    const result = mem[ptr] as any as A;
-    return [result, ptr + 1];
+    const value = view.getInt8(ptr) as any;
+    return [value, ptr + 1];
+  }
+  if (decoder instanceof Int16Decoder) {
+    const value = view.getInt16(ptr, true) as any;
+    return [value, ptr + 2];
   }
   if (decoder instanceof Int32Decoder) {
-    const view = new DataView(mem.buffer);
     const value = view.getInt32(ptr, true) as any;
     return [value as any as A, ptr + 4];
   }
+  if (decoder instanceof Int64Decoder) {
+    const value = view.getBigInt64(ptr, true) as any;
+    return [value, ptr + 8];
+  }
+  if (decoder instanceof Word8Decoder) {
+    const result = mem[ptr] as any as A;
+    return [result, ptr + 1];
+  }
+  if (decoder instanceof Word16Decoder) {
+    const value = view.getUint8(ptr) as any;
+    return [value, ptr + 1];
+  }
+  if (decoder instanceof Word32Decoder) {
+    const value = view.getUint32(ptr, true) as any;
+    return [value as any as A, ptr + 4];
+  }
+  if (decoder instanceof Word64Decoder) {
+    const value = view.getBigUint64(ptr, true) as any;
+    return [value, ptr + 8];
+  }
+  if (decoder instanceof Float32Decoder) {
+    const value = view.getFloat32(ptr, true) as any;
+    return [value, ptr + 4];
+  }
   if (decoder instanceof Float64Decoder) {
-    const view = new DataView(mem.buffer);
     const value = view.getFloat64(ptr, true) as any;
     return [value, ptr + 8];
   }
@@ -224,17 +281,44 @@ export function runEncoder<A>(
   ptr: HaskellPointer,
   value: A,
 ): HaskellPointer {
+  const view = new DataView(mem.buffer);
   if (decoder instanceof Int8Decoder) {
-    mem[ptr] = value as any as number;
+    view.setInt8(ptr, value as number);
     return ptr + 1;
   }
+  if (decoder instanceof Int16Decoder) {
+    view.setInt16(ptr, value as number, true);
+    return ptr + 2;
+  }
   if (decoder instanceof Int32Decoder) {
-    const view = new DataView(mem.buffer);
     view.setInt32(ptr, value as number, true);
     return ptr + 4;
   }
+  if (decoder instanceof Int64Decoder) {
+    view.setBigInt64(ptr, value as bigint, true);
+    return ptr + 8;
+  }
+  if (decoder instanceof Word8Decoder) {
+    view.setUint8(ptr, value as number);
+    return ptr + 1;
+  }
+  if (decoder instanceof Word16Decoder) {
+    view.setUint16(ptr, value as number, true);
+    return ptr + 2;
+  }
+  if (decoder instanceof Word32Decoder) {
+    view.setUint32(ptr, value as number, true);
+    return ptr + 4;
+  }
+  if (decoder instanceof Word64Decoder) {
+    view.setBigUint64(ptr, value as bigint, true);
+    return ptr + 8;
+  }
+  if (decoder instanceof Float32Decoder) {
+    view.setFloat32(ptr, value as number, true);
+    return ptr + 4;
+  }
   if (decoder instanceof Float64Decoder) {
-    const view = new DataView(mem.buffer);
     view.setFloat64(ptr, value as number, true);
     return ptr + 8;
   }
@@ -326,9 +410,16 @@ function readDiscriminator(dscrSize: number, mem: Uint8Array, ix: HaskellPointer
 }
 
 export const int8 = new Int8Decoder<number>();
-
+export const int16 = new Int16Decoder<number>();
 export const int32 = new Int32Decoder<number>();
+export const int64 = new Int64Decoder<bigint>();
 
+export const word8 = new Word8Decoder<number>();
+export const word16 = new Word16Decoder<number>();
+export const word32 = new Word32Decoder<number>();
+export const word64 = new Word64Decoder<bigint>();
+
+export const float32 = new Float32Decoder<number>();
 export const float64 = new Float64Decoder<number>();
 
 export const string = new StringDecoder<string>();

@@ -1,4 +1,3 @@
-import Control.Monad.Reader
 import Clickable.Main.Wasm
 import GHC.Ptr
 import GHC.Word

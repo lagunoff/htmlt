@@ -10,12 +10,13 @@ import Data.Tuple
 import Data.Map (Map)
 import GHC.Generics
 import GHC.Exts
+import GHC.Int
 
 import Clickable.Protocol
-import Clickable.Protocol.Value (Int32Le, Value)
+import Clickable.Protocol.Value
 
 newtype Event a = Event {unEvent :: EventId}
-  deriving newtype (Show, Num, Ord, Eq, Binary)
+  deriving newtype (Show, Ord, Eq, Binary)
 
 unsafeFromEventId :: EventId -> Event a
 unsafeFromEventId = Event
@@ -79,7 +80,7 @@ data InternalState = InternalState
   , finalizers :: [Finalizer]
   , transaction_queue :: Map EventId (ClickM ())
   , evaluation_queue :: [Expr]
-  , next_id :: Int32Le
+  , next_id :: Int32
   } deriving (Generic)
 
 data Subscription a

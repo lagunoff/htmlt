@@ -8,10 +8,10 @@ import Data.String
 import Data.Word
 import GHC.Generics
 
-import "this" Clickable.Protocol.Value qualified as Value
+import Clickable.Protocol.Value
 
 data HaskellMessage
-  = EvalExpr Value.Int32Le Expr
+  = EvalExpr Int32Le Expr
   -- ^ Evaluate expression, expect the result to be returned by
   -- 'Return' message
   | HotReload
@@ -23,15 +23,15 @@ data HaskellMessage
 
 data JavaScriptMessage
   = Start StartFlags
-  | Return Value.Int32Le Value.Value
-  | TriggerCallbackMsg Value.Value EventId
+  | Return Int32Le Value
+  | TriggerCallbackMsg Value EventId
   | BeforeUnload
   -- ^ Fired from addEventListener("beforeunload") listener. Won't
   -- work under the DevServer!
   deriving (Generic, Show)
   deriving anyclass (Binary)
 
-newtype StartFlags = StartFlags {unStartFlags :: Value.Value}
+newtype StartFlags = StartFlags {unStartFlags :: Value}
   deriving newtype (Generic, Show, Binary)
 
 -- | Strict Lambda calculus with arbitrary side-effects, meant to be
@@ -39,21 +39,26 @@ newtype StartFlags = StartFlags {unStartFlags :: Value.Value}
 -- non-blocking execution and minimizing round-trips.
 data Expr
   = Null
-  -- ^ Represents null or undefined values
-  | Boolean Bool
+  -- ^ null or undefined values
+  | Bool Bool
   -- ^ JavaScript boolean value
-  | I32 Value.Int32Le
-  -- ^ JavaScript integer number
-  | F64 Value.Float64
-  -- ^ JavaScript floating point number
-  | String Text
-  -- ^ JavaScript string
-  | Array [Expr]
-  -- ^ JavaScript array
-  | Object [(Text, Expr)]
-  -- ^ JavaScript object
-  | Uint8Array ByteString
-  -- ^ Raw byte array
+  | I8 Int8
+  | I16 Int16Le
+  | I32 Int32Le
+  | I64 Int64Le
+
+  | U8 Word8
+  | U16 Word16Le
+  | U32 Word32Le
+  | U64 Word64Le
+
+  | F32 Float32Le
+  | F64 Float64Le
+
+  | Str Text -- ^ JavaScript string
+  | Arr [Expr] -- ^ JavaScript array
+  | Obj [(Text, Expr)] -- ^ JavaScript object
+  | U8Arr ByteString -- ^ Raw byte array
 
   | Dot Expr Text
   -- ^ Read string property of an object. @(Dot (Id "document")
@@ -130,7 +135,7 @@ data Expr
   -- will be freed with 'FreeScope'
   | ConnectResource ResourceScope Expr
   -- ^ Returns FinalizerId
-  | SetTimeout ResourceScope Expr Value.Int32Le
+  | SetTimeout ResourceScope Expr Int32Le
   -- ^ Returns FinalizerId
   | ApplyFinalizer ResourceScope Expr
   -- ^ Actuate given finalizer before the ResourceScope is freed
@@ -151,32 +156,44 @@ data Expr
   deriving stock (Generic, Show)
   deriving anyclass (Binary)
 
-valueToExpr :: Value.Value -> Expr
+valueToExpr :: Value -> Expr
 valueToExpr = \case
-  Value.Null -> Null
-  Value.Bool a -> Boolean a
-  Value.I32 a -> I32 a
-  Value.F64 a -> F64 a
-  Value.String a -> String a
-  Value.Array xs -> Array $ fmap valueToExpr xs
-  Value.Object kv -> Object $ fmap (\(k, v) -> (k, valueToExpr v)) kv
-  Value.Uint8Array a -> Uint8Array a
+  Vnull -> Null
+  Vbool a -> Bool a
 
-toExpr :: Value.ToValue a => a -> Expr
-toExpr = valueToExpr . Value.toValue
+  Vi8 a -> I8 a
+  Vi16 a -> I16 a
+  Vi32 a -> I32 a
+  Vi64 a -> I64 a
 
-data VarId = VarId ResourceScope Value.Int32Le
+  Vu8 a -> U8 a
+  Vu16 a -> U16 a
+  Vu32 a -> U32 a
+  Vu64 a -> U64 a
+
+  Vf64 a -> F64 a
+  Vf32 a -> F32 a
+
+  Vstr a -> Str a
+  Varr xs -> Arr $ fmap valueToExpr xs
+  Vobj kv -> Obj $ fmap (\(k, v) -> (k, valueToExpr v)) kv
+  Vu8arr a -> U8Arr a
+
+toExpr :: ToValue a => a -> Expr
+toExpr = valueToExpr . toValue
+
+data VarId = VarId ResourceScope Int32Le
   deriving stock (Generic, Show, Ord, Eq)
   deriving anyclass (Binary)
 
-newtype FinalizerId = FinalizerId { unFinalizerId :: Value.Int32Le }
-  deriving newtype (Show, Num, Ord, Eq, Binary)
+newtype FinalizerId = FinalizerId { unFinalizerId :: Int32Le }
+  deriving newtype (Show, Ord, Eq, Binary)
 
-newtype ResourceScope = ResourceScope {unResourceScope :: Value.Int32Le}
-  deriving newtype (Show, Num, Ord, Eq, Binary)
+newtype ResourceScope = ResourceScope {unResourceScope :: Int32Le}
+  deriving newtype (Show, Ord, Eq, Binary)
 
-newtype EventId = EventId {unEventId :: Value.Int32Le}
-  deriving newtype (Show, Num, Ord, Eq, Binary)
+newtype EventId = EventId {unEventId :: Int32Le}
+  deriving newtype (Show, Ord, Eq, Binary)
 
 newtype UnsafeJavaScript = UnsafeJavaScript {unUnsafeJavaScript :: Text}
   deriving newtype (IsString, Show, Semigroup, Monoid, Binary)

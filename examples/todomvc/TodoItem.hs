@@ -1,12 +1,10 @@
 module TodoItem where
 
+import Clickable
 import Data.List qualified as List
 import Data.Maybe
 import Data.Text (Text)
 import GHC.Int
-import Clickable
-import Clickable.Protocol (VarId)
-import Clickable.Protocol.Value qualified as Value
 
 import "this" Utils
 
@@ -62,10 +60,9 @@ eval cfg = \case
 
 html :: TodoItemConfig -> HtmlM ()
 html cfg = li_ mdo
-  let
-    completedDyn = (.completed) <$> fromVar cfg.state_var
-    editingDyn = isJust . (.editing) <$> fromVar cfg.state_var
-    valueDyn = fromMaybe "" . (.editing) <$> fromVar cfg.state_var
+  let completedDyn = (.completed) <$> fromVar cfg.state_var
+      editingDyn = isJust . (.editing) <$> fromVar cfg.state_var
+      valueDyn = fromMaybe "" . (.editing) <$> fromVar cfg.state_var
   toggleClass "completed" completedDyn
   toggleClass "editing" editingDyn
   toggleClass "hidden" cfg.is_hidden_dyn
@@ -85,15 +82,15 @@ html cfg = li_ mdo
     saveCurrentNode
   return ()
 
-instance Value.ToValue TodoItemState where
-  toValue s = Value.Object
-    [ ("title", Value.toValue s.title)
-    , ("completed", Value.toValue s.completed)
+instance ToValue TodoItemState where
+  toValue s = Vobj
+    [ ("title", toValue s.title)
+    , ("completed", toValue s.completed)
     ]
 
-instance Value.FromValue TodoItemState where
-  fromValue (Value.Object kv) = do
-    title <- Value.fromValue =<< List.lookup "title" kv
-    completed <- Value.fromValue =<< List.lookup "completed" kv
+instance FromValue TodoItemState where
+  fromValue (Vobj kv) = do
+    title <- fromValue =<< List.lookup "title" kv
+    completed <- fromValue =<< List.lookup "completed" kv
     return TodoItemState {editing=Nothing, ..}
   fromValue _ = Nothing

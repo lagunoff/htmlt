@@ -3,7 +3,6 @@ module App where
 import Control.Monad.Trans
 import Data.Maybe
 import Clickable
-import Clickable.Protocol
 
 import "this" TodoList qualified as TodoList
 import "this" Utils

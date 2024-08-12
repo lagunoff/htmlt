@@ -10,7 +10,7 @@ import Unsafe.Coerce
 
 import Clickable.Types
 import Clickable.Protocol
-import Clickable.Protocol.Value (Value, FromValue(..), ToValue(..))
+import Clickable.Protocol.Value
 import Clickable.Internal
 
 
@@ -43,7 +43,7 @@ connectResource args k = reactive_ \scope s ->
     k' :: Value -> ClickM ()
     k' = local (\e -> e {scope}) . args.mk_callback k
     event = unsafeFromEventId eventId
-    eventId = EventId s.next_id
+    eventId = EventId $ Int32Le s.next_id
     newSub = SubscriptionSimple scope event (k' . unsafeCoerce)
     connectExpr = ConnectResource scope $ args.aquire_resource scope eventId
   in
