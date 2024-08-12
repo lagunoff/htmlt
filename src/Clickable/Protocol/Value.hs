@@ -43,6 +43,9 @@ class ToValue a where
   default toValue :: (Generic a, GToValue (Rep a)) => a -> Value
   toValue = gToValue . G.from
 
+instance (Generic a, GToValue (Rep a)) => ToValue (Generically a) where
+  toValue = gToValue . G.from . (\(Generically x) -> x)
+
 instance ToValue Value where toValue = Prelude.id
 
 instance ToValue Bool where toValue = Bool
@@ -75,6 +78,9 @@ class FromValue a where
   fromValue :: Value -> Maybe a
   default fromValue :: (Generic a, GFromValue (Rep a)) => Value -> Maybe a
   fromValue = fmap G.to . gFromValue
+
+instance (Generic a, GFromValue (Rep a)) => FromValue (Generically a) where
+  fromValue = fmap (Generically . G.to) . gFromValue
 
 instance FromValue Value where fromValue = pure
 
@@ -133,6 +139,9 @@ class GFromValue (f :: Type -> Type) where
 instance GFromValue f => GFromValue (M1 m c f) where
   gFromValue = fmap M1 . gFromValue @f
 
+instance GFromValue U1 where
+  gFromValue _ = Just U1
+
 instance GFromJSObject (x :*: y) => GFromValue (x :*: y) where
   gFromValue (Object kvs) = gFromJSObject kvs
   gFromValue _ = Nothing
@@ -146,6 +155,9 @@ class GToValue (f :: Type -> Type) where
 
 instance GToValue f => GToValue (M1 m c f) where
   gToValue (M1 f) = gToValue f
+
+instance GToValue U1 where
+  gToValue _ = Null
 
 instance GToJSObject (x :*: y) => GToValue (x :*: y) where
   gToValue (x :*: y) = Object $ gToJSObject (x :*: y)
