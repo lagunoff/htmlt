@@ -19,6 +19,6 @@ app _ = do
     TodoList.html TodoList.TodoListConfig
       { state_var = stateVar
       }
-    lift $ connectResource popstateConnectArgs \loc -> do
+    lift $ addEventListener popstateEvent \loc -> do
       let filter = fromMaybe TodoList.All $ TodoList.parseFilter loc.hash
       modifyVar_ stateVar \s -> s {TodoList.filter}

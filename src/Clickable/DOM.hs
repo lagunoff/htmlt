@@ -1,17 +1,16 @@
 module Clickable.DOM where
 
 import Control.Monad.Reader
-import Data.Foldable
 import Data.Int
 import Data.Kind
 import Data.Text (Text)
 import GHC.Generics
 import Unsafe.Coerce
 
-import Clickable.Types
+import Clickable.Internal
 import Clickable.Protocol
 import Clickable.Protocol.Value
-import Clickable.Internal
+import Clickable.Types
 
 
 data EventListenerOptions = EventListenerOptions
@@ -25,211 +24,174 @@ defaultEventListenerOptions = EventListenerOptions
   , stop_propagation = False
   }
 
-addEventListener :: ConnectResourceArgs callback -> callback -> HtmlM ()
-addEventListener args k = lift $ connectResource args k
-
-data ConnectResourceArgs callback = ConnectResourceArgs
-  { aquire_resource :: ResourceScope -> EventId -> Expr
-  -- ^ When evaluated, as a side-effect resulting `Expr` must
-  -- initialize some resource (could be DOM event, WebSocket
-  -- connection etc) also must return a function that frees that
-  -- resource
-  , mk_callback :: callback -> Value -> ClickM ()
+-- | A snippet of JavaScript that subscribes to certain event. It
+-- should return a function that revokes the subscribtion. The typical
+-- usage will involve addEventListener/removeEventListener but it's
+-- not limited to this use case. Same method can be used to establish
+-- WebSocket connection or any other source of events in browser
+newtype ConnectEventScript a = ConnectEventScript
+  { unConnectEventScript :: Event a -> Expr
   }
 
-connectResource :: ConnectResourceArgs callback -> callback -> ClickM ()
-connectResource args k = reactive_ \scope s ->
-  let
-    k' :: Value -> ClickM ()
-    k' = local (\e -> e {scope}) . args.mk_callback k
-    event = unsafeFromEventId eventId
-    eventId = EventId $ Int32Le s.next_id
-    newSub = SubscriptionSimple scope event (k' . unsafeCoerce)
-    connectExpr = ConnectResource scope $ args.aquire_resource scope eventId
-  in
-    s { evaluation_queue = connectExpr : s.evaluation_queue
-      , subscriptions = newSub : s.subscriptions
-      , next_id = s.next_id + 1
-      }
-
-on :: forall eventName. IsEventName eventName => EventListenerCb eventName -> HtmlM ()
-on k = addEventListener (addEventListenerArgs @eventName) k
+addEventListener :: FromValue a => ConnectEventScript a -> (a -> ClickM ()) -> ClickM ()
+addEventListener (ConnectEventScript ces) k = reactive_ \scope s ->
+  let k' :: Value -> ClickM ()
+      k' = local (\e -> e {scope}) . mapM_ k . fromValue
+      eventId = EventId s.next_id
+      newSub = SubscriptionSimple scope (unsafeFromEventId eventId) (k' . unsafeCoerce)
+      connectExpr = ConnectResource scope $ ces $ unsafeFromEventId eventId
+  in s { evaluation_queue = connectExpr : s.evaluation_queue
+       , subscriptions = newSub : s.subscriptions
+       , next_id = s.next_id + 1
+       }
 
 class IsEventName eventName where
   type EventListenerCb eventName :: Type
-  addEventListenerArgs :: ConnectResourceArgs (EventListenerCb eventName)
+  connectEventName :: EventListenerCb eventName -> ClickM ()
+
+on :: forall eventName. IsEventName eventName => EventListenerCb eventName -> HtmlM ()
+on k = lift $ connectEventName @eventName k
 
 instance IsEventName "click" where
   type EventListenerCb "click" = ClickM ()
-  addEventListenerArgs = pointerConnectArgs "click"
+  connectEventName k = addEventListener
+    (genericEvent defaultEventListenerOptions "click") (const k)
 
 instance IsEventName "mousedown" where
   type EventListenerCb "mousedown" = ClickM ()
-  addEventListenerArgs = pointerConnectArgs "mousedown"
+  connectEventName k = addEventListener
+    (genericEvent defaultEventListenerOptions "mousedown") (const k)
 
 instance IsEventName "mouseup" where
   type EventListenerCb "mouseup" = ClickM ()
-  addEventListenerArgs = pointerConnectArgs "mouseup"
+  connectEventName k = addEventListener
+    (genericEvent defaultEventListenerOptions "mouseup") (const k)
 
 instance IsEventName "dblclick" where
   type EventListenerCb "dblclick" = ClickM ()
-  addEventListenerArgs = pointerConnectArgs "dblclick"
+  connectEventName k = addEventListener
+    (genericEvent defaultEventListenerOptions "dblclick") (const k)
 
 instance IsEventName "submit" where
   type EventListenerCb "submit" = ClickM ()
-  addEventListenerArgs = submitConnectArgs
+  connectEventName k = addEventListener (genericEvent opt "submit") (const k)
+    where
+      opt = EventListenerOptions
+        { prevent_default = True
+        , stop_propagation = True
+        }
 
 instance IsEventName "input" where
   type EventListenerCb "input" = Text -> ClickM ()
-  addEventListenerArgs = inputConnectArgs "input"
+  connectEventName = addEventListener (inputEvent "input")
 
 instance IsEventName "keydown" where
   type EventListenerCb "keydown" = Int32 -> ClickM ()
-  addEventListenerArgs = keyboardConnectArgs "keydown"
+  connectEventName = addEventListener (keyboardEvent "keydown")
 
 instance IsEventName "keyup" where
   type EventListenerCb "keyup" = Int32 -> ClickM ()
-  addEventListenerArgs = keyboardConnectArgs "keyup"
+  connectEventName = addEventListener (keyboardEvent "keyup")
 
 instance IsEventName "focus" where
   type EventListenerCb "focus" = ClickM ()
-  addEventListenerArgs = pointerConnectArgs "focus"
+  connectEventName k = addEventListener
+    (genericEvent defaultEventListenerOptions "focus") (const k)
 
 instance IsEventName "blur" where
   type EventListenerCb "blur" = ClickM ()
-  addEventListenerArgs = pointerConnectArgs "blur"
+  connectEventName k = addEventListener
+    (genericEvent defaultEventListenerOptions "blur") (const k)
 
 instance IsEventName "input/blur" where
   type EventListenerCb "input/blur" = Text -> ClickM ()
-  addEventListenerArgs = inputConnectArgs "blur"
+  connectEventName = addEventListener (inputEvent "blur")
 
 instance IsEventName "input/focus" where
   type EventListenerCb "input/focus" = Text -> ClickM ()
-  addEventListenerArgs = inputConnectArgs "focus"
+  connectEventName = addEventListener (inputEvent "focus")
 
 instance IsEventName "checkbox/change" where
   type EventListenerCb "checkbox/change" = Bool -> ClickM ()
-  addEventListenerArgs = checkboxChangeConnectArgs
+  connectEventName = addEventListener checkboxChangeEvent
 
 instance IsEventName "select/change" where
   type EventListenerCb "select/change" = Text -> ClickM ()
-  addEventListenerArgs = selectChangeConnectArgs
+  connectEventName = addEventListener selectChangeEvent
 
 instance IsEventName "mousewheel" where
   type EventListenerCb "mousewheel" = MouseWheel -> ClickM ()
-  addEventListenerArgs = mouseWheelConnectArgs
-
-eventListenerOptions :: Text -> Bool -> Bool -> ConnectResourceArgs (ClickM ())
-eventListenerOptions eventName preventDef stopProp = ConnectResourceArgs
-  { aquire_resource = \scope sourceId ->
-    Eval (normalEventWrapper eventName $ EventListenerOptions preventDef stopProp)
-      `Apply` [Arg 0 0, Lam (TriggerEvent sourceId Null)]
-  , mk_callback = \k _ -> k
-  }
+  connectEventName = addEventListener mouseWheelEvent
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/click_event
-pointerConnectArgs :: Text -> ConnectResourceArgs (ClickM ())
-pointerConnectArgs eventName = ConnectResourceArgs
-  { aquire_resource = \scope sourceId ->
-    Eval (normalEventWrapper eventName defaultEventListenerOptions)
-      `Apply` [Arg 0 0, Lam (TriggerEvent sourceId Null)]
-  , mk_callback = \k _ -> k
-  }
-
--- https://developer.mozilla.org/en-US/docs/Web/API/HTMLFormElement/submit_event
-submitConnectArgs :: ConnectResourceArgs (ClickM ())
-submitConnectArgs = ConnectResourceArgs
-  { aquire_resource = \scope sourceId ->
-    Eval (normalEventWrapper "submit" EventListenerOptions
-    { prevent_default = True
-    , stop_propagation = True
-    }) `Apply` [Arg 0 0, Lam (TriggerEvent sourceId (Arg 0 0))]
-  , mk_callback = \k _ -> k
-  }
-
--- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/input_event
-inputConnectArgs :: Text -> ConnectResourceArgs (Text -> ClickM ())
-inputConnectArgs eventName = ConnectResourceArgs
-  { aquire_resource = \scope sourceId -> Eval
-      ("(function(target, haskellCb){\n\
-      \  function listener(event){\n\
-      \    haskellCb(event.target.value);\n\
-      \  }\n\
-      \  target.addEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
-      \  return () => window.removeEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
-      \})") `Apply` [Arg 0 0, Lam (TriggerEvent sourceId (Arg 0 0))]
-  , mk_callback = \k event -> forM_ (fromValue event) k
-  }
-
--- https://developer.mozilla.org/en-US/docs/Web/API/Element/keydown_event
--- https://developer.mozilla.org/en-US/docs/Web/API/Element/keyup_event
-keyboardConnectArgs :: Text -> ConnectResourceArgs (Int32 -> ClickM ())
-keyboardConnectArgs eventName = ConnectResourceArgs
-  { aquire_resource = \scope sourceId -> Eval (
-      "(function(target, haskellCb){\n\
-      \  function listener(event){\n\
-      \    haskellCb(event.keyCode);\n\
-      \  }\n\
-      \  target.addEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
-      \  return () => target.removeEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
-      \})") `Apply` [Arg 0 0, Lam (TriggerEvent sourceId (Arg 0 0))]
-  , mk_callback = \k event -> forM_ (fromValue event) k
-  }
-
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/focus_event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/blur_event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/focusin_event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/focusout_event
-focusConnectArgs :: Text -> ConnectResourceArgs (ClickM ())
-focusConnectArgs eventName = ConnectResourceArgs
-  { aquire_resource = \scope sourceId ->
-    Eval (normalEventWrapper eventName defaultEventListenerOptions)
-      `Apply` [Arg 0 0, Lam (TriggerEvent sourceId (Arg 0 0))]
-  , mk_callback = \k _ -> k
-  }
-
--- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/change_event
-checkboxChangeConnectArgs :: ConnectResourceArgs (Bool -> ClickM ())
-checkboxChangeConnectArgs = ConnectResourceArgs
-  { aquire_resource = \scope sourceId -> Eval
-      "(function(target, haskellCb){\n\
-      \  function listener(event){\n\
-      \    haskellCb(event.target.checked);\n\
-      \  }\n\
-      \  target.addEventListener('change', listener);\n\
-      \  return () => window.removeEventListener('change', listener);\n\
-      \})" `Apply` [Arg 0 0, Lam (TriggerEvent sourceId (Arg 0 0))]
-  , mk_callback = \k event -> forM_ (fromValue event) k
-  }
-
--- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/change_event
-selectChangeConnectArgs :: ConnectResourceArgs (Text -> ClickM ())
-selectChangeConnectArgs = ConnectResourceArgs
-  { aquire_resource = \scope sourceId -> Eval
-      "(function(target, haskellCb){\n\
-      \  function listener(event){\n\
-      \    haskellCb(event.target.value);\n\
-      \  }\n\
-      \  target.addEventListener('change', listener);\n\
-      \  return () => target.removeEventListener('change', listener);\n\
-      \})" `Apply` [Arg 0 0, Lam (TriggerEvent sourceId (Arg 0 0))]
-  , mk_callback = \k event -> forM_ (fromValue event) k
-  }
-
-normalEventWrapper :: Text -> EventListenerOptions -> UnsafeJavaScript
-normalEventWrapper eventName opt =
-  "(function(target, haskellCb){\n\
-  \  function listener(event){\n\
-  \    " <> preventDefaultStmt <> "\n\
-  \    " <> stopPropagationStmt <> "\n\
-  \    haskellCb(event);\n\
-  \  }\n\
-  \  target.addEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
-  \  return () => target.removeEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
-  \})"
+genericEvent :: EventListenerOptions -> Text -> ConnectEventScript ()
+genericEvent opt eventName = ConnectEventScript \(Event eventId) ->
+  Eval
+    ("(function(target, trigger){\n\
+    \  function listener(event){\n\
+    \    " <> preventDefaultStmt <> "\n\
+    \    " <> stopPropagationStmt <> "\n\
+    \    trigger();\n\
+    \  }\n\
+    \  target.addEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
+    \  return () => target.removeEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
+    \})") `Apply` [AskDomBuilder, Lam (TriggerEvent eventId Null)]
   where
     preventDefaultStmt = if opt.prevent_default then "event.preventDefault();" else ""
     stopPropagationStmt = if opt.stop_propagation then "event.stopPropagation();" else ""
+
+-- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/input_event
+inputEvent :: Text -> ConnectEventScript Text
+inputEvent eventName = ConnectEventScript \(Event eventId) ->
+  Eval
+    ("(function(target, trigger){\n\
+    \  function listener(event){\n\
+    \    trigger(event.target.value);\n\
+    \  }\n\
+    \  target.addEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
+    \  return () => target.removeEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
+    \})") `Apply` [AskDomBuilder, Lam (TriggerEvent eventId (Arg 0 0))]
+
+-- https://developer.mozilla.org/en-US/docs/Web/API/Element/keydown_event
+-- https://developer.mozilla.org/en-US/docs/Web/API/Element/keyup_event
+keyboardEvent :: Text -> ConnectEventScript Int32
+keyboardEvent eventName = ConnectEventScript \(Event eventId) ->
+  Eval
+    ("(function(target, trigger){\n\
+    \  function listener(event){\n\
+    \    trigger(event.keyCode);\n\
+    \  }\n\
+    \  target.addEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
+    \  return () => target.removeEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
+    \})") `Apply` [AskDomBuilder, Lam (TriggerEvent eventId (Arg 0 0))]
+
+-- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/change_event
+checkboxChangeEvent :: ConnectEventScript Bool
+checkboxChangeEvent = ConnectEventScript \(Event eventId) ->
+  Eval
+    "(function(target, trigger){\n\
+    \  function listener(event){\n\
+    \    trigger(event.target.checked);\n\
+    \  }\n\
+    \  target.addEventListener('change', listener);\n\
+    \  return () => target.removeEventListener('change', listener);\n\
+    \})" `Apply` [AskDomBuilder, Lam (TriggerEvent eventId (Arg 0 0))]
+
+-- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/change_event
+selectChangeEvent :: ConnectEventScript Text
+selectChangeEvent = ConnectEventScript \(Event eventId) ->
+  Eval
+    "(function(target, trigger){\n\
+    \  function listener(event){\n\
+    \    trigger(event.target.value);\n\
+    \  }\n\
+    \  target.addEventListener('change', listener);\n\
+    \  return () => target.removeEventListener('change', listener);\n\
+    \})" `Apply` [AskDomBuilder, Lam (TriggerEvent eventId (Arg 0 0))]
 
 data Location = Location
   { protocol :: Text
@@ -252,25 +214,23 @@ data Location = Location
     deriving anyclass (FromValue, ToValue)
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/Window/popstate_event
-popstateConnectArgs :: ConnectResourceArgs (Location -> ClickM ())
-popstateConnectArgs = ConnectResourceArgs
-  { aquire_resource = \scope sourceId -> Eval
-      "(function(target, haskellCb){\n\
-      \  function listener(){\n\
-      \    haskellCb({\n\
-      \      protocol: location.protocol,\n\
-      \      hostname: location.hostname,\n\
-      \      port: location.port,\n\
-      \      pathname: location.pathname,\n\
-      \      search: location.search,\n\
-      \      hash: location.hash\n\
-      \    });\n\
-      \  }\n\
-      \  target.addEventListener('popstate', listener);\n\
-      \  return () => target.removeEventListener('popstate', listener);\n\
-      \})" `Apply` [Id "window", Lam (TriggerEvent sourceId (Arg 0 0))]
-  , mk_callback = \k event -> forM_ (fromValue event) k
-  }
+popstateEvent :: ConnectEventScript Location
+popstateEvent = ConnectEventScript \(Event eventId) ->
+  Eval
+    "(function(target, trigger){\n\
+    \  function listener(){\n\
+    \    trigger({\n\
+    \      protocol: location.protocol,\n\
+    \      hostname: location.hostname,\n\
+    \      port: location.port,\n\
+    \      pathname: location.pathname,\n\
+    \      search: location.search,\n\
+    \      hash: location.hash\n\
+    \    });\n\
+    \  }\n\
+    \  target.addEventListener('popstate', listener);\n\
+    \  return () => target.removeEventListener('popstate', listener);\n\
+    \})" `Apply` [Id "window", Lam (TriggerEvent eventId (Arg 0 0))]
 
 -- | Collection of deltaX, deltaY and deltaZ properties from WheelEvent
 -- https://developer.mozilla.org/en-US/docs/Web/API/WheelEvent
@@ -286,23 +246,21 @@ data MouseWheel = MouseWheel
     deriving anyclass (FromValue, ToValue)
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/WheelEvent
-mouseWheelConnectArgs :: ConnectResourceArgs (MouseWheel -> ClickM ())
-mouseWheelConnectArgs = ConnectResourceArgs
-  { mk_callback = \k j -> forM_ (fromValue j) k
-  , aquire_resource = \scope sourceId -> Eval
-      "(function(target, haskellCb){\n\
-      \  function listener(event){\n\
-      \    haskellCb({\n\
-      \      mw_delta_x: event.deltaX,\n\
-      \      mw_delta_y: event.deltaY,\n\
-      \      mw_delta_z: event.deltaZ,\n\
-      \      mw_alt_key: event.altKey,\n\
-      \      mw_ctrl_key: event.ctrlKey,\n\
-      \      mw_meta_key: event.metaKey,\n\
-      \      mw_shift_key: event.shiftKey\n\
-      \    });\n\
-      \  }\n\
-      \  target.addEventListener('popstate', listener);\n\
-      \  return () => target.removeEventListener('popstate', listener);\n\
-      \})" `Apply` [Arg 0 0, Lam (TriggerEvent sourceId (Arg 0 0))]
-  }
+mouseWheelEvent :: ConnectEventScript MouseWheel
+mouseWheelEvent = ConnectEventScript \(Event eventId) ->
+  Eval
+    "(function(target, trigger){\n\
+    \  function listener(event){\n\
+    \    trigger({\n\
+    \      mw_delta_x: event.deltaX,\n\
+    \      mw_delta_y: event.deltaY,\n\
+    \      mw_delta_z: event.deltaZ,\n\
+    \      mw_alt_key: event.altKey,\n\
+    \      mw_ctrl_key: event.ctrlKey,\n\
+    \      mw_meta_key: event.metaKey,\n\
+    \      mw_shift_key: event.shiftKey\n\
+    \    });\n\
+    \  }\n\
+    \  target.addEventListener('mousewheel', listener);\n\
+    \  return () => target.removeEventListener('mousewheel', listener);\n\
+    \})" `Apply` [AskDomBuilder, Lam (TriggerEvent eventId (Arg 0 0))]

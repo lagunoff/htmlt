@@ -20,7 +20,7 @@ emptyState = InternalState [] [] Map.empty [] 0
 
 newInternalEnv :: (Expr -> IO Value) -> IO InternalEnv
 newInternalEnv eval_expr = do
-  let scope = ResourceScope $ Int32Le emptyState.next_id
+  let scope = ResourceScope $ emptyState.next_id
   internal_state_ref <- newIORef emptyState {next_id = emptyState.next_id + 1}
   return InternalEnv {internal_state_ref, scope, eval_expr}
 
@@ -47,12 +47,10 @@ triggerEvent eventId a =
 
 newScope :: ResourceScope -> InternalState -> (InternalState, ResourceScope)
 newScope p s =
-  let
-    scopeId = ResourceScope $ Int32Le s.next_id
-    finalizers = ScopeFinalizer p scopeId : s.finalizers
-    s' = s {finalizers, next_id = s.next_id + 1}
-  in
-    (s', scopeId)
+  let scopeId = ResourceScope $ s.next_id
+      finalizers = ScopeFinalizer p scopeId : s.finalizers
+      s' = s {finalizers, next_id = s.next_id + 1}
+  in  (s', scopeId)
 
 newVarId :: ResourceScope -> InternalState -> (InternalState, VarId)
 newVarId e s = (s {next_id = s.next_id + 1}, VarId e $ Int32Le s.next_id)
@@ -62,16 +60,14 @@ freeScope ::
   ResourceScope ->
   InternalState -> (InternalState, [Finalizer])
 freeScope unlink rscope s =
-  let
-    chkSub s = subscriptionScope s /= rscope
-    chkFin True ScopeFinalizer{sf_resource_scope, sf_linked_scope} =
-      sf_resource_scope /= rscope && sf_linked_scope /= rscope
-    chkFin True CustomFinalizer{cf_resource_scope} = cf_resource_scope /= rscope
-    chkFin False f = finalizerScope f /= rscope
-    (finalizers, scopeFns) = List.partition (chkFin unlink) s.finalizers
-    subscriptions = List.filter chkSub s.subscriptions
-  in
-    (s {subscriptions, finalizers}, scopeFns)
+  let chkSub s = subscriptionScope s /= rscope
+      chkFin True ScopeFinalizer{sf_resource_scope, sf_linked_scope} =
+        sf_resource_scope /= rscope && sf_linked_scope /= rscope
+      chkFin True CustomFinalizer{cf_resource_scope} = cf_resource_scope /= rscope
+      chkFin False f = finalizerScope f /= rscope
+      (finalizers, scopeFns) = List.partition (chkFin unlink) s.finalizers
+      subscriptions = List.filter chkSub s.subscriptions
+  in  (s {subscriptions, finalizers}, scopeFns)
 
 installFinalizer :: ClickM () -> ResourceScope -> InternalState -> InternalState
 installFinalizer k scope s = s {finalizers = CustomFinalizer scope k : s.finalizers}
@@ -97,7 +93,7 @@ subscribe (SplatVal fv av) k = do
         { subscriptions = newsub : s.subscriptions
         , next_id = s.next_id + 1
         }
-      event = unsafeFromEventId $ EventId $ Int32Le s.next_id
+      event = unsafeFromEventId $ EventId s.next_id
       newsub = SubscriptionSimple scope event (k . unsafeCoerce)
     f src fv' = do
       av' <- readVal av
@@ -134,7 +130,7 @@ subscribeAccum (SplatVal fv av) k b = do
         { subscriptions = newsub : s.subscriptions
         , next_id = s.next_id + 1
         }
-      event = unsafeFromEventId $ EventId $ Int32Le s.next_id
+      event = unsafeFromEventId $ EventId s.next_id
       newsub = SubscriptionAccum scope event (k . unsafeCoerce) ref
     f src fv' = do
       av' <- readVal av
@@ -166,7 +162,7 @@ newCallback ::
   InternalState -> (InternalState, Event a)
 newCallback k rscope s =
   let
-    event = unsafeFromEventId $ EventId $ Int32Le s.next_id
+    event = unsafeFromEventId $ EventId s.next_id
     new = SubscriptionSimple rscope (coerce event) (k . unsafeCoerce)
     subscriptions = new : s.subscriptions
   in
@@ -229,7 +225,7 @@ mapHoldVal f da = do
   reactive $ g ref
   where
     g ref scope s = (s', val) where
-      event = unsafeFromEventId $ EventId $ Int32Le s.next_id
+      event = unsafeFromEventId $ EventId s.next_id
       newSub = SubscriptionSimple scope (coerce event) (k . unsafeCoerce)
       k a = do
         let b = f a
@@ -252,4 +248,4 @@ unsafeInsertHtml rawHtml = Eval
    \    builder.appendChild(iter);\
    \  }\
    \}\
-   \})" `Apply` [Arg 0 0, Str rawHtml]
+   \})" `Apply` [AskDomBuilder, Str rawHtml]

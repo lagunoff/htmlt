@@ -2,7 +2,7 @@ import { WASI, File, OpenFile } from '@bjorn3/browser_wasi_shim';
 // @ts-ignore
 import * as jsffi from './jsffi';
 import * as p from './protocol';
-import { JavaScriptMessage, HaskellMessageTag, List, JavaScriptMessageTag } from './protocol';
+import { JavaScriptMessage, HaskellMessageTag, JavaScriptMessageTag } from './protocol';
 
 export type HaskellPointer = number;
 
@@ -43,14 +43,14 @@ export function storeBuffer(exports: HaskellExports, u8array: Uint8Array): Haske
 export function evalMessage(exports: HaskellExports, ptr: HaskellPointer): HaskellPointer {
   const inbuf = loadBuffer(exports, ptr);
   const hmsg = p.haskellMessage.decode(inbuf);
-  const jsCallback = (jsmsg: JavaScriptMessage, _argScope: List<IArguments>) => {
+  const haskellCallback = (jsmsg: JavaScriptMessage) => {
     const outbuf = p.javascriptMessage.encode(jsmsg);
     const ptr = storeBuffer(exports, outbuf);
     exports.wasm_app(ptr);
   };
   switch (hmsg.tag) {
     case HaskellMessageTag.EvalExpr: {
-      const result = p.evalExpr(jsCallback, [globalThis, null], null, hmsg.expr);
+      const result = p.evalExpr(hmsg.expr, { haskellCallback });
       const jsmsg: JavaScriptMessage = { tag: JavaScriptMessageTag.Return, value: p.unknownToValue(result), threadId: hmsg.threadId };
       const outbuf = p.javascriptMessage.encode(jsmsg);
       return storeBuffer(exports, outbuf);

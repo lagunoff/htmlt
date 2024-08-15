@@ -1,12 +1,11 @@
 module TodoList where
 
+import Clickable
 import Control.Monad
 import Data.List qualified as List
 import Data.Text (Text)
 import Data.Text qualified as Text
 import GHC.Int
-import Clickable
-import Clickable.FFI
 
 import "this" TodoItem qualified as TodoItem
 
@@ -41,39 +40,35 @@ new items =
     }
 
 eval :: TodoListConfig -> TodoListAction a -> ClickM a
-eval cfg = \case
-  ToggleAllAction isChecked ->
-    modifyVar_ cfg.state_var \s -> s
-      { items =
-        fmap (\i -> i {TodoItem.completed = isChecked}) s.items
+eval cfg (ToggleAllAction isChecked) =
+  modifyVar_ cfg.state_var \s -> s
+    { items =
+      fmap (\i -> i {TodoItem.completed = isChecked}) s.items
+    }
+eval cfg (InputAction newVal) =
+  modifyVar_ cfg.state_var \s -> s {title = newVal}
+eval cfg CommitAction = do
+  title <- Text.strip . (.title) <$> readVar cfg.state_var
+  case title of
+    "" -> return ()
+    t -> modifyVar_ cfg.state_var \s -> s
+      { items = s.items <> [newTodo t]
+      , title = ""
       }
-  InputAction newVal -> do
-    modifyVar_ cfg.state_var \s -> s {title = newVal}
-  CommitAction -> do
-    title <- Text.strip . (.title) <$> readVar cfg.state_var
-    case title of
-      "" -> return ()
-      t -> modifyVar_ cfg.state_var \s -> s
-        { items = s.items <> [mkNewTodo t]
-        , title = ""
-        }
-  KeydownAction key -> do
-    case key of
-      13 {- Enter -} -> eval cfg CommitAction
-      27 {- Escape -} -> do
-        s <- readVar cfg.state_var
-        consoleLog $ Text.pack $ show s
-      _ -> return ()
-  DeleteItemAction itemIx ->
-    modifyVar_ cfg.state_var \s -> s {items = deleteIx itemIx s.items}
-  ClearCompletedAction ->
-    modifyVar_ cfg.state_var \s -> s
-      {items = (List.filter (not . TodoItem.completed)) s.items}
+   where
+    newTodo t = TodoItem.emptyState {TodoItem.title = t}
+eval cfg (KeydownAction key) = case key of
+  13 {- Enter -} -> eval cfg CommitAction
+  _ -> return ()
+eval cfg (DeleteItemAction itemIx) =
+  modifyVar_ cfg.state_var \s -> s {items = deleteIx itemIx s.items}
   where
     deleteIx :: Int -> [a] -> [a]
     deleteIx _ []     = []
     deleteIx i (a:as) | i == 0 = as | otherwise = a : deleteIx (i-1) as
-    mkNewTodo t = TodoItem.emptyState {TodoItem.title = t}
+eval cfg ClearCompletedAction =
+  modifyVar_ cfg.state_var \s -> s
+    {items = (List.filter (not . TodoItem.completed)) s.items}
 
 html :: TodoListConfig -> HtmlM ()
 html cfg = do

@@ -29,7 +29,7 @@ runWasm app p = mdo
     Just (TriggerEventMsg arg eid) ->
       launchClickM internalEnv $ modify $ Internal.triggerEvent (unsafeFromEventId eid) arg
     Just BeforeUnload ->
-      launchClickM internalEnv $ freeScope True $ ResourceScope $ Int32Le Internal.emptyState.next_id
+      launchClickM internalEnv $ freeScope True $ ResourceScope Internal.emptyState.next_id
     _ ->
       return ()
 

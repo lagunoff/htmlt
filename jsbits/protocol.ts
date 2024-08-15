@@ -26,13 +26,39 @@ export function cdr<T>(pair: Cons<T>): List<T> {
 export type ClickablePublic = {
   startWasm(wasmUri: string, startFlags?: unknown): void;
   startDev(devSocketUri: string, startFlags?: unknown): void;
-  evalExpr(hscb: HaskellCallback, idenScope: List<Bindings>, argScope: List<IArguments>, exp: Expr): unknown;
-  evalUint8Array(hscb: HaskellCallback, idenScope: List<Bindings>, argScope: List<IArguments>, exp: Uint8Array): unknown;
+  evalExpr(exp: Expr, options?: EvalOptions): unknown;
+  evalUint8Array(exp: Uint8Array, options?: EvalOptions): unknown;
 };
 
 export type HaskellCallback = (jsMsg: JavaScriptMessage, argScope: List<IArguments>) => void;
 
-export function evalExpr(hscb: HaskellCallback, idenScope: List<Bindings>, argScope: List<IArguments>, exp: Expr): unknown {
+export type EvalOptions = {
+  haskellCallback?: HaskellCallback;
+  idenScope?: List<Bindings>;
+  argScope?: List<IArguments>;
+  builderScope?: List<Element|Comment>;
+};
+
+export function evalExpr(exp: Expr, options: EvalOptions = {}): unknown {
+  const haskellCallback = options.haskellCallback || (() => {});
+  const idenScope = options.idenScope || globalContext;
+  const argScope = options.argScope || null;
+  const builderScope = options.builderScope || null;
+  return evalLoop(haskellCallback, idenScope, argScope, builderScope, exp);
+}
+
+export function evalUint8Array(exp: Uint8Array, options: EvalOptions = {}): unknown {
+  const decoded: Expr = expr.decode(exp);
+  return evalExpr(decoded, options);
+}
+
+export function evalLoop (
+  hscb: HaskellCallback,
+  idenScope: List<Bindings>,
+  argScope: List<IArguments>,
+  builderScope: List<Element|Comment>,
+  exp: Expr
+): unknown {
   switch(exp.tag) {
     case ExprTag.Null: {
        return null;
@@ -74,46 +100,46 @@ export function evalExpr(hscb: HaskellCallback, idenScope: List<Bindings>, argSc
       return exp[0];
     }
     case ExprTag.Arr: {
-      return exp[0].map(evalExpr.bind(undefined, hscb, idenScope, argScope));
+      return exp[0].map(evalLoop.bind(undefined, hscb, idenScope, argScope, builderScope));
     }
     case ExprTag.Obj: {
-      return Object.fromEntries(exp[0].map(([k, e]) => [k, evalExpr(hscb, idenScope, argScope, e)]));
+      return Object.fromEntries(exp[0].map(([k, e]) => [k, evalLoop(hscb, idenScope, argScope, builderScope, e)]));
     }
     case ExprTag.U8Arr: {
       return exp[0];
     }
     case ExprTag.Dot: {
-      const lhs = evalExpr(hscb, idenScope, argScope, exp[0]) as any;
+      const lhs = evalLoop(hscb, idenScope, argScope, builderScope, exp[0]) as any;
       return lhs[exp[1]];
     }
     case ExprTag.SetProp: {
-      const rhs = evalExpr(hscb, idenScope, argScope, exp[2]);
-      const obj = evalExpr(hscb, idenScope, argScope, exp[0]) as any;
+      const rhs = evalLoop(hscb, idenScope, argScope, builderScope, exp[2]);
+      const obj = evalLoop(hscb, idenScope, argScope, builderScope, exp[0]) as any;
       obj[exp[1]] = rhs;
       return rhs;
     }
     case ExprTag.Ix: {
-      const rhs: any = evalExpr(hscb, idenScope, argScope, exp.exp);
+      const rhs: any = evalLoop(hscb, idenScope, argScope, builderScope, exp.exp);
       return rhs[exp.ix];
     }
     case ExprTag.Plus: {
-      const lhs = evalExpr(hscb, idenScope, argScope, exp[0]) as number;
-      const rhs = evalExpr(hscb, idenScope, argScope, exp[1]) as number;
+      const lhs = evalLoop(hscb, idenScope, argScope, builderScope, exp[0]) as number;
+      const rhs = evalLoop(hscb, idenScope, argScope, builderScope, exp[1]) as number;
       return lhs + rhs;
     }
     case ExprTag.Subtract: {
-      const lhs = evalExpr(hscb, idenScope, argScope, exp[0]) as number;
-      const rhs = evalExpr(hscb, idenScope, argScope, exp[1]) as number;
+      const lhs = evalLoop(hscb, idenScope, argScope, builderScope, exp[0]) as number;
+      const rhs = evalLoop(hscb, idenScope, argScope, builderScope, exp[1]) as number;
       return lhs - rhs;
     }
     case ExprTag.Multiply: {
-      const lhs = evalExpr(hscb, idenScope, argScope, exp[0]) as number;
-      const rhs = evalExpr(hscb, idenScope, argScope, exp[1]) as number;
+      const lhs = evalLoop(hscb, idenScope, argScope, builderScope, exp[0]) as number;
+      const rhs = evalLoop(hscb, idenScope, argScope, builderScope, exp[1]) as number;
       return lhs * rhs;
     }
     case ExprTag.Divide: {
-      const lhs = evalExpr(hscb, idenScope, argScope, exp[0]) as number;
-      const rhs = evalExpr(hscb, idenScope, argScope, exp[1]) as number;
+      const lhs = evalLoop(hscb, idenScope, argScope, builderScope, exp[0]) as number;
+      const rhs = evalLoop(hscb, idenScope, argScope, builderScope, exp[1]) as number;
       return lhs / rhs;
     }
     case ExprTag.Id: {
@@ -129,7 +155,7 @@ export function evalExpr(hscb: HaskellCallback, idenScope: List<Bindings>, argSc
     }
     case ExprTag.Lam: {
       return function() {
-        return evalExpr(hscb, idenScope, Cons(arguments, argScope), exp.body);
+        return evalLoop(hscb, idenScope, Cons(arguments, argScope), builderScope, exp.body);
       };
     }
     case ExprTag.Arg: {
@@ -146,16 +172,16 @@ export function evalExpr(hscb: HaskellCallback, idenScope: List<Bindings>, argSc
       throw new Error('Argument scope out of a range: ' + exp.scopeIx);
     }
     case ExprTag.Apply: {
-      const lhs = evalExpr(hscb, idenScope, argScope, exp[0]) as Function;
-      return lhs.apply(undefined, exp[1].map(evalExpr.bind(undefined, hscb, idenScope, argScope)));
+      const lhs = evalLoop(hscb, idenScope, argScope, builderScope, exp[0]) as Function;
+      return lhs.apply(undefined, exp[1].map(evalLoop.bind(undefined, hscb, idenScope, argScope, builderScope)));
     }
     case ExprTag.Call: {
-      const lhs = evalExpr(hscb, idenScope, argScope, exp[0]) as any;
+      const lhs = evalLoop(hscb, idenScope, argScope, builderScope, exp[0]) as any;
       const fn = lhs[exp[1]];
-      return fn.apply(lhs, exp[2].map(evalExpr.bind(undefined, hscb, idenScope, argScope)));
+      return fn.apply(lhs, exp[2].map(evalLoop.bind(undefined, hscb, idenScope, argScope, builderScope)));
     }
     case ExprTag.AssignVar: {
-      const rhs = evalExpr(hscb, idenScope, argScope, exp.rhs);
+      const rhs = evalLoop(hscb, idenScope, argScope, builderScope, exp.rhs);
       if (varStorage.has(exp.scopeId)) {
         const scopeMap = varStorage.get(exp.scopeId)!;
         scopeMap.set(exp.varId, rhs);
@@ -168,12 +194,12 @@ export function evalExpr(hscb: HaskellCallback, idenScope: List<Bindings>, argSc
     }
     case ExprTag.FreeVar: {
       const scopeStorage = varStorage.get(exp.scopeId);
-      if (!scopeStorage) return;
+      if (!scopeStorage) return null;
       scopeStorage.delete(exp.varId);
       if (scopeStorage.size == 0) {
         varStorage.delete(exp.scopeId);
       }
-      return;
+      return null;
     }
     case ExprTag.Var: {
       return varStorage.get(exp.scopeId)?.get(exp.varId);
@@ -184,61 +210,88 @@ export function evalExpr(hscb: HaskellCallback, idenScope: List<Bindings>, argSc
       if (scopeFinalizers) scopeFinalizers.forEach(fn => fn ());
       return null;
     }
+    case ExprTag.AskDomBuilder: {
+      if (builderScope == null) {
+        throw new Error('AskDomBuilder called without prior SupplyDomBuilder!');
+      }
+      return builderScope[0];
+    }
+    case ExprTag.SupplyDomBuilder: {
+      const builder = evalLoop(hscb, idenScope, argScope, builderScope, exp.builder) as Element|Comment;
+      const newBuilderScope = Cons(builder, builderScope);
+      return evalLoop(hscb, idenScope, argScope, newBuilderScope, exp.expr)
+    }
     case ExprTag.InsertNode: {
-      const parent = evalExpr(hscb, idenScope, argScope, exp.parent) as Element|Comment;
-      const child = evalExpr(hscb, idenScope, argScope, exp.child) as Node;
-      domHelpers.insertIntoBuilder(parent, child);
+      if (builderScope == null) {
+        throw new Error('InsertNode called without prior SupplyDomBuilder!');
+      }
+      const child = evalLoop(hscb, idenScope, argScope, builderScope, exp.child) as Node;
+      domHelpers.insertIntoBuilder(builderScope[0], child);
       return null;
     }
+    case ExprTag.ElementProp: {
+      if (builderScope == null) {
+        throw new Error('ElementProp called without prior SupplyDomBuilder!');
+      }
+      const propValue = evalLoop(hscb, idenScope, argScope, builderScope, exp.propValue);
+      domHelpers.assignProperty(builderScope[0], exp.propName, propValue);
+      return null;
+    }
+    case ExprTag.ElementAttr: {
+      if (builderScope == null) {
+        throw new Error('ElementAttr called without prior SupplyDomBuilder!');
+      }
+      domHelpers.assignAttribute(builderScope[0], exp.attrName, exp.attrValue);
+      return null;
+    }
+    case ExprTag.ClassListAdd: {
+      if (builderScope == null) {
+        throw new Error('InsertClassList called without prior SupplyDomBuilder!');
+      }
+      const element = domHelpers.domBuilderElement(builderScope[0]);
+      exp.classList.forEach(className => element.classList.add(className));
+      return null;
+    }
+    case ExprTag.ClassListRemove: {
+      if (builderScope == null) {
+        throw new Error('RemoveClassList called without prior SupplyDomBuilder!');
+      }
+      const element = domHelpers.domBuilderElement(builderScope[0]);
+      exp.classList.forEach(className => element.classList.remove(className));
+      return null;
+    }
+    case ExprTag.InsertBrackets: {
+      if (builderScope == null) {
+        throw new Error('InsertBoundary called without prior SupplyDomBuilder!');
+      }
+      return domHelpers.insertBrackets(builderScope[0]);
+    }
+    case ExprTag.ClearBrackets: {
+      if (builderScope == null) {
+        throw new Error('InsertBoundary called without prior SupplyDomBuilder!');
+      }
+      return domHelpers.clearBrackets(builderScope[0], Boolean(exp.detach));
+    }
+
     case ExprTag.CreateElement: {
       return document.createElement(exp.tagName);
     }
     case ExprTag.CreateElementNS: {
       return document.createElementNS(exp.ns, exp.tagName);
     }
-    case ExprTag.CreateText: {
+    case ExprTag.CreateTextNode: {
       return document.createTextNode(exp.content);
     }
-    case ExprTag.ElementProp: {
-      const parent = evalExpr(hscb, idenScope, argScope, exp.node) as Element|Comment;
-      const propValue = evalExpr(hscb, idenScope, argScope, exp.propValue);
-      domHelpers.assignProperty(parent, exp.propName, propValue);
-      return null;
-    }
-    case ExprTag.ElementAttr: {
-      const parent = evalExpr(hscb, idenScope, argScope, exp.node) as Element|Comment;
-      domHelpers.assignAttribute(parent, exp.attrName, exp.attrValue);
-      return null;
-    }
-    case ExprTag.InsertClassList: {
-      const parent = evalExpr(hscb, idenScope, argScope, exp.node) as Element|Comment;
-      const element = domHelpers.domBuilderElement(parent);
-      exp.classList.forEach(className => element.classList.add(className));
-      return null;
-    }
-    case ExprTag.RemoveClassList: {
-      const parent = evalExpr(hscb, idenScope, argScope, exp.node) as Element|Comment;
-      const element = domHelpers.domBuilderElement(parent);
-      exp.classList.forEach(className => element.classList.remove(className));
-      return null;
-    }
     case ExprTag.UpdateTextNode: {
-      const node = evalExpr(hscb, idenScope, argScope, exp.node) as Text;
+      const node = evalLoop(hscb, idenScope, argScope, builderScope, exp.node) as Text;
       node.textContent = exp.content;
       return null;
     }
-    case ExprTag.InsertBoundary: {
-      const parent = evalExpr(hscb, idenScope, argScope, exp.parent) as Element|Comment;
-      return domHelpers.insertBoundary(parent);
-    }
-    case ExprTag.ClearBoundary: {
-      const boundary = evalExpr(hscb, idenScope, argScope, exp.boundary) as Comment;
-      return domHelpers.clearBoundary(boundary, Boolean(exp.detach));
-    }
+
     case ExprTag.AddEventListener: {
-      const target = evalExpr(hscb, idenScope, argScope, exp.target) as Element|Comment;
-      const eventName = evalExpr(hscb, idenScope, argScope, exp.eventName) as string;
-      const listener = evalExpr(hscb, idenScope, argScope, exp.listener) as EventListener;
+      const target = evalLoop(hscb, idenScope, argScope, builderScope, exp.target) as Element|Comment;
+      const eventName = evalLoop(hscb, idenScope, argScope, builderScope, exp.eventName) as string;
+      const listener = evalLoop(hscb, idenScope, argScope, builderScope, exp.listener) as EventListener;
       domHelpers.addEventListener(target, eventName, listener);
       const existingScope = finalizers.get(exp.reactiveScope);
       const scopeFinalizers = existingScope ? existingScope : new IntMap<Function>();
@@ -246,14 +299,14 @@ export function evalExpr(hscb: HaskellCallback, idenScope: List<Bindings>, argSc
       return scopeFinalizers.push(() => domHelpers.removeEventListener(target, eventName, listener));
     }
     case ExprTag.ConnectResource: {
-      const finalizer = evalExpr(hscb, idenScope, argScope, exp.aquire) as Function;
+      const finalizer = evalLoop(hscb, idenScope, argScope, builderScope, exp.aquire) as Function;
       const existingScope = finalizers.get(exp.reactiveScope);
       const scopeFinalizers = existingScope ? existingScope : new IntMap<Function>();
       if (!existingScope) finalizers.set(exp.reactiveScope, scopeFinalizers);
       return scopeFinalizers.push(finalizer);
     }
     case ExprTag.SetTimeout: {
-      const callback = evalExpr(hscb, idenScope, argScope, exp.callback) as Function;
+      const callback = evalLoop(hscb, idenScope, argScope, builderScope, exp.callback) as Function;
       const existingScope = finalizers.get(exp.reactiveScope);
       const scopeFinalizers = existingScope ? existingScope : new IntMap<Function>();
       if (!existingScope) finalizers.set(exp.reactiveScope, scopeFinalizers);
@@ -268,7 +321,7 @@ export function evalExpr(hscb: HaskellCallback, idenScope: List<Bindings>, argSc
     }
     case ExprTag.ApplyFinalizer: {
       const existingScope = finalizers.get(exp.reactiveScope);
-      const finalizerId = evalExpr(hscb, idenScope, argScope, exp.finalizerId) as number;
+      const finalizerId = evalLoop(hscb, idenScope, argScope, builderScope, exp.finalizerId) as number;
       if (!existingScope) return false;
       const cancellerFn = existingScope.get(finalizerId);
       if (!cancellerFn) return false;
@@ -277,13 +330,13 @@ export function evalExpr(hscb: HaskellCallback, idenScope: List<Bindings>, argSc
       return true;
     }
     case ExprTag.RevSeq: {
-      return exp.exprs.reduceRight<unknown>((_, e) => evalExpr(hscb, idenScope, argScope, e), null);
+      return exp.exprs.reduceRight<unknown>((_, e) => evalLoop(hscb, idenScope, argScope, builderScope, e), null);
     }
     case ExprTag.Eval: {
       return eval(exp.rawJavaScript);
     }
     case ExprTag.TriggerEvent: {
-      const arg = evalExpr(hscb, idenScope, argScope, exp.arg);
+      const arg = evalLoop(hscb, idenScope, argScope, builderScope, exp.arg);
       const jsMsg: JavaScriptMessage = {
         tag: JavaScriptMessageTag.TriggerEventMsg,
         arg: unknownToValue(arg),
@@ -296,11 +349,6 @@ export function evalExpr(hscb: HaskellCallback, idenScope: List<Bindings>, argSc
     }
   }
   absurd(exp);
-}
-
-export function evalUint8Array(hscb: HaskellCallback, idenScope: List<Bindings>, argScope: List<IArguments>, exp: Uint8Array): unknown {
-  const decoded: Expr = expr.decode(exp);
-  return evalExpr(hscb, idenScope, argScope, decoded);
 }
 
 export function unknownToValue(inp: unknown): Value {
@@ -440,17 +488,21 @@ export enum ExprTag {
   Var,
   FreeScope,
 
+  AskDomBuilder,
+  SupplyDomBuilder,
+
   InsertNode,
-  CreateElement,
-  CreateElementNS,
-  CreateText,
   ElementProp,
   ElementAttr,
-  InsertClassList,
-  RemoveClassList,
+  ClassListAdd,
+  ClassListRemove,
+  InsertBrackets,
+  ClearBrackets,
+
+  CreateElement,
+  CreateElementNS,
+  CreateTextNode,
   UpdateTextNode,
-  InsertBoundary,
-  ClearBoundary,
 
   AddEventListener,
   ConnectResource,
@@ -505,17 +557,21 @@ export type Expr =
   | { tag: ExprTag.Var, scopeId: number, varId: number }
   | { tag: ExprTag.FreeScope, scopeId: number }
 
-  | { tag: ExprTag.InsertNode, parent: Expr, child: Expr }
+  | { tag: ExprTag.AskDomBuilder }
+  | { tag: ExprTag.SupplyDomBuilder, builder: Expr, expr: Expr }
+
+  | { tag: ExprTag.InsertNode, child: Expr }
+  | { tag: ExprTag.ElementProp, propName: string, propValue: Expr }
+  | { tag: ExprTag.ElementAttr, attrName: string, attrValue: string }
+  | { tag: ExprTag.ClassListAdd, classList: string[] }
+  | { tag: ExprTag.ClassListRemove, classList: string[] }
+  | { tag: ExprTag.InsertBrackets }
+  | { tag: ExprTag.ClearBrackets, detach: number }
+
   | { tag: ExprTag.CreateElement, tagName: string }
   | { tag: ExprTag.CreateElementNS, ns: string, tagName: string }
-  | { tag: ExprTag.CreateText, content: string }
-  | { tag: ExprTag.ElementProp, node: Expr, propName: string, propValue: Expr }
-  | { tag: ExprTag.ElementAttr, node: Expr, attrName: string, attrValue: string }
-  | { tag: ExprTag.InsertClassList, node: Expr, classList: string[] }
-  | { tag: ExprTag.RemoveClassList, node: Expr, classList: string[] }
+  | { tag: ExprTag.CreateTextNode, content: string }
   | { tag: ExprTag.UpdateTextNode, node: Expr, content: string }
-  | { tag: ExprTag.InsertBoundary, parent: Expr }
-  | { tag: ExprTag.ClearBoundary, boundary: Expr, detach: number }
 
   | { tag: ExprTag.AddEventListener, reactiveScope: number, target: Expr, eventName: Expr, listener: Expr }
   | { tag: ExprTag.ConnectResource, reactiveScope: number, aquire: Expr }
@@ -570,17 +626,21 @@ export const expr = b.recursive<Expr>(self => b.discriminate({
   [ExprTag.Var]: b.record({ scopeId: b.int32, varId: b.int32 }),
   [ExprTag.FreeScope]: b.record({ scopeId: b.int32 }),
 
-  [ExprTag.InsertNode]: b.record({ parent: self, child: self }),
+  [ExprTag.AskDomBuilder]: b.record({ }),
+  [ExprTag.SupplyDomBuilder]: b.record({ builder: self, expr: self }),
+
+  [ExprTag.InsertNode]: b.record({ child: self }),
+  [ExprTag.ElementProp]: b.record({ propName: b.string, propValue: self }),
+  [ExprTag.ElementAttr]: b.record({ attrName: b.string, attrValue: b.string }),
+  [ExprTag.ClassListAdd]: b.record({ classList: b.array(b.string) }),
+  [ExprTag.ClassListRemove]: b.record({ classList: b.array(b.string) }),
+  [ExprTag.InsertBrackets]: b.record({ }),
+  [ExprTag.ClearBrackets]: b.record({ detach: b.int8 }),
+
   [ExprTag.CreateElement]: b.record({ tagName: b.string }),
   [ExprTag.CreateElementNS]: b.record({ ns: b.string, tagName: b.string }),
-  [ExprTag.CreateText]: b.record({ content: b.string }),
-  [ExprTag.ElementProp]: b.record({ node: self, propName: b.string, propValue: self }),
-  [ExprTag.ElementAttr]: b.record({ node: self, attrName: b.string, attrValue: b.string }),
-  [ExprTag.InsertClassList]: b.record({ node: self, classList: b.array(b.string) }),
-  [ExprTag.RemoveClassList]: b.record({ node: self, classList: b.array(b.string) }),
+  [ExprTag.CreateTextNode]: b.record({ content: b.string }),
   [ExprTag.UpdateTextNode]: b.record({ node: self, content: b.string }),
-  [ExprTag.InsertBoundary]: b.record({ parent: self }),
-  [ExprTag.ClearBoundary]: b.record({ boundary: self, detach: b.int8 }),
 
   [ExprTag.AddEventListener]: b.record({ reactiveScope: b.int32, target: self, eventName: self, listener: self }),
   [ExprTag.ConnectResource]: b.record({ reactiveScope: b.int32, aquire: self }),
@@ -628,6 +688,8 @@ export type VarId = number;
 export const varStorage = new Map<ReactiveScope, Map<VarId, unknown>>();
 export const finalizers = new Map<ReactiveScope, IntMap<Function>>;
 
+export const globalContext: List<Bindings> = [window as any, null]
+
 namespace domHelpers {
   export function insertIntoBuilder(builder: Element|Comment, child: Node): void {
     if (builder instanceof Comment) {
@@ -660,28 +722,31 @@ namespace domHelpers {
     element.removeEventListener(eventName, listener);
   }
 
-  export function insertBoundary(builder: Element|Comment): Comment {
-    const begin = document.createComment('ContentBoundary {{');
+  export function insertBrackets(builder: Element|Comment): Comment {
+    const begin = document.createComment('ContentBrackets {{');
     const end = document.createComment('}}');
     insertIntoBuilder(builder, begin);
     insertIntoBuilder(builder, end);
     return end;
   }
 
-  export function clearBoundary(boundary: Comment, detach: boolean): void {
-    const end = boundary;
-    let nestedCounter = 0;
-    for (;;){
-      if (!end.previousSibling ||
-        (nestedCounter == 0 && isOpeningBoundary(end.previousSibling))
-         ) break;
-      if (isClosingBoundary(end.previousSibling)) nestedCounter++;
-      else if (isOpeningBoundary(end.previousSibling)) nestedCounter--;
-      end.previousSibling!.parentNode!.removeChild(end.previousSibling!);
-    }
-    if (detach) {
-      end.previousSibling!.parentNode!.removeChild(end.previousSibling!);
-      end.parentNode!.removeChild(end);
+  export function clearBrackets(bracket: Comment|Element, detach: boolean): void {
+    if (bracket instanceof Comment) {
+      let nestedCounter = 0;
+      for (;;){
+        if (!bracket.previousSibling ||
+          (nestedCounter == 0 && isOpenBracket(bracket.previousSibling))
+           ) break;
+        if (isClosingBracket(bracket.previousSibling)) nestedCounter++;
+        else if (isOpenBracket(bracket.previousSibling)) nestedCounter--;
+        bracket.previousSibling!.parentNode!.removeChild(bracket.previousSibling!);
+      }
+      if (detach) {
+        bracket.previousSibling!.parentNode!.removeChild(bracket.previousSibling!);
+        bracket.parentNode!.removeChild(bracket);
+      }
+    } else {
+      bracket.innerHTML = '';
     }
   }
 
@@ -692,14 +757,14 @@ namespace domHelpers {
     return builder;
   }
 
-  function isOpeningBoundary(node: Node): boolean {
-    if (node instanceof Comment && node.textContent == 'ContentBoundary {{') {
+  function isOpenBracket(node: Node): boolean {
+    if (node instanceof Comment && node.textContent == 'ContentBrackets {{') {
       return true;
     }
     return false;
   }
 
-  function isClosingBoundary(node: Node): boolean {
+  function isClosingBracket(node: Node): boolean {
     if (node instanceof Comment && node.textContent == '}}') {
       return true;
     }

@@ -30,7 +30,7 @@ import Clickable.Protocol.Value
 newVar :: a -> ClickM (DynVar a)
 newVar a = do
   ref <- liftIO $ newIORef a
-  let mkEv s = unsafeFromEventId $ EventId $ Int32Le s.next_id
+  let mkEv s = unsafeFromEventId $ EventId s.next_id
   state \s -> (SourceVar (mkEv s) ref, s {next_id = s.next_id + 1})
 
 overrideVar :: (UpdateFn a -> UpdateFn a) -> DynVar a -> DynVar a
@@ -140,72 +140,72 @@ newCallback k = reactive $ Internal.newCallback k
 ------------------
 
 el :: Text -> HtmlM a -> HtmlM a
-el t = lift . insertHtml (DomBuilder (CreateElement t))
+el t = lift . customizeHtml True (DomBuilder (CreateElement t))
 
 elns :: Text -> Text -> HtmlM a -> HtmlM a
-elns ns t = lift . insertHtml (DomBuilder (CreateElementNS ns t))
+elns ns t = lift . customizeHtml True (DomBuilder (CreateElementNS ns t))
 
 property :: ToValue a => Text -> a -> HtmlM ()
 property k v = lift $ modify f where
   f s = s {evaluation_queue = expr : s.evaluation_queue }
-  expr = ElementProp builderContext k (toExpr v)
+  expr = ElementProp k (toExpr v)
 
 attribute :: Text -> Text -> HtmlM ()
 attribute k v = lift $ modify f where
   f s = s {evaluation_queue = expr : s.evaluation_queue }
-  expr = ElementAttr builderContext k v
+  expr = ElementAttr k v
 
 text :: Text -> HtmlM ()
 text t = lift $ modify f where
   f s = s {evaluation_queue = expr : s.evaluation_queue }
-  expr = InsertNode builderContext $ CreateTextNode t
+  expr = InsertNode $ CreateTextNode t
 
 dynText :: DynVal Text -> HtmlM ()
 dynText val = do
   t <- lift $ readVal val
   v <- lift $ newVarId
   lift $ modify $ f v t
-  lift $ subscribe val $ enqueueExpr . UpdateTextNode (DomBuilder (Var v))
+  lift $ subscribe val $ enqueueExpr . UpdateTextNode (Var v)
   where
     f v t s = s {evaluation_queue = expr v t : s.evaluation_queue }
-    expr v t = InsertNode builderContext $ AssignVar v $ CreateTextNode t
+    expr v t = InsertNode $ AssignVar v $ CreateTextNode t
 
 dynProp :: ToValue a => Text -> DynVal a -> HtmlM ()
 dynProp k val = do
   t <- lift $ readVal val
-  v <- saveCurrentBuilder
+  v <- saveDomBuilder
   lift $ modify $ f t
-  lift $ subscribe val $ enqueueExpr . ElementProp (DomBuilder (Var v)) k . toExpr
+  lift $ subscribe val $ enqueueExpr . SupplyDomBuilder (DomBuilder (Var v)) . ElementProp k . toExpr
   where
     f v s = s {evaluation_queue = expr v : s.evaluation_queue }
-    expr v = ElementProp builderContext k (toExpr v)
+    expr v = ElementProp k (toExpr v)
 
 dynAttr :: Text -> DynVal Text -> HtmlM ()
 dynAttr k val = do
   t <- lift $ readVal val
-  v <- saveCurrentBuilder
+  v <- saveDomBuilder
   lift $ modify $ f t
-  lift $ subscribe val $ enqueueExpr . ElementAttr (DomBuilder (Var v)) k
+  lift $ subscribe val $ enqueueExpr . SupplyDomBuilder (DomBuilder (Var v)) . ElementAttr k
   where
     f v s = s {evaluation_queue = expr v : s.evaluation_queue }
-    expr v = ElementAttr builderContext k v
+    expr v = ElementAttr k v
 
 toggleClass :: Text -> DynVal Bool -> HtmlM ()
 toggleClass className val = do
   scope <- lift $ asks (.scope)
   v <- lift $ readVal val
-  n <- saveCurrentBuilder
+  n <- saveDomBuilder
   let
     initCmd False queue = queue
-    initCmd True queue = InsertClassList builderContext [className] : queue
-    updateCmd False = RemoveClassList (DomBuilder (Var n)) [className]
-    updateCmd True = InsertClassList (DomBuilder (Var n)) [className]
+    initCmd True queue = ClassListAdd [className] : queue
+    updateCmd False = SupplyDomBuilder (DomBuilder (Var n)) $ ClassListRemove [className]
+    updateCmd True = SupplyDomBuilder (DomBuilder (Var n)) $ ClassListAdd [className]
   lift $ modify \s -> s {evaluation_queue = initCmd v s.evaluation_queue}
   lift $ subscribe val $ enqueueExpr . updateCmd
 
 dynClassList :: DynVal [Text] -> HtmlM ()
 dynClassList dynList = do
-  n <- saveCurrentBuilder
+  n <- saveDomBuilder
   scope <- lift $ asks (.scope)
   initVal <- lift $ readVal dynList
   let
@@ -219,15 +219,15 @@ dynClassList dynList = do
       return (added, removed, newList)
     updateCmd ([], [], _) queue = queue
     updateCmd (added, [], _) queue =
-      InsertClassList (DomBuilder (Var n)) added : queue
+      SupplyDomBuilder (DomBuilder (Var n)) (ClassListAdd added) : queue
     updateCmd ([], removed, _) queue =
-      RemoveClassList (DomBuilder (Var n)) removed : queue
-    updateCmd (added, removed, _) queue =
-      RemoveClassList (DomBuilder (Var n)) removed : InsertClassList (DomBuilder (Var n)) added : queue
-    modQueue f = modify \s -> s
-      { evaluation_queue = f s.evaluation_queue
-      }
-  lift $ enqueueExpr $ InsertClassList builderContext initVal
+      SupplyDomBuilder (DomBuilder (Var n)) (ClassListRemove removed) : queue
+    updateCmd (added, removed, _) queue
+      = SupplyDomBuilder (DomBuilder (Var n)) (ClassListRemove removed)
+      : SupplyDomBuilder (DomBuilder (Var n)) (ClassListAdd added)
+      : queue
+    modQueue f = modify \s -> s {evaluation_queue = f s.evaluation_queue}
+  lift $ enqueueExpr $ ClassListAdd initVal
   lift $ Internal.subscribeAccum dynList k ([], [], initVal)
 
 ---------------------
@@ -236,15 +236,15 @@ dynClassList dynList = do
 
 dyn :: DynVal (HtmlM ()) -> HtmlM ()
 dyn val = do
-  boundary <- lift insertBoundary
+  brackets <- lift insertBrackets
   scope <- lift newScope
   initialVal <- lift $ readVal val
   let
     update html = do
-      lift $ clearBoundary boundary
+      lift $ clearBrackets brackets
       html
     exec h =
-      customizeHtml (DomBuilder (Var boundary)) h
+      customizeHtml False (DomBuilder (Var brackets)) h
       & local (\s -> s {scope})
   lift $ exec $ update initialVal
   lift $ subscribe val $ \newVal -> do
@@ -253,7 +253,7 @@ dyn val = do
 
 -- | Auxilliary datatype used in 'simpleList' implementation
 data ElemEnv a = ElemEnv
-  { boundary :: VarId
+  { brackets :: VarId
   , state_var :: DynVar a
   , elem_scope :: ResourceScope
   }
@@ -270,12 +270,12 @@ simpleList
   -> HtmlM ()
 simpleList listDyn h = lift do
   internalStateRef <- liftIO $ newIORef ([] :: [ElemEnv a])
-  boundary <- insertBoundary
+  brackets <- insertBrackets
   let
-    exec boundary scope h =
-      customizeHtml (DomBuilder (Var boundary)) h
-      & local (\s -> s {scope})
-    exec1 boundary = customizeHtml (DomBuilder (Var boundary))
+    exec brackets scope h =
+      customizeHtml False (DomBuilder (Var brackets)) h
+        & local (\s -> s {scope})
+    exec1 brackets = customizeHtml False (DomBuilder (Var brackets))
 
     setup :: Int -> [a] -> [ElemEnv a] -> ClickM [ElemEnv a]
     setup idx new existing = case (existing, new) of
@@ -283,7 +283,7 @@ simpleList listDyn h = lift do
       -- New list is longer, append new elements
       ([], x:xs) -> do
         e <- newElem idx x
-        exec e.boundary e.elem_scope $ h idx e.state_var
+        exec e.brackets e.elem_scope $ h idx e.state_var
         fmap (e:) $ setup (idx + 1) xs []
       -- New list is shorter, delete the elements that no longer
       -- present in the new list
@@ -299,79 +299,19 @@ simpleList listDyn h = lift do
       elem_scope <- newScope
       local (\s -> s {scope = elem_scope}) do
         state_var <- newVar a
-        boundary <- insertBoundary
-        return ElemEnv {elem_scope, state_var, boundary}
+        brackets <- insertBrackets
+        return ElemEnv {elem_scope, state_var, brackets}
     finalizeElems :: Bool -> [ElemEnv a] -> ClickM ()
     finalizeElems remove = mapM_ \ee -> do
-      when remove $ destroyBoundary ee.boundary
+      when remove $ detachBrackets ee.brackets
       freeScope True ee.elem_scope
     updateList new = do
       eenvs <- liftIO $ readIORef internalStateRef
       newEenvs <- setup 0 new eenvs
       liftIO $ writeIORef internalStateRef newEenvs
   initialVal <- readVal listDyn
-  exec1 boundary $ lift $ updateList initialVal
-  subscribe listDyn $ exec1 boundary . lift . updateList
-
-----------------------------
--- AUXILLIARY DEFINITIONS --
-----------------------------
-
-insertHtml :: DomBuilder -> HtmlM a -> ClickM a
-insertHtml builder content = do
-  prevQueue <- state \s -> (s.evaluation_queue, s {evaluation_queue = []})
-  result <- evalStateT content.unHtmlT Nothing
-  let mkExpr revSeq = InsertNode builderContext (Lam (RevSeq (Arg 0 0 : revSeq)) `Apply` [builder.unDomBuilder])
-  modify \s -> s {evaluation_queue = mkExpr s.evaluation_queue : prevQueue}
-  return result
-
-customizeHtml :: DomBuilder -> HtmlM a -> ClickM a
-customizeHtml builder content = do
-  prevQueue <- state \s -> (s.evaluation_queue, s {evaluation_queue = []})
-  result <- evalStateT content.unHtmlT Nothing
-  let mkExpr revSeq = Lam (RevSeq (Arg 0 0 : revSeq)) `Apply` [builder.unDomBuilder]
-  modify \s -> s {evaluation_queue = mkExpr s.evaluation_queue : prevQueue}
-  return result
-
-saveCurrentBuilder :: HtmlM VarId
-saveCurrentBuilder = do
-  alreadySaved <- HtmlT get
-  case alreadySaved of
-    Nothing -> do
-      varId <- lift newVarId
-      HtmlT $ put $ Just varId
-      lift $ enqueueExpr $ AssignVar varId builderContext.unDomBuilder
-      return varId
-    Just saved -> return saved
-
-insertBoundary :: ClickM VarId
-insertBoundary = do
-  boundary <- newVarId
-  enqueueExpr $ AssignVar boundary (InsertBoundary builderContext)
-  return boundary
-
-clearBoundary :: VarId -> ClickM ()
-clearBoundary boundary = enqueueExpr (ClearBoundary (DomBuilder (Var boundary)) False)
-
-destroyBoundary :: VarId -> ClickM ()
-destroyBoundary boundary = enqueueExpr (ClearBoundary (DomBuilder (Var boundary)) True)
-
-attachHtml :: DomBuilder -> HtmlM a -> ClickM a
-attachHtml rootEl contents = do
-  savedQueue <- state saveQueue
-  evalStateT contents.unHtmlT Nothing <*
-    modify (enqueueHtml savedQueue)
-  where
-    enqueueHtml saved s = s {evaluation_queue = e : saved} where
-      e = Lam (RevSeq (Arg 0 0 : s.evaluation_queue)) `Apply` [rootEl.unDomBuilder]
-    saveQueue s =
-      (s.evaluation_queue, s {evaluation_queue = []})
-
-attachToBody :: HtmlM a -> ClickM a
-attachToBody = attachHtml (DomBuilder (Id "document" `Dot` "body"))
-
-blank :: Applicative m => m ()
-blank = pure ()
+  exec1 brackets $ lift $ updateList initialVal
+  subscribe listDyn $ exec1 brackets . lift . updateList
 
 -- | Parse given text as HTML and attach the resulting tree to
 -- 'html_current_element'. This way you can create not only HTML but
@@ -392,11 +332,68 @@ unsafeHtml rawHtml = lift $ enqueueExpr (Internal.unsafeInsertHtml rawHtml)
 -- portals in React ecosystem
 portal :: DomBuilder -> HtmlM a -> HtmlM a
 portal newRootEl html =
-  lift $ customizeHtml newRootEl do
-    boundary <- lift $ insertBoundary
-    result <- lift $ customizeHtml (DomBuilder (Var boundary)) html
-    lift $ installFinalizer $ destroyBoundary boundary
+  lift $ customizeHtml False newRootEl do
+    brackets <- lift insertBrackets
+    result <- lift $ customizeHtml False (DomBuilder (Var brackets)) html
+    lift $ installFinalizer $ detachBrackets brackets
     return result
+
+blank :: Applicative m => m ()
+blank = pure ()
+
+----------------------------
+-- AUXILLIARY DEFINITIONS --
+----------------------------
+
+customizeHtml :: Bool -> DomBuilder -> HtmlM a -> ClickM a
+customizeHtml doInsert builder content = do
+  prevQueue <- state \s -> (s.evaluation_queue, s {evaluation_queue = []})
+  result <- evalStateT content.unHtmlT Nothing
+  modify \s -> s {evaluation_queue = mkExpr s.evaluation_queue : prevQueue}
+  return result
+  where
+    mkExpr seq
+      | doInsert = InsertNode $ SupplyDomBuilder builder $ RevSeq (AskDomBuilder : seq)
+      | otherwise = SupplyDomBuilder builder $ RevSeq (AskDomBuilder : seq)
+
+attachHtml :: DomBuilder -> HtmlM a -> ClickM a
+attachHtml rootEl contents = do
+  savedQueue <- state saveQueue
+  evalStateT contents.unHtmlT Nothing <*
+    modify (enqueueHtml savedQueue)
+  where
+    enqueueHtml saved s = s {evaluation_queue = e : saved} where
+      e = SupplyDomBuilder rootEl (RevSeq s.evaluation_queue)
+    saveQueue s =
+      (s.evaluation_queue, s {evaluation_queue = []})
+
+attachToBody :: HtmlM a -> ClickM a
+attachToBody = attachHtml $ DomBuilder $ Id "document" `Dot` "body"
+
+saveDomBuilder :: HtmlM VarId
+saveDomBuilder = do
+  alreadySaved <- HtmlT get
+  case alreadySaved of
+    Nothing -> do
+      varId <- lift newVarId
+      HtmlT $ put $ Just varId
+      lift $ enqueueExpr $ AssignVar varId AskDomBuilder
+      return varId
+    Just saved -> return saved
+
+insertBrackets :: ClickM VarId
+insertBrackets = do
+  brackets <- newVarId
+  enqueueExpr $ AssignVar brackets InsertBrackets
+  return brackets
+
+clearBrackets :: VarId -> ClickM ()
+clearBrackets n =
+  enqueueExpr $ SupplyDomBuilder (DomBuilder (Var n)) $ ClearBrackets False
+
+detachBrackets :: VarId -> ClickM ()
+detachBrackets n =
+  enqueueExpr $ SupplyDomBuilder (DomBuilder (Var n)) $ ClearBrackets True
 
 instance (a ~ ()) => IsString (HtmlM a) where
   fromString = text . Text.pack

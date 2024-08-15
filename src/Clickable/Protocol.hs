@@ -1,3 +1,4 @@
+{-# LANGUAGE DerivingVia #-}
 module Clickable.Protocol where
 
 import Data.Binary (Binary)
@@ -114,17 +115,21 @@ data Expr
   | FreeScope ResourceScope
   -- ^ Free all the resources assosiated with the given ResourceScope
 
-  | InsertNode DomBuilder Expr
+  | AskDomBuilder
+  | SupplyDomBuilder DomBuilder Expr
+
+  | InsertNode Expr
+  | ElementProp Text Expr
+  | ElementAttr Text Text
+  | ClassListAdd [Text]
+  | ClassListRemove [Text]
+  | InsertBrackets
+  | ClearBrackets Bool
+
   | CreateElement Text
   | CreateElementNS Text Text
   | CreateTextNode Text
-  | ElementProp DomBuilder Text Expr
-  | ElementAttr DomBuilder Text Text
-  | InsertClassList DomBuilder [Text]
-  | RemoveClassList DomBuilder [Text]
-  | UpdateTextNode DomBuilder Text
-  | InsertBoundary DomBuilder
-  | ClearBoundary DomBuilder Bool
+  | UpdateTextNode Expr Text
 
   | AddEventListener ResourceScope Expr Expr Expr
   -- ^ @AddEventListener rscope target eventName listener@ is
@@ -182,9 +187,6 @@ valueToExpr = \case
 toExpr :: ToValue a => a -> Expr
 toExpr = valueToExpr . toValue
 
-builderContext :: DomBuilder
-builderContext = DomBuilder $ Arg 0 0
-
 newtype DomBuilder = DomBuilder {unDomBuilder :: Expr}
   deriving newtype (Show, Binary)
 
@@ -192,14 +194,17 @@ data VarId = VarId ResourceScope Int32Le
   deriving stock (Generic, Show, Ord, Eq)
   deriving anyclass (Binary)
 
-newtype FinalizerId = FinalizerId {unFinalizerId :: Int32Le}
-  deriving newtype (Show, Ord, Eq, Binary)
+newtype FinalizerId = FinalizerId {unFinalizerId :: Int32}
+  deriving newtype (Show, Ord, Eq)
+  deriving Binary via Int32Le
 
-newtype ResourceScope = ResourceScope {unResourceScope :: Int32Le}
-  deriving newtype (Show, Ord, Eq, Binary)
+newtype ResourceScope = ResourceScope {unResourceScope :: Int32}
+  deriving newtype (Show, Ord, Eq)
+  deriving Binary via Int32Le
 
-newtype EventId = EventId {unEventId :: Int32Le}
-  deriving newtype (Show, Ord, Eq, Binary)
+newtype EventId = EventId {unEventId :: Int32}
+  deriving newtype (Show, Ord, Eq)
+  deriving Binary via Int32Le
 
 newtype UnsafeJavaScript = UnsafeJavaScript {unUnsafeJavaScript :: Text}
   deriving newtype (IsString, Show, Semigroup, Monoid, Binary)

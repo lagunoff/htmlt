@@ -5,6 +5,7 @@ import Data.List qualified as List
 import Data.Maybe
 import Data.Text (Text)
 import GHC.Int
+import GHC.Generics
 
 import "this" Utils
 
@@ -18,7 +19,8 @@ data TodoItemState = TodoItemState
   { title :: Text
   , completed :: Bool
   , editing :: Maybe Text
-  } deriving stock (Show, Eq)
+  } deriving stock (Show, Eq, Generic)
+    deriving anyclass (FromValue, ToValue)
 
 data TodoItemAction a where
   CancelAction :: TodoItemAction ()
@@ -32,31 +34,30 @@ emptyState :: TodoItemState
 emptyState = TodoItemState "" False Nothing
 
 eval :: TodoItemConfig -> TodoItemAction a -> ClickM a
-eval cfg = \case
-  CancelAction ->
-    modifyVar_ cfg.state_var \s -> s{editing=Nothing}
-  CommitAction -> do
-    state <- readVar cfg.state_var
-    case state.editing of
-      Just "" ->
-        cfg.ask_delete_item
-      Just t ->
-        modifyVar_ cfg.state_var \s -> s {editing=Nothing, title = t}
-      Nothing ->
-        pure ()
-  InputAction newVal ->
-    modifyVar_ cfg.state_var \s -> s{editing = Just newVal}
-  DoubleClickAction inpElm -> do
-    trampoline do
-      modifyVar_ cfg.state_var \s -> s {editing = Just s.title}
-      syncPoint
-    assignFocus inpElm
-  CheckedAction isChecked -> do
-    modifyVar_ cfg.state_var \s -> s{completed = isChecked}
-  KeydownAction key -> case key of
-    13 {- Enter -} -> eval cfg CommitAction
-    27 {- Escape -} -> eval cfg CancelAction
-    _ -> return ()
+eval cfg CancelAction =
+  modifyVar_ cfg.state_var \s -> s{editing=Nothing}
+eval cfg CommitAction = do
+  state <- readVar cfg.state_var
+  case state.editing of
+    Just "" ->
+      cfg.ask_delete_item
+    Just t ->
+      modifyVar_ cfg.state_var \s -> s {editing=Nothing, title = t}
+    Nothing ->
+      pure ()
+eval cfg (InputAction newVal) =
+  modifyVar_ cfg.state_var \s -> s{editing = Just newVal}
+eval cfg (DoubleClickAction inpElm) = do
+  trampoline do
+    modifyVar_ cfg.state_var \s -> s {editing = Just s.title}
+    syncPoint
+  assignFocus inpElm
+eval cfg (CheckedAction isChecked) =
+  modifyVar_ cfg.state_var \s -> s{completed = isChecked}
+eval cfg (KeydownAction key) = case key of
+  13 {- Enter -} -> eval cfg CommitAction
+  27 {- Escape -} -> eval cfg CancelAction
+  _ -> return ()
 
 html :: TodoItemConfig -> HtmlM ()
 html cfg = li_ mdo
@@ -79,18 +80,5 @@ html cfg = li_ mdo
     on @"input" $ eval cfg . InputAction
     on @"keydown" $ eval cfg . KeydownAction
     on @"blur" $ eval cfg CommitAction
-    saveCurrentNode
+    saveDomBuilder
   return ()
-
-instance ToValue TodoItemState where
-  toValue s = Vobj
-    [ ("title", toValue s.title)
-    , ("completed", toValue s.completed)
-    ]
-
-instance FromValue TodoItemState where
-  fromValue (Vobj kv) = do
-    title <- fromValue =<< List.lookup "title" kv
-    completed <- fromValue =<< List.lookup "completed" kv
-    return TodoItemState {editing=Nothing, ..}
-  fromValue _ = Nothing
