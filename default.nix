@@ -44,6 +44,11 @@ let
       # fails to build, you have to have cabal installed on your system
       # buildDepends = [haskellPackages.cabal-install];
     };
+    javascript = pkgs.mkShell {
+      buildInputs = [
+        pkgs.pkgsCross.ghcjs.buildPackages.haskell.compiler.ghcHEAD
+      ];
+    };
   };
 in
   result

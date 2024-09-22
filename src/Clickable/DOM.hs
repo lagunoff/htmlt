@@ -67,6 +67,16 @@ instance IsEventName "mouseup" where
   connectEventName k = addEventListener
     (genericEvent defaultEventListenerOptions "mouseup") (const k)
 
+instance IsEventName "mouseenter" where
+  type EventListenerCb "mouseenter" = ClickM ()
+  connectEventName k = addEventListener
+    (genericEvent defaultEventListenerOptions "mouseenter") (const k)
+
+instance IsEventName "mouseleave" where
+  type EventListenerCb "mouseleave" = ClickM ()
+  connectEventName k = addEventListener
+    (genericEvent defaultEventListenerOptions "mouseleave") (const k)
+
 instance IsEventName "dblclick" where
   type EventListenerCb "dblclick" = ClickM ()
   connectEventName k = addEventListener

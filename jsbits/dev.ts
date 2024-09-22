@@ -33,8 +33,18 @@ export function startDev(devSocketUri: string, startFlags: unknown = null) {
   };
 
   // Event handler for when the connection is closed
-  websocket.onclose = (event) => {
-    console.log("WebSocket connection closed:", event);
+  websocket.onclose = (_event) => {
+    console.log("WebSocket connection closed, reloading the tab…");
+
+    function backoffLoop(timeout: number) {
+      // Assuming the server went down because it was re-compiled, wait
+      // until it comes back and reload the tab
+      const websocketTest = new WebSocket(devSocketUri);
+      const nextTimeout = Math.min(30_000, timeout * 2);
+      websocketTest.onopen = (_event) => window.location.reload();
+      websocketTest.onclose = (_event) => { setTimeout(() => backoffLoop(nextTimeout), timeout); }
+    }
+    backoffLoop(100);
   };
 }
 

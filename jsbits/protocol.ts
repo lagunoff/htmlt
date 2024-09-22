@@ -207,6 +207,7 @@ export function evalLoop (
     case ExprTag.FreeScope: {
       varStorage.delete(exp.scopeId);
       const scopeFinalizers = finalizers.get(exp.scopeId);
+      finalizers.delete(exp.scopeId);
       if (scopeFinalizers) scopeFinalizers.forEach(fn => fn ());
       return null;
     }
@@ -682,11 +683,11 @@ export const javascriptMessage = b.discriminate({
 export type HaskellMessage = typeof haskellMessage['_A'];
 export type JavaScriptMessage = typeof javascriptMessage['_A'];
 
-export type ReactiveScope = number;
+export type ResourceScope = number;
 export type VarId = number;
 
-export const varStorage = new Map<ReactiveScope, Map<VarId, unknown>>();
-export const finalizers = new Map<ReactiveScope, IntMap<Function>>;
+export const varStorage = new Map<ResourceScope, Map<VarId, unknown>>();
+export const finalizers = new Map<ResourceScope, IntMap<Function>>;
 
 export const globalContext: List<Bindings> = [window as any, null]
 
