@@ -12,7 +12,7 @@ import GHC.Generics
 import Clickable.Protocol.Value
 
 data HaskellMessage
-  = EvalExpr I32 Expr
+  = EvalExpr Int32Le Expr
   -- ^ Evaluate expression, expect the result to be returned by
   -- 'Return' message
   | HotReload
@@ -24,7 +24,7 @@ data HaskellMessage
 
 data JavaScriptMessage
   = Start StartFlags
-  | Return I32 Value
+  | Return Int32Le Value
   | TriggerEventMsg Value EventId
   | BeforeUnload
   -- ^ Fired from addEventListener("beforeunload") listener. Won't
@@ -44,17 +44,17 @@ data Expr
   | Bool Bool
   -- ^ JavaScript boolean value
   | I8 Int8
-  | I16 I16
-  | I32 I32
-  | I64 I64
+  | I16 Int16Le
+  | I32 Int32Le
+  | I64 Int64Le
 
   | U8 Word8
-  | U16 U16
-  | U32 U32
-  | U64 U64
+  | U16 Word16Le
+  | U32 Word32Le
+  | U64 Word64Le
 
-  | F32 F32
-  | F64 F64
+  | F32 Float32Le
+  | F64 Float64Le
 
   | Str Text -- ^ JavaScript string
   | Arr [Expr] -- ^ JavaScript array
@@ -140,7 +140,7 @@ data Expr
   -- will be freed with 'FreeScope'
   | ConnectResource ResourceScope Expr
   -- ^ Returns FinalizerId
-  | SetTimeout ResourceScope Expr I32
+  | SetTimeout ResourceScope Expr Int32Le
   -- ^ Returns FinalizerId
   | ApplyFinalizer ResourceScope Expr
   -- ^ Actuate given finalizer before the ResourceScope is freed
@@ -190,21 +190,21 @@ toExpr = valueToExpr . toValue
 newtype DomBuilder = DomBuilder {unDomBuilder :: Expr}
   deriving newtype (Show, Binary)
 
-data VarId = VarId ResourceScope I32
+data VarId = VarId ResourceScope Int32Le
   deriving stock (Generic, Show, Ord, Eq)
   deriving anyclass (Binary)
 
 newtype FinalizerId = FinalizerId {unFinalizerId :: Int32}
   deriving newtype (Show, Ord, Eq)
-  deriving Binary via I32
+  deriving Binary via Int32Le
 
 newtype ResourceScope = ResourceScope {unResourceScope :: Int32}
   deriving newtype (Show, Ord, Eq)
-  deriving Binary via I32
+  deriving Binary via Int32Le
 
 newtype EventId = EventId {unEventId :: Int32}
   deriving newtype (Show, Ord, Eq)
-  deriving Binary via I32
+  deriving Binary via Int32Le
 
 newtype UnsafeJavaScript = UnsafeJavaScript {unUnsafeJavaScript :: Text}
   deriving newtype (IsString, Show, Semigroup, Monoid, Binary)

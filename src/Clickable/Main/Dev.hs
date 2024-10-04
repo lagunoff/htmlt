@@ -41,8 +41,10 @@ import "this" Clickable.Types
 
 data DevConfig a = DevConfig
   { aquire_resource :: IO a
-  -- ^ Usualy runs once just after ghci session is loaded,
-  -- e.g. establish connection to database etc
+  -- ^ Called once the GHCi session is loaded. Returns a polymorphic
+  -- resource that typically contains a database connection and other
+  -- long-lived entities that persist across versions when the
+  -- application is reloaded.
   , release_resource :: a -> IO ()
   -- ^ Runs before the ghci session is unloaded
   , reload_app :: a -> IO ApplicationSpec

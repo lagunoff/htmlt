@@ -29,7 +29,7 @@ js_consoleLog :: Ptr Word8 -> Int -> IO ()
 js_consoleLog = undefined
 #else
 foreign import javascript unsafe
-  "evalMessage(__exports, $1)"
+  "clickable.evalMessage(__exports, $1)"
    js_evalMessage :: Ptr Word8 {- HaskellMessage -} -> IO (Ptr Word8 {- JavaScriptMessage -})
 foreign import javascript unsafe
   "console.log(new TextDecoder('utf8').decode(new Uint8Array(__exports.memory.buffer, $1, $2)));"
