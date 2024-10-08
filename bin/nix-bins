@@ -1,0 +1,55 @@
+#!/usr/bin/env sh
+
+usage() {
+    echo "Usage: nix-shell --pure --run 'bin/nix-bins'"
+}
+
+# Check for command-line arguments
+for arg in "$@"; do
+    case $arg in
+        --help)
+            usage
+            exit 0
+            ;;
+    esac
+done
+
+SCRIPT_DIR=$(dirname "$(realpath "$0")")
+
+# Step 1: Clear the ./bin/ directory except nix-shell-cache.sh and nix-bins
+find "${SCRIPT_DIR}" -type f \
+     ! -name 'nix-shell-cache.sh' \
+     ! -name 'nix-bins' \
+     ! -name 'README.md' -exec rm -f {} +
+
+# Step 2: Parse $PATH variable and acquire all executable commands
+IFS=':' read -r -a path_array <<< "$PATH"
+commands=()
+
+for dir in "${path_array[@]}"; do
+    if [ -d "$dir" ]; then
+        for cmd in "$dir"/*; do
+            if [ -x "$cmd" ] && [ ! -d "$cmd" ]; then
+                commands+=("$(basename "$cmd")")
+            fi
+        done
+    fi
+done
+
+# Step 3: Create executable script for each command
+for command in "${commands[@]}"; do
+    script_path="${SCRIPT_DIR}/${command}"
+    cat << EOF > "$script_path"
+#!/usr/bin/env sh
+
+SCRIPT_DIR=\$(dirname "\$(realpath "\$0")")
+
+source "\${SCRIPT_DIR}/nix-shell-cache.sh"
+
+${command} "\$@"
+EOF
+    chmod +x "$script_path"
+done
+
+# Step 4: Save the enviroment into ./bin/nix-shell-cache.sh
+export > "${SCRIPT_DIR}/nix-shell-cache.sh"

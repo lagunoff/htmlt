@@ -44,7 +44,7 @@ export function runWasm(wasmUri: string, startFlags: unknown = null) {
       end: ptr + len,
     };
 
-    proto.evalRange(intp);
+    proto.evalMem(intp);
   }
 
   WebAssembly.compileStreaming(fetch(wasmUri))
