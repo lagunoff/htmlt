@@ -1,3 +1,4 @@
+{-# LANGUAGE GHC2021 #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE BlockArguments #-}
@@ -28,6 +29,20 @@ import Foreign.Ptr
 import GHC.Exts
 import Unsafe.Coerce
 
+newEvent :: ClickM (Event a)
+newEvent = state \s ->
+  (Event (EventId s.next_id), s {next_id = s.next_id + 1})
+
+mapEvent :: (a -> b) -> Event a -> ClickM (Event b)
+mapEvent f ea = do
+  eb <- newEvent
+  subscribeEvent ea $ triggerEvent eb . f
+  return eb
+
+subscribeEvent :: forall a. Event a -> (a -> ClickM ()) -> ClickM ()
+subscribeEvent (Event eid) k = reactive_ g where
+  newSub scope = SubscriptionSimple scope (coerce eid) (k . unsafeCoerce)
+  g scope s = s {subscriptions = newSub scope : s.subscriptions}
 
 subscribe :: forall a. DynVal a -> (a -> ClickM ()) -> ClickM ()
 subscribe (ConstVal _) _ = return ()
@@ -131,9 +146,7 @@ syncPoint = ClickM \e -> void $ e.hte_flush
 
 unsafeInsertHtml :: Text -> Expr
 unsafeInsertHtml rawHtml = Eval
-  "(function(args){\
-   \var parent = args[0];\
-   \var rawHtml = args[1];\
+  "(function(parent, rawHtml){\
    \var div = document.createElement('div');\
    \div.innerHTML = rawHtml;\
    \var iter = div.childNodes[0];\
@@ -145,7 +158,7 @@ unsafeInsertHtml rawHtml = Eval
    \    parent.appendChild(iter);\
    \  }\
    \}\
-   \})" `Apply` (Arr [PeekStack 0, Str rawHtml])
+   \})" `Apply` [PeekStack 0, Str rawHtml]
 
 newScope :: ClickM ScopeId
 newScope = reactive newScopeOp

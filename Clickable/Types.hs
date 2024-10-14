@@ -1,13 +1,16 @@
+{-# LANGUAGE GHC2021 #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE BlockArguments #-}
-{-# LANGUAGE DerivingVia #-}
-{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE OverloadedRecordDot #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE DefaultSignatures #-}
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE UnboxedTuples #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# OPTIONS_GHC -Wall #-}
 module Clickable.Types where
 
 import Clickable.Float
@@ -22,14 +25,14 @@ import Data.Int
 import Data.Map (Map)
 import Data.Maybe (mapMaybe)
 import Data.Text (Text)
+import Data.Text qualified as Text
 import Data.Tuple
 import Data.Word
 import GHC.Exts
-import GHC.Generics
+import GHC.Generics qualified as G
+import GHC.List qualified as List
 import GHC.Types
-import qualified Data.Text as Text
-import qualified GHC.Generics as G
-import qualified GHC.List as List
+import GHC.Generics
 
 newtype ClickM a = ClickM {unClickM :: InternalEnv -> IO a}
   deriving (Functor, Applicative, Monad, MonadIO, MonadReader InternalEnv)
@@ -59,6 +62,13 @@ data InternalState = InternalState
   , next_id :: Word32
   }
 
+newtype HtmlM a = HtmlM
+  {unHtmlM :: Maybe RefId -> InternalEnv -> IO (a, Maybe RefId)}
+  deriving (Functor, Applicative, Monad, MonadIO) via StateT (Maybe RefId) ClickM
+
+liftClick :: ClickM a -> HtmlM a
+liftClick (ClickM a) = HtmlM \s e -> (,s) <$> a e
+
 data Expr where
   Null :: Expr
   Bool :: Word8 -> Expr
@@ -84,8 +94,8 @@ data Expr where
 
   Lam :: Expr -> Expr
   Arg :: Word8 -> Expr
-  Apply :: Expr -> Expr -> Expr
-  Call :: Expr -> Text -> Expr -> Expr
+  Apply :: Expr -> [Expr] -> Expr
+  Call :: Expr -> Text -> [Expr] -> Expr
 
   AssignRef :: RefId -> Expr -> Expr
   FreeRef :: RefId -> Expr
@@ -214,7 +224,7 @@ subscriptionScope SubscriptionAccum{sa_resource_scope} = sa_resource_scope
 
 -- | JavaScript value, result of evaluating an 'Expr'. Should only
 -- contain constructors up to and including 'U8Arr'. I chose to use
--- type alias rather than a new data type for easier conversion.
+-- type alias rather than a data type for easier conversion.
 type ValueExpr = Expr
 
 class ToValue a where

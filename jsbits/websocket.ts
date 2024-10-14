@@ -1,4 +1,4 @@
-import { ClientMsgTag, EventId, EvalState, PersistentState, Ptr } from "./proto";
+import { ClientMsgTag, EventId, PersistentState } from "./proto";
 import * as proto from "./proto";
 
 const outBuf = new ArrayBuffer(100 * 1024);
@@ -32,7 +32,7 @@ export function runWebsocket(devSocketUri: string, startFlags: unknown = null) {
   // Event handler for receiving messages from the server
   websocket.onmessage = (event) => {
     convertBlobToUint8Array(event.data).then(buf => {
-      proto.evalRange({
+      proto.evalMem({
         triggerEvent,
         resumeCont,
         persistent,

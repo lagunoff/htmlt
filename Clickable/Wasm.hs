@@ -1,3 +1,4 @@
+{-# LANGUAGE GHC2024 #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE BlockArguments #-}
@@ -33,7 +34,7 @@ foreign import ccall safe
 env :: InternalEnv
 {-# NOINLINE env #-}
 
-continuations :: IORef (Map Word32 (IO Value -> IO ()))
+continuations :: IORef (Map Word32 (IO ValueExpr -> IO ()))
 {-# NOINLINE continuations #-}
 
 buf :: CStringLen
@@ -58,7 +59,7 @@ mkWasmApp app inmsg = do
     Just (ResumeMsg contId pload) -> do
       awatingThread <- atomicModifyIORef' continuations $
         swap . Map.alterF (,Nothing) contId
-      forM_ awatingThread \cont -> cont $ pure $ exprToValue pload
+      forM_ awatingThread \cont -> cont $ pure pload
     _ -> error "mkWasmApp: Failed to parse incomming command"
   return $ castPtr $ fst buf
 

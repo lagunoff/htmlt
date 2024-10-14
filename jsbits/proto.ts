@@ -89,8 +89,8 @@ export enum ExprTag {
   YieldResult,
 }
 
-/** Encode `Expr` sum type as a union of disjoint n-tuples, keep in
- * sync with `Expr` definition in
+/** Encode `Expr` type as a union of disjoint n-tuples, keep in
+ * sync with Haskell definition in
  * https://github.com/lagunoff/clickable/blob/master/Clickable/Types.hs */
 export type Expr =
   | [ExprTag.Null]
@@ -112,8 +112,8 @@ export type Expr =
 
   | [ExprTag.Lam, Expr]
   | [ExprTag.Arg, number]
-  | [ExprTag.Apply, Expr, Expr]
-  | [ExprTag.Call, Expr, string, Expr]
+  | [ExprTag.Apply, Expr, [Expr]]
+  | [ExprTag.Call, Expr, string, [Expr]]
 
   | [ExprTag.AssignRef, number, number, Expr]
   | [ExprTag.FreeRef, number, number]
@@ -341,15 +341,25 @@ export function evalNext(self: EvalState, args: List<unknown> = null, prevRes: u
       throw new Error("Arg: index out of argument stack");
     };
     case ExprTag.Apply: {
-      const fn = evalNext(self, args, prevRes);
-      const arg = evalNext(self, args, prevRes);
-      return (fn as any)(arg);
+      const fn = evalNext(self, args, prevRes) as Function;
+      const fnArgNum = Number(self.mem.getBigUint64(self.begin, false));
+      self.begin += 8;
+      const fnArgs = new Array(fnArgNum).fill(null);
+      for (let i = 0; i < fnArgNum; i++) {
+        fnArgs[i] = evalNext(self, args, prevRes);
+      }
+      return (fn).apply(undefined, fnArgs);
     };
     case ExprTag.Call: {
       const obj = evalNext(self, args, prevRes);
       const key = decodeString(self);
-      const arg = evalNext(self, args, prevRes);
-      return (obj as any)[key].call(obj, arg);
+      const callArgNum = Number(self.mem.getBigUint64(self.begin, false));
+      self.begin += 8;
+      const callArgs = new Array(callArgNum).fill(null);
+      for (let i = 0; i < callArgNum; i++) {
+        callArgs[i] = evalNext(self, args, prevRes);
+      }
+      return (obj as any)[key].apply(obj, callArgs);
     };
 
     case ExprTag.AssignRef: {

@@ -5,4 +5,3 @@ module Clickable (module Exports) where
 import Clickable.Html as Exports
 import Clickable.Internal as Exports
 import Clickable.Types as Exports
-import Clickable.WebSocket as Exports

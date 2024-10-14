@@ -1,4 +1,10 @@
+{-# LANGUAGE GHC2021 #-}
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE MagicHash #-}
+{-# LANGUAGE UnboxedTuples #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-| Normal `Data.Binary.Binary` instances for floating-point numbers
 replacing the impractical and unnatural encoding in the default

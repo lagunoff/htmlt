@@ -38,5 +38,4 @@ executable clickable
     wai-websockets,
     warp,
     websockets,
-  default-language: GHC2021
                         
