@@ -39,6 +39,12 @@ mapEvent f ea = do
   subscribeEvent ea $ triggerEvent eb . f
   return eb
 
+mapMaybeEvent :: (a -> Maybe b) -> Event a -> ClickM (Event b)
+mapMaybeEvent f ea = do
+  eb <- newEvent
+  subscribeEvent ea $ mapM_ (triggerEvent eb) . f
+  return eb
+
 subscribeEvent :: forall a. Event a -> (a -> ClickM ()) -> ClickM ()
 subscribeEvent (Event eid) k = reactive_ g where
   newSub scope = SubscriptionSimple scope (coerce eid) (k . unsafeCoerce)

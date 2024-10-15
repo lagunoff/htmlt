@@ -17,11 +17,13 @@ executable clickable
   hs-source-dirs:   ./
   other-modules:
      Clickable
-     Clickable.Html
-     Clickable.Types
-     Clickable.Internal
-     Clickable.WebSocket
+     Clickable.Element
      Clickable.Float       
+     Clickable.Html
+     Clickable.Internal
+     Clickable.Property
+     Clickable.Types
+     Clickable.WebSocket
   -- other-extensions:
   build-depends:
     async,

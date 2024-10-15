@@ -1,4 +1,3 @@
 cradle:
-  cabal:
-    - path: "./"
-      component: "exe:clickable"
+  direct:
+    arguments: []
