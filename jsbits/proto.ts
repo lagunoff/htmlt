@@ -70,7 +70,7 @@ export enum ExprTag {
   PushStack,
   PopStack,
 
-  InsPop,
+  PopIns,
   ElementProp,
   ElementAttr,
   ClassListAdd,
@@ -86,7 +86,7 @@ export enum ExprTag {
 
   Eval,
   TriggerEvent,
-  YieldResult,
+  Resume,
 }
 
 /** Encode `Expr` type as a union of disjoint n-tuples, keep in
@@ -124,11 +124,11 @@ export type Expr =
   | [ExprTag.PushStack, Expr]
   | [ExprTag.PopStack]
 
-  | [ExprTag.InsPop, Expr, Expr]
+  | [ExprTag.PopIns, Expr, Expr]
   | [ExprTag.ElementProp, string, Expr]
   | [ExprTag.ElementAttr, string, string]
-  | [ExprTag.ClassListAdd, string[]]
-  | [ExprTag.ClassListRemove, string[]]
+  | [ExprTag.ClassListAdd, Expr, string[]]
+  | [ExprTag.ClassListRemove, Expr, string[]]
   | [ExprTag.InsertBrackets]
   | [ExprTag.ClearBrackets, Expr]
   | [ExprTag.DropBrackets, Expr]
@@ -140,7 +140,7 @@ export type Expr =
 
   | [ExprTag.Eval, string]
   | [ExprTag.TriggerEvent, number, Expr]
-  | [ExprTag.YieldResult, number]
+  | [ExprTag.Resume, number]
   ;
 
 export type Ptr = number;
@@ -298,7 +298,7 @@ export function evalNext(self: EvalState, args: List<unknown> = null, prevRes: u
     };
 
     case ExprTag.Lam: {
-      const ptrEnd = lookAheadExpr(self.mem, self.begin);
+      const ptrEnd = lookaheadNext(self.mem, self.begin);
       if (self.isMutableMem) {
         const clonedBody = new Uint8Array(self.mem.buffer).slice(self.begin, ptrEnd);
         const ctxNew: EvalState = {
@@ -430,14 +430,14 @@ export function evalNext(self: EvalState, args: List<unknown> = null, prevRes: u
       return res;
     };
 
-    case ExprTag.InsPop: {
+    case ExprTag.PopIns: {
       if (!self.persistent.stack) {
-        throw new Error("InsPop: empty stack");
+        throw new Error("PopIns: empty stack");
       }
       const tip = self.persistent.stack[VAL] as Node;
       self.persistent.stack = self.persistent.stack[NEXT];
       if (!self.persistent.stack) {
-        throw new Error("InsPop: empty stack");
+        throw new Error("PopIns: empty stack");
       }
       const parent = self.persistent.stack[VAL] as Element;
       utils.insert(parent, tip);
@@ -458,10 +458,14 @@ export function evalNext(self: EvalState, args: List<unknown> = null, prevRes: u
       return null;
     };
     case ExprTag.ClassListAdd: {
-      throw new Error("Unimplemented");
+      const el = evalNext(self, args, prevRes) as Element;
+      const className = decodeString(self);
+      return el.classList.add(className);
     };
     case ExprTag.ClassListRemove: {
-      throw new Error("Unimplemented");
+      const el = evalNext(self, args, prevRes) as Element;
+      const className = decodeString(self);
+      return el.classList.remove(className);
     };
     case ExprTag.InsertBrackets: {
       if (!self.persistent.stack) {
@@ -510,7 +514,7 @@ export function evalNext(self: EvalState, args: List<unknown> = null, prevRes: u
       self.triggerEvent(eventId, pload);
       return null;
     };
-    case ExprTag.YieldResult: {
+    case ExprTag.Resume: {
       const contId = self.mem.getUint32(self.begin, false);
       self.begin += 4;
       self.resumeCont(contId, prevRes);
@@ -519,10 +523,10 @@ export function evalNext(self: EvalState, args: List<unknown> = null, prevRes: u
   }
 }
 
-/** Parse next Expr without evaluating it. This is needed to clone
- * body expression of the Lam
+/** Parse next Expr without evaluating it. Required to clone lambda
+ * body to be able to run it later
  */
-export function lookAheadExpr(mem: DataView, ptr: Ptr): Ptr {
+export function lookaheadNext(mem: DataView, ptr: Ptr): Ptr {
   const tag: ExprTag = mem.getInt8(ptr++);
 
   switch (tag) {
@@ -570,227 +574,145 @@ export function lookAheadExpr(mem: DataView, ptr: Ptr): Ptr {
       const len = Number(mem.getBigUint64(ptr, false));
       return ptr + 8 + len;
     };
-    // case ExprTag.Arr: {
-    //   const len = Number(view.getBigUint64(ptr, false));
-    //   const result = new Array(len).fill(undefined);
-    //   let iter = ptr + 8;
-    //   for (let i = 0; i < len; i++) {
-    //     const [newIter, val] = interpBytes(self, mem, iter);
-    //     result[i] = val;
-    //     iter = newIter;
-    //   }
-    //   return [iter, result];
-    // };
-    // case ExprTag.Obj: {
-    //   const len = Number(view.getBigUint64(ptr, false));
-    //   const result: Record<string, unknown> = {};
-    //   let iter = ptr + 8;
+    case ExprTag.Arr: {
+      const len = Number(mem.getBigUint64(ptr, false));
+      let iter = ptr + 8;
+      for (let i = 0; i < len; i++) {
+        iter = lookaheadNext(mem, iter);
+      }
+      return iter;
+    };
+    case ExprTag.Obj: {
+      const len = Number(mem.getBigUint64(ptr, false));
+      let iter = ptr + 8;
 
-    //   for (let i = 0; i < len; i++) {
-    //     const [newIter1, key] = decodeString(self, mem, iter);
-    //     const [newIter2, val] = interpBytes(self, mem, newIter1);
-
-    //     result[key] = val;
-    //     iter = newIter2;
-    //   }
-    //   return [iter, result];
-    // };
-    // case ExprTag.U8Arr: {
-    //   const len = Number(view.getBigUint64(ptr, false));
-    //   const res = mem.subarray(ptr + 8, ptr + 8 + len);
-    //   return [ptr + 8 + len, res];
-    // };
-
-    // case ExprTag.Dot: {
-    //   const [newPtr1, obj] = interpBytes(self, mem, ptr);
-    //   const [newPtr2, key] = decodeString(self, mem, newPtr1);
-    //   return [newPtr2, (obj as any)[key]];
-    // };
-    // case ExprTag.SetProp: {
-    //   const [newPtr1, obj] = interpBytes(self, mem, ptr);
-    //   const [newPtr2, key] = decodeString(self, mem, newPtr1);
-    //   const [newPtr3, val] = interpBytes(self, mem, newPtr2);
-    //   (obj as any)[key] = val;
-    //   return [newPtr3, null];
-    // };
-    // case ExprTag.Ix: {
-    //   const [newPtr1, obj] = interpBytes(self, mem, ptr);
-    //   const key = view.getUint32(newPtr1);
-    //   return [newPtr1 + 4, (obj as any)[key]]
-    // };
-    // case ExprTag.Id: {
-    //   const [newPtr, iden] = decodeString(self, mem, ptr);
-    //   return [newPtr, (global as any)[iden]];
-    // };
-
-    // case ExprTag.Lam: {
-    //   throw new Error("Unimplemented");
-    // };
-    // case ExprTag.Arg: {
-    //   const _argIx = view.getUint8(ptr);
-    //   throw new Error("Unimplemented");
-    // };
-    // case ExprTag.Apply: {
-    //   const [newPtr1, fn] = interpBytes(self, mem, ptr);
-    //   const [newPtr2, arg] = interpBytes(self, mem, newPtr1);
-    //   return [newPtr2, (fn as any)(arg)];
-    // };
-    // case ExprTag.Call: {
-    //   const [newPtr1, obj] = interpBytes(self, mem, ptr);
-    //   const [newPtr2, key] = decodeString(self, mem, newPtr1);
-    //   const [newPtr3, arg] = interpBytes(self, mem, newPtr2);
-    //   return [newPtr3, (obj as any)[key].call(obj, arg)];
-    // };
-
-    // case ExprTag.AssignRef: {
-    //   const scopeId = view.getUint32(ptr, true);
-    //   const refId = view.getUint32(ptr + 4, true);
-    //   const [newPtr, val] = interpBytes(self, mem, ptr + 8);
-    //   if (self.refs.has(scopeId)) {
-    //     const scopeMap = self.refs.get(scopeId)!;
-    //     scopeMap.set(refId, val);
-    //   } else {
-    //     const scopeMap = new Map();
-    //     scopeMap.set(refId, val);
-    //     self.refs.set(scopeId, scopeMap);
-    //   }
-    //   return [newPtr, val];
-    // };
-    // case ExprTag.FreeRef: {
-    //   const scopeId = view.getUint32(ptr, true);
-    //   const refId = view.getUint32(ptr + 4, true);
-    //   const scopeMap = self.refs.get(scopeId);
-    //   if (!scopeMap) return [ptr + 8, null];
-    //   scopeMap.delete(refId);
-    //   if (scopeMap.size == 0) {
-    //     self.refs.delete(scopeId);
-    //   }
-    //   return [ptr + 8, null];
-    // };
-    // case ExprTag.Ref: {
-    //   const scopeId = view.getUint32(ptr, true);
-    //   const refId = view.getUint32(ptr + 4, true);
-    //   const val = self.refs.get(scopeId)?.get(refId);
-    //   return [ptr + 8, val];
-    // };
-    // case ExprTag.FreeScope: {
-    //   const scopeId = view.getUint32(ptr, true);
-    //   self.refs.delete(scopeId);
-    //   return [ptr + 4, null];
-    // };
-
-    // case ExprTag.PeekStack: {
-    //   const stackIx = view.getInt8(ptr);
-    //   let iter = self.stack;
-    //   let i = 0;
-    //   while (iter) {
-    //     if (i == stackIx) {
-    //       return [ptr + 1, iter[VAL]];
-    //     }
-    //     iter = iter[NEXT];
-    //     i++;
-    //   }
-    //   throw new Error("PeekStack: index out of stack size");
-    // };
-    // case ExprTag.PushStack: {
-    //   const [newPtr, val] = interpBytes(self, mem, ptr);
-    //   self.stack = Cons(val, self.stack);
-    //   return [newPtr, val];
-    // };
-    // case ExprTag.PopStack: {
-    //   if (!self.stack) {
-    //     throw new Error("PopStack: empty stack");
-    //   }
-    //   const val = self.stack[VAL];
-    //   self.stack = self.stack[NEXT];
-    //   return [ptr, val];
-    // };
-
-    // case ExprTag.InsPop: {
-    //   if (!self.stack) {
-    //     throw new Error("InsPop: empty stack");
-    //   }
-    //   const tip = self.stack[VAL] as Node;
-    //   self.stack = self.stack[NEXT];
-    //   if (!self.stack) {
-    //     throw new Error("InsPop: empty stack");
-    //   }
-    //   const parent = self.stack[VAL] as Element;
-    //   utils.insert(parent, tip);
-    //   return [ptr, tip];
-    // };
-    // case ExprTag.ElementProp: {
-    //   const [newPtr1, el] = interpBytes(self, mem, ptr);
-    //   const [newPtr2, key] = decodeString(self, mem, newPtr1);
-    //   const [newPtr3, val] = interpBytes(self, mem, newPtr2);
-    //   utils.prop(el as any, key, val);
-    //   return [newPtr3, null];
-    // };
-    // case ExprTag.ElementAttr: {
-    //   const [newPtr1, el] = interpBytes(self, mem, ptr);
-    //   const [newPtr2, key] = decodeString(self, mem, newPtr1);
-    //   const [newPtr3, val] = decodeString(self, mem, newPtr2);
-    //   utils.attr(el as any, key, val);
-    //   return [newPtr3, null];
-    // };
-    // case ExprTag.ClassListAdd: {
-    //   throw new Error("Unimplemented");
-    // };
-    // case ExprTag.ClassListRemove: {
-    //   throw new Error("Unimplemented");
-    // };
-    // case ExprTag.InsertBrackets: {
-    //   if (!self.stack) {
-    //     throw new Error("InsertBrackets: empty stack");
-    //   }
-    //   const el = self.stack[VAL] as any;
-    //   const node = utils.insertBrackets(el);
-    //   return [ptr, node];
-    // };
-    // case ExprTag.ClearBrackets: {
-    //   const [newPtr, node] = interpBytes(self, mem, ptr);
-    //   utils.clearBrackets(node as any, false);
-    //   return [newPtr, null];
-    // };
-    // case ExprTag.DropBrackets: {
-    //   const [newPtr, node] = interpBytes(self, mem, ptr);
-    //   utils.clearBrackets(node as any, true);
-    //   return [newPtr, null];
-    // };
-    // case ExprTag.CreateElement: {
-    //   const [newPtr, tagName] = decodeString(self, mem, ptr);
-    //   const el = document.createElement(tagName);
-    //   return [newPtr, el];
-    // };
-    // case ExprTag.CreateElementNS: {
-    //   const [newPtr1, tagName] = decodeString(self, mem, ptr);
-    //   const [newPtr2, ns] = decodeString(self, mem, newPtr1);
-    //   const el = document.createElementNS(tagName, ns);
-    //   return [newPtr2, el];
-    // };
-    // case ExprTag.CreateTextNode: {
-    //   const [newPtr, content] = decodeString(self, mem, ptr);
-    //   const node = document.createTextNode(content);
-    //   return [newPtr, node];
-    // };
-    // case ExprTag.UpdateTextNode: {
-    //   const [newPtr1, node] = interpBytes(self, mem, ptr);
-    //   const [newPtr2, content] = decodeString(self, mem, newPtr1);
-    //   (node as Text).textContent = content;
-    //   return [newPtr2, null];
-    // };
-    case ExprTag.Eval: {
+      for (let i = 0; i < len; i++) {
+        iter = lookaheadString(mem, iter);
+        iter = lookaheadNext(mem, iter);
+      }
+      return iter;
+    };
+    case ExprTag.U8Arr: {
       const len = Number(mem.getBigUint64(ptr, false));
       return ptr + 8 + len;
     };
-    case ExprTag.TriggerEvent: {
-      return lookAheadExpr(mem, ptr + 4);
+
+    case ExprTag.Dot: {
+      const newPtr = lookaheadNext(mem, ptr);
+      return lookaheadString(mem, newPtr);
     };
-    case ExprTag.YieldResult: {
+    case ExprTag.SetProp: {
+      const newPtr0 = lookaheadNext(mem, ptr);
+      const newPtr1 = lookaheadString(mem, newPtr0);
+      return lookaheadNext(mem, newPtr1);
+    };
+    case ExprTag.Ix: {
+      const newPtr = lookaheadNext(mem, ptr);
+      return newPtr + 4;
+    };
+    case ExprTag.Id: {
+      return lookaheadString(mem, ptr);
+    };
+
+    case ExprTag.Lam: {
+      return lookaheadNext(mem, ptr);
+    };
+    case ExprTag.Arg: {
+      return ptr + 1;
+    };
+    case ExprTag.Apply: {
+      const newPtr0 = lookaheadNext(mem, ptr);
+      return lookaheadNext(mem, newPtr0);
+    };
+    case ExprTag.Call: {
+      const newPtr0 = lookaheadNext(mem, ptr);
+      const newPtr1 = lookaheadString(mem, newPtr0);
+      return lookaheadNext(mem, newPtr1);
+    };
+
+    case ExprTag.AssignRef: {
+      return ptr + 8;
+    };
+    case ExprTag.FreeRef: {
+      return ptr + 8;
+    };
+    case ExprTag.Ref: {
+      return ptr + 8;
+    };
+    case ExprTag.FreeScope: {
+      return ptr + 4;
+    };
+
+    case ExprTag.PeekStack: {
+      return ptr + 1;
+    };
+    case ExprTag.PushStack: {
+      return lookaheadNext(mem, ptr);
+    };
+    case ExprTag.PopStack: {
+      return ptr;
+    };
+
+    case ExprTag.PopIns: {
+      return ptr;
+    };
+    case ExprTag.ElementProp: {
+      const newPtr0 = lookaheadNext(mem, ptr);
+      const newPtr1 = lookaheadString(mem, newPtr0);
+      return lookaheadNext(mem, newPtr1);
+    };
+    case ExprTag.ElementAttr: {
+      const newPtr0 = lookaheadNext(mem, ptr);
+      const newPtr1 = lookaheadString(mem, newPtr0);
+      return lookaheadString(mem, newPtr1);
+    };
+    case ExprTag.ClassListAdd: {
+      const newPtr0 = lookaheadNext(mem, ptr);
+      return lookaheadString(mem, newPtr0);
+    };
+    case ExprTag.ClassListRemove: {
+      const newPtr0 = lookaheadNext(mem, ptr);
+      return lookaheadString(mem, newPtr0);
+    };
+    case ExprTag.InsertBrackets: {
+      return ptr;
+    };
+    case ExprTag.ClearBrackets: {
+      return lookaheadNext(mem, ptr);
+    };
+    case ExprTag.DropBrackets: {
+      return lookaheadNext(mem, ptr);
+    };
+    case ExprTag.CreateElement: {
+      return lookaheadString(mem, ptr);
+    };
+    case ExprTag.CreateElementNS: {
+      const newPtr0 = lookaheadString(mem, ptr);
+      return lookaheadString(mem, newPtr0);
+    };
+    case ExprTag.CreateTextNode: {
+      return lookaheadString(mem, ptr);
+    };
+    case ExprTag.UpdateTextNode: {
+      const newPtr0 = lookaheadNext(mem, ptr);
+      return lookaheadString(mem, newPtr0);
+    };
+    case ExprTag.Eval: {
+      return lookaheadString(mem, ptr);
+    };
+    case ExprTag.TriggerEvent: {
+      return lookaheadNext(mem, ptr + 4);
+    };
+    case ExprTag.Resume: {
       return ptr + 4;
     };
   }
   throw new Error("lookAheadExpr: unimplemented");
+}
+
+export function lookaheadString(mem: DataView, ptr: Ptr): Ptr {
+  const len = Number(mem.getBigUint64(ptr, false));
+  return ptr + 8 + len;
 }
 
 export type EncoderState = {

@@ -14,8 +14,6 @@ module Clickable.Html where
 import Clickable.Internal
 import Clickable.Types
 import Control.Monad.Reader
-import Data.Binary qualified as Binary
-import Data.Binary.Put (execPut)
 import Data.Kind (Type)
 import Data.Text (Text)
 import GHC.Generics (Generic)
@@ -23,24 +21,24 @@ import Unsafe.Coerce (unsafeCoerce)
 
 el :: Text -> HtmlM a -> HtmlM a
 el tagName child = HtmlM \s e -> do
-  e.hte_send $ execPut $ Binary.put $ PushStack $ CreateElement tagName
-  r <- child.unHtmlM s e
-  e.hte_send $ execPut $ Binary.put PopIns
-  pure r
+  e.hte_send $ PushStack $ CreateElement tagName
+  (r, _) <- child.unHtmlM Nothing e
+  e.hte_send PopIns
+  pure (r, s)
 {-# INLINE el #-}
 
 elns :: Text -> Text -> HtmlM a -> HtmlM a
 elns ns tagName child = HtmlM \s e -> do
-  e.hte_send $ execPut $ Binary.put $ PushStack $ CreateElementNS ns tagName
-  r <- child.unHtmlM s e
-  e.hte_send $ execPut $ Binary.put PopIns
-  pure r
+  e.hte_send $ PushStack $ CreateElementNS ns tagName
+  (r, _) <- child.unHtmlM s e
+  e.hte_send PopIns
+  pure (r, s)
 {-# INLINE elns #-}
 
 text :: Text -> HtmlM ()
 text content = HtmlM \s e -> do
-  e.hte_send $ execPut $ Binary.put $ PushStack $ CreateTextNode content
-  e.hte_send $ execPut $ Binary.put $ PopIns
+  e.hte_send $ PushStack $ CreateTextNode content
+  e.hte_send PopIns
   return ((), s)
 {-# INLINE text #-}
 
@@ -48,18 +46,18 @@ dynText :: DynVal Text -> HtmlM ()
 dynText contentDyn = HtmlM \s e -> do
   c <- readVal contentDyn
   refId <- newRefId.unClickM e
-  e.hte_send $ execPut $ Binary.put $ PushStack $ CreateTextNode c
-  e.hte_send $ execPut $ Binary.put $ AssignRef refId (PeekStack 0)
-  e.hte_send $ execPut $ Binary.put $ PopIns
+  e.hte_send $ PushStack $ CreateTextNode c
+  e.hte_send $ AssignRef refId (PeekStack 0)
+  e.hte_send PopIns
   let k nval = ClickM \e' ->
-        e'.hte_send $ execPut $ Binary.put $ UpdateTextNode (Ref refId) nval
+        e'.hte_send $ UpdateTextNode (Ref refId) nval
   (subscribe contentDyn k).unClickM e
   pure ((), s)
 {-# INLINEABLE dynText #-}
 
 property :: ToValue val => Text -> val -> HtmlM ()
 property k v = HtmlM \s e -> do
-  e.hte_send $ execPut $ Binary.put $ ElementProp (PeekStack 0) k $ toValue v
+  e.hte_send $ ElementProp (PeekStack 0) k $ toValue v
   pure ((), s)
 {-# INLINE property #-}
 
@@ -67,16 +65,16 @@ dynProp :: ToValue val => Text -> DynVal val -> HtmlM ()
 dynProp propName dynVal = HtmlM \s e -> do
   (refId, s') <- saveStackTip.unHtmlM s e
   initVal <- readVal dynVal
-  e.hte_send $ execPut $ Binary.put $ ElementProp (PeekStack 0) propName $ toValue initVal
+  e.hte_send $ ElementProp (PeekStack 0) propName $ toValue initVal
   let k nval = ClickM \e' ->
-        e'.hte_send $ execPut $ Binary.put $ ElementProp (Ref refId) propName $ toValue nval
+        e'.hte_send $ ElementProp (Ref refId) propName $ toValue nval
   unClickM (subscribe dynVal k) e
   pure ((), s')
 {-# INLINE dynProp #-}
 
 attribute :: Text -> Text -> HtmlM ()
 attribute k v = HtmlM \s e -> do
-  e.hte_send $ execPut $ Binary.put $ ElementAttr (PeekStack 0) k v
+  e.hte_send $ ElementAttr (PeekStack 0) k v
   pure ((), s)
 {-# INLINE attribute #-}
 
@@ -84,12 +82,25 @@ dynAttr :: Text -> DynVal Text -> HtmlM ()
 dynAttr propName dynVal = HtmlM \s e -> do
   (refId, s') <- saveStackTip.unHtmlM s e
   initVal <- readVal dynVal
-  e.hte_send $ execPut $ Binary.put $ ElementAttr (PeekStack 0) propName initVal
+  e.hte_send $ ElementAttr (PeekStack 0) propName initVal
   let k nval = ClickM \e' ->
-        e'.hte_send $ execPut $ Binary.put $ ElementAttr (Ref refId) propName nval
+        e'.hte_send $ ElementAttr (Ref refId) propName nval
   unClickM (subscribe dynVal k) e
   pure ((), s')
 {-# INLINE dynAttr #-}
+
+toggleClass :: Text -> DynVal Bool -> HtmlM ()
+toggleClass className dynEnable = HtmlM \s e -> do
+  (refId, s') <- saveStackTip.unHtmlM s e
+  v <- readVal dynEnable
+  let k enable = ClickM \e' -> e'.hte_send
+          if enable
+            then ClassListAdd (Ref refId) className
+            else ClassListRemove (Ref refId) className
+  unClickM (k v) e
+  unClickM (subscribe dynEnable k) e
+  pure ((), s')
+{-# INLINE toggleClass #-}
 
 addEventListener :: FromValue a => (Event a -> Expr) -> (a -> ClickM ()) -> ClickM ()
 addEventListener connectScript k = do
@@ -108,23 +119,23 @@ class IsEventName eventName where
   connectEventName :: EventListenerCb eventName -> ClickM ()
 
 on :: forall eventName. IsEventName eventName => EventListenerCb eventName -> HtmlM ()
-on k = liftClick $ connectEventName @eventName k
+on k = liftC $ connectEventName @eventName k
 
 instance IsEventName "click" where
   type EventListenerCb "click" = ClickM ()
   connectEventName k = addEventListener
     (genericEvent defaultEventListenerOptions "click" (PeekStack 0)) (const k)
 
-data EventListenerOptions = EventListenerOptions
-  { prevent_default :: Bool
-  , stop_propagation :: Bool
-  } deriving stock (Generic, Show, Eq)
+data EventListenerOptions = EventListenerOptions {
+  prevent_default :: Bool,
+  stop_propagation :: Bool
+} deriving stock (Generic, Show, Eq)
 
 defaultEventListenerOptions :: EventListenerOptions
-defaultEventListenerOptions = EventListenerOptions
-  { prevent_default = False
-  , stop_propagation = False
-  }
+defaultEventListenerOptions = EventListenerOptions {
+  prevent_default = False,
+  stop_propagation = False
+}
 
 genericEvent :: EventListenerOptions -> Text -> Expr -> Event () -> Expr
 genericEvent opt eventName target (Event eventId) =
@@ -148,9 +159,9 @@ unsafeConnectEvent target ujs (Event eid) =
 
 attachHtml :: Expr -> HtmlM a -> ClickM a
 attachHtml rootEl contents = ClickM \e -> do
-  e.hte_send $ execPut $ Binary.put $ PushStack rootEl
+  e.hte_send $ PushStack rootEl
   (r, _) <- contents.unHtmlM Nothing e
-  e.hte_send $ execPut $ Binary.put PopIns
+  e.hte_send PopStack
   pure r
 
 attachToBody :: HtmlM a -> ClickM a
@@ -161,7 +172,7 @@ saveStackTip = HtmlM \s e ->
   case s of
     Nothing -> do
       refId <- newRefId.unClickM e
-      e.hte_send $ execPut $ Binary.put $ AssignRef refId $ PeekStack 0
+      e.hte_send $ AssignRef refId $ PeekStack 0
       return (refId, Just refId)
     Just saved ->
       pure (saved, s)

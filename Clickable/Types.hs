@@ -35,8 +35,13 @@ import GHC.Types
 import GHC.Generics
 
 newtype ClickM a = ClickM {unClickM :: InternalEnv -> IO a}
-  deriving (Functor, Applicative, Monad, MonadIO, MonadReader InternalEnv)
-    via ReaderT InternalEnv IO
+  deriving (
+    Functor,
+    Applicative,
+    Monad,
+    MonadIO,
+    MonadReader InternalEnv
+  ) via ReaderT InternalEnv IO
 
 instance MonadState InternalState ClickM where
   state f = ClickM \e ->
@@ -47,27 +52,32 @@ instance MonadState InternalState ClickM where
   put s = ClickM \e -> writeIORef e.hte_state s
   {-# INLINE put #-}
 
-data InternalEnv = InternalEnv
-  { hte_send :: Builder -> IO ()
-  , hte_flush :: IO ValueExpr
-  , hte_state :: IORef InternalState
-  , hte_scope :: ScopeId
-  , hte_prompt_tag :: PromptTag ()
-  }
+data InternalEnv = InternalEnv {
+  hte_send :: Expr -> IO (),
+  hte_flush :: IO ValueExpr,
+  hte_state :: IORef InternalState,
+  hte_scope :: ScopeId,
+  hte_prompt_tag :: PromptTag (),
+  hte_continuations :: IORef (Map ContId (IO ValueExpr -> IO ()))
+}
 
-data InternalState = InternalState
-  { subscriptions :: [Subscription Any]
-  , finalizers :: [Finalizer]
-  , transaction_queue :: Map EventId (ClickM ())
-  , next_id :: Word32
-  }
+data InternalState = InternalState {
+  subscriptions :: [Subscription Any],
+  finalizers :: [Finalizer],
+  transaction_queue :: Map EventId (ClickM ()),
+  next_id :: Word32
+}
 
-newtype HtmlM a = HtmlM
-  {unHtmlM :: Maybe RefId -> InternalEnv -> IO (a, Maybe RefId)}
-  deriving (Functor, Applicative, Monad, MonadIO) via StateT (Maybe RefId) ClickM
+newtype HtmlM a = HtmlM {unHtmlM :: Maybe RefId -> InternalEnv -> IO (a, Maybe RefId)}
+  deriving (
+    Functor,
+    Applicative,
+    Monad,
+    MonadIO
+  ) via StateT (Maybe RefId) ClickM
 
-liftClick :: ClickM a -> HtmlM a
-liftClick (ClickM a) = HtmlM \s e -> (,s) <$> a e
+liftC :: ClickM a -> HtmlM a
+liftC (ClickM a) = HtmlM \s e -> (,s) <$> a e
 
 data Expr where
   Null :: Expr
@@ -109,8 +119,8 @@ data Expr where
   PopIns :: Expr
   ElementProp :: Expr -> Text -> Expr -> Expr
   ElementAttr :: Expr -> Text -> Text -> Expr
-  ClassListAdd :: [Text] -> Expr
-  ClassListRemove :: [Text] -> Expr
+  ClassListAdd :: Expr -> Text -> Expr
+  ClassListRemove :: Expr -> Text -> Expr
   InsertBrackets :: Expr
   ClearBrackets :: Expr -> Expr
   DropBrackets :: Expr -> Expr
@@ -122,7 +132,7 @@ data Expr where
 
   Eval :: UnsafeJavaScript -> Expr
   TriggerEvent :: EventId -> Expr -> Expr
-  YieldResult :: Word32 -> Expr
+  Resume :: ContId -> Expr
 
   deriving stock Generic
   deriving anyclass Binary
@@ -130,7 +140,7 @@ data Expr where
 data ClientMsg where
   StartMsg :: StartFlags -> ClientMsg
   EventMsg :: EventId -> Expr -> ClientMsg
-  ResumeMsg :: Word32 -> Expr -> ClientMsg
+  ResumeMsg :: ContId -> Expr -> ClientMsg
   deriving stock Generic
   deriving anyclass Binary
 
@@ -145,8 +155,10 @@ data RefId = RefId ScopeId Word32
   deriving anyclass (Binary)
 
 newtype EventId = EventId {unEventId :: Word32}
-  deriving newtype (Show, Ord, Eq)
-  deriving newtype (Binary)
+  deriving newtype (Show, Ord, Eq, Binary)
+
+newtype ContId = ContId {unContId :: Word32}
+  deriving newtype (Show, Ord, Eq, Binary)
 
 newtype UnsafeJavaScript = UnsafeJavaScript {unUnsafeJavaScript :: Text}
   deriving newtype (IsString, Show, Semigroup, Monoid, Binary)
@@ -192,27 +204,27 @@ fromVar = FromVar
 {-# INLINE fromVar #-}
 
 data Subscription a
-  = SubscriptionSimple
-    { ss_scope :: ScopeId
-    , ss_event_id :: Event a
-    , ss_callback :: a -> ClickM ()
-    }
-  | forall b. SubscriptionAccum
-    { sa_resource_scope :: ScopeId
-    , sa_event_id :: Event a
-    , sa_callback :: a -> b -> ClickM b
-    , sa_accum_ref :: IORef b
-    }
+  = SubscriptionSimple {
+    ss_scope :: ScopeId,
+    ss_event_id :: Event a,
+    ss_callback :: a -> ClickM ()
+  }
+  | forall b. SubscriptionAccum {
+    sa_resource_scope :: ScopeId,
+    sa_event_id :: Event a,
+    sa_callback :: a -> b -> ClickM b,
+    sa_accum_ref :: IORef b
+  }
 
 data Finalizer
-  = CustomFinalizer
-    { cf_resource_scope :: ScopeId
-    , cf_callback :: ClickM ()
-    }
-  | ScopeFinalizer
-    { sf_resource_scope :: ScopeId
-    , sf_linked_scope :: ScopeId
-    }
+  = CustomFinalizer {
+    cf_resource_scope :: ScopeId,
+    cf_callback :: ClickM ()
+  }
+  | ScopeFinalizer {
+    sf_resource_scope :: ScopeId,
+    sf_linked_scope :: ScopeId
+  }
 
 finalizerScope :: Finalizer -> ScopeId
 finalizerScope CustomFinalizer{cf_resource_scope} = cf_resource_scope
@@ -403,6 +415,10 @@ instance GFromJSObject (x :*: y) => GFromValue (x :*: y) where
   gFromValue (Obj kvs) = gFromJSObject kvs
   gFromValue _ = Nothing
 
+instance GFromJSSum (x :+: y) => GFromValue (x :+: y) where
+  gFromValue (Arr [Str tag, v]) = gFromJSSum tag v
+  gFromValue _ = Nothing
+
 instance {-# OVERLAPPING #-} FromValue a => GFromValue (S1 s (Rec0 a)) where
   gFromValue = fmap (M1 . K1) . fromValue @a
 --------------------------------------------------------------------------------
@@ -418,6 +434,9 @@ instance GToValue U1 where
 
 instance GToJSObject (x :*: y) => GToValue (x :*: y) where
   gToValue (x :*: y) = Obj $ gToJSObject (x :*: y)
+
+instance GToJSSum (x :+: y) => GToValue (x :+: y) where
+  gToValue = gToJSSum
 
 instance {-# OVERLAPPING #-} (ToValue a) => GToValue (S1 s (Rec0 a)) where
   gToValue (M1 (K1 a)) = toValue a
@@ -451,6 +470,53 @@ instance {-# OVERLAPPING #-} (FromValue a, Selector s) => GFromJSObject (S1 s (R
   gFromJSObject kvs = List.lookup key kvs >>= fmap (M1 . K1) . fromValue
     where
       key = Text.pack $ selName (undefined :: M1 S s (Rec0 a) x)
+--------------------------------------------------------------------------------
+
+class GFromJSSum (f :: Type -> Type) where
+  gFromJSSum :: Text -> ValueExpr -> Maybe (f x)
+
+instance (GFromJSSum x, GFromJSSum y) => GFromJSSum (x :+: y) where
+  gFromJSSum tag v = case gFromJSSum @x tag v of
+    Just a -> Just $ L1 a
+    Nothing -> case gFromJSSum @y tag v of
+      Just b -> Just $ R1 b
+      Nothing -> Nothing
+
+instance FromValue a => GFromValue (K1 R a) where
+  gFromValue v = fmap K1 $ fromValue @a v
+
+instance {-# OVERLAPPING #-} (GFromValue (f a), Constructor s) => GFromJSSum (C1 s (f a)) where
+  gFromJSSum tag v =
+    if tag == key then fmap M1 $ gFromValue v else Nothing
+    where
+      key = Text.pack $ conName (undefined :: C1 s (f a) x)
+
+instance {-# OVERLAPPING #-} Constructor s => GFromJSSum (C1 s U1) where
+  gFromJSSum tag _ =
+    if tag == key then Just (M1 U1) else Nothing
+    where
+      key = Text.pack $ conName (undefined :: C1 s (f a) x)
+--------------------------------------------------------------------------------
+
+class GToJSSum (f :: Type -> Type) where
+  gToJSSum :: f x -> ValueExpr
+
+instance (GToJSSum x, GToJSSum y) => GToJSSum (x :+: y) where
+  gToJSSum (L1 v) = gToJSSum v
+  gToJSSum (R1 v) = gToJSSum v
+
+instance ToValue a => GToValue (K1 R a) where
+  gToValue (K1 v) = toValue @a v
+
+instance {-# OVERLAPPING #-} (GToValue (f a), Constructor s) => GToJSSum (C1 s (f a)) where
+  gToJSSum (M1 v) =
+    Arr [Str key, gToValue v]
+    where
+      key = Text.pack $ conName (undefined :: C1 s (f a) x)
+
+instance {-# OVERLAPPING #-} Constructor s => GToJSSum (C1 s U1) where
+  gToJSSum (M1 U1) = Arr [Str key] where
+    key = Text.pack $ conName (undefined :: C1 s (f a) x)
 --------------------------------------------------------------------------------
 
 {-| Boxed versions of [Delimited

@@ -14,19 +14,19 @@ export function runWebsocket(devSocketUri: string, startFlags: unknown = null) {
   function triggerEvent(eventId: EventId, arg: unknown) {
     const encoderState = {mem, begin: 0, end: outBuf.byteLength};
     proto.encodeClientMessage(encoderState, [ClientMsgTag.EventMsg, eventId, arg]);
-    websocket.send(new Uint8Array(outBuf).subarray(0, encoderState.end));
+    websocket.send(new Uint8Array(outBuf).subarray(0, encoderState.begin));
   };
 
   function resumeCont(contId: number, res: unknown) {
     const encoderState = {mem, begin: 0, end: outBuf.byteLength};
     proto.encodeClientMessage(encoderState, [ClientMsgTag.ResumeMsg, contId, res]);
-    websocket.send(new Uint8Array(outBuf).subarray(0, encoderState.end));
+    websocket.send(new Uint8Array(outBuf).subarray(0, encoderState.begin));
   };
 
   websocket.onopen = (_event) => {
     const encoderState = {mem, begin: 0, end: outBuf.byteLength};
     proto.encodeClientMessage(encoderState, [ClientMsgTag.StartMsg, startFlags]);
-    websocket.send(new Uint8Array(outBuf).subarray(0, encoderState.end));
+    websocket.send(new Uint8Array(outBuf).subarray(0, encoderState.begin));
   };
 
   // Event handler for receiving messages from the server
@@ -57,7 +57,7 @@ export function runWebsocket(devSocketUri: string, startFlags: unknown = null) {
       // Assuming the server went down because it was re-compiled, wait
       // until it comes back and reload the tab
       const websocketTest = new WebSocket(devSocketUri);
-      const nextTimeout = Math.min(30_000, timeout * 2);
+      const nextTimeout = Math.min(5_000, timeout * 2);
       websocketTest.onopen = (_event) => window.location.reload();
       websocketTest.onclose = (_event) => { setTimeout(() => backoffLoop(nextTimeout), timeout); }
     }

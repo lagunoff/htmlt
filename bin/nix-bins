@@ -42,9 +42,7 @@ for command in "${commands[@]}"; do
     cat << EOF > "$script_path"
 #!/usr/bin/env sh
 
-SCRIPT_DIR=\$(dirname "\$(realpath "\$0")")
-
-source "\${SCRIPT_DIR}/nix-shell-cache.sh"
+source "\$(dirname "\$(realpath "\$0")")/nix-shell-cache.sh"
 
 ${command} "\$@"
 EOF

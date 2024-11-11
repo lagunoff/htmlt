@@ -3,7 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE OverloadedRecordDot #-}
-{-# OPTIONS_GHC -Wno-name-shadowing #-}
+{-# OPTIONS_GHC -Wall #-}
 module Clickable.Internal where
 
 import Clickable.Types
@@ -12,13 +12,11 @@ import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Data.Binary qualified as Binary
 import Data.Binary.Put (execPut)
-import Data.ByteString.Builder ( Builder )
+import Data.ByteString.Builder ( Builder, byteString )
 import Data.ByteString.Builder.Extra (runBuilder, Next (..), BufferWriter)
-import Data.ByteString.Unsafe
 import Data.Functor.Const
 import Data.IORef
 import Data.List qualified as List
-import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Text (Text)
 import Data.Tuple (swap)
@@ -28,6 +26,7 @@ import Foreign.Marshal.Alloc (mallocBytes)
 import Foreign.Ptr
 import GHC.Exts
 import Unsafe.Coerce
+import Data.ByteString.Unsafe
 
 newEvent :: ClickM (Event a)
 newEvent = state \s ->
@@ -305,61 +304,63 @@ writeVarQuiet var = modifyVarQuiet_ var . const
 {-# INLINE writeVarQuiet #-}
 
 enqueueExpr :: Expr -> ClickM ()
-enqueueExpr exp = ClickM \e ->
-  e.hte_send $ execPut $ Binary.put exp
+enqueueExpr cmd = ClickM \e ->
+  e.hte_send cmd
 {-# INLINE enqueueExpr #-}
 
 evalExpr :: Expr -> ClickM Expr
-evalExpr exp = ClickM \e -> do
-  e.hte_send $ execPut $ Binary.put exp
-  return undefined
+evalExpr cmd = ClickM \e -> do
+  e.hte_send cmd
+  e.hte_flush
 {-# INLINE evalExpr #-}
 
-withBuffer :: Ptr Word8 -> Int -> (CStringLen -> IO ()) -> IO (Builder -> IO (), IO ())
-withBuffer buf bufSize consume = do
-  -- buf <- mallocBytes bufSize
+withBuffer :: CStringLen -> (CStringLen -> IO ()) -> IO (Expr -> IO (), IO ())
+withBuffer (buf, bufSize) consume = do
   offset <- newIORef 0
-  let write b = do
+  let write cmd = do
         off <- readIORef offset
-        newOff <- writeLoop (runBuilder b) off
+        let b = runBuilder $ execPut $ Binary.put cmd
+        newOff <- writeLoop b off
         writeIORef offset newOff
       writeLoop :: BufferWriter -> Int -> IO Int
       writeLoop bufWrite off = do
         (written, next) <- bufWrite (buf `plusPtr` off) (bufSize - off)
+        let off' = off + written
         case next of
-          Done -> pure $ off + written
-          More _size moreWrite -> do
-            consume (castPtr buf, bufSize)
-            writeLoop moreWrite 0
-          Chunk chunk moreWrite -> do
-            unsafeUseAsCStringLen chunk consume
-            writeLoop moreWrite off
+          Done -> pure off'
+          More minSize _moreWrite
+            | off == 0 -> error $ "Buffer too small for this command, required at least " <> show minSize <> " bytes"
+            | otherwise -> do
+              unless (off == 0) $ consume (castPtr buf, off)
+              writeLoop bufWrite 0
+          -- Chunk chunk moreWrite -> do
+          --   writeLoop (byteString chunk <> moreWrite) 0
       flush = do
         off <- atomicModifyIORef' offset (0,)
         consume (castPtr buf, off)
   return (write, flush)
 
-newInternalEnv :: Int -> (CStringLen -> IO ()) -> IO
-  ( InternalEnv
-  , IORef (Map Word32 (IO ValueExpr -> IO ()))
-  , CStringLen )
+newInternalEnv :: Int -> (CStringLen -> IO ()) -> IO (InternalEnv, CStringLen)
 newInternalEnv bufSize consume = do
   buf <- mallocBytes bufSize
   hte_state <- newIORef emptyState
-  (send', flush) <- withBuffer buf bufSize consume
+  (write, flush) <- withBuffer (buf, bufSize) consume
   hte_prompt_tag <- newPromptTag
-  continuations <- newIORef Map.empty
-  let env = InternalEnv
-        { hte_send = send'
-        , hte_flush = do
-            tid <- atomicModifyIORef' hte_state \s ->
-              (s {next_id = s.next_id + 1}, s.next_id)
-            send' $ execPut $ Binary.put $ YieldResult tid
-            flush
-            control hte_prompt_tag \c ->
-              modifyIORef' continuations $ Map.insert tid c
-        , hte_state
-        , hte_scope = ScopeId 0
-        , hte_prompt_tag
-        }
-  pure (env, continuations, (castPtr buf, bufSize))
+  hte_continuations <- newIORef Map.empty
+  let bufResult = (castPtr buf, bufSize)
+  pure (
+    InternalEnv {
+      hte_send = write,
+      hte_flush = do
+        tid <- atomicModifyIORef' hte_state \s ->
+          (s {next_id = s.next_id + 1}, ContId s.next_id)
+        write $ Resume tid
+        flush
+        control hte_prompt_tag \c ->
+          modifyIORef' hte_continuations $ Map.insert tid c,
+      hte_state,
+      hte_scope = ScopeId 0,
+      hte_prompt_tag,
+      hte_continuations
+    }, bufResult
+    )
