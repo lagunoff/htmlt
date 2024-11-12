@@ -27,6 +27,7 @@ import Foreign.Ptr
 import GHC.Exts
 import Unsafe.Coerce
 import Data.ByteString.Unsafe
+import Data.ByteString (ByteString)
 
 newEvent :: ClickM (Event a)
 newEvent = state \s ->
@@ -314,37 +315,57 @@ evalExpr cmd = ClickM \e -> do
   e.hte_flush
 {-# INLINE evalExpr #-}
 
-withBuffer :: CStringLen -> (CStringLen -> IO ()) -> IO (Expr -> IO (), IO ())
-withBuffer (buf, bufSize) consume = do
-  offset <- newIORef 0
-  let write cmd = do
-        off <- readIORef offset
-        let b = runBuilder $ execPut $ Binary.put cmd
-        newOff <- writeLoop b off
-        writeIORef offset newOff
-      writeLoop :: BufferWriter -> Int -> IO Int
-      writeLoop bufWrite off = do
-        (written, next) <- bufWrite (buf `plusPtr` off) (bufSize - off)
-        let off' = off + written
-        case next of
-          Done -> pure off'
-          More minSize _moreWrite
-            | off == 0 -> error $ "Buffer too small for this command, required at least " <> show minSize <> " bytes"
-            | otherwise -> do
-              unless (off == 0) $ consume (castPtr buf, off)
-              writeLoop bufWrite 0
-          -- Chunk chunk moreWrite -> do
-          --   writeLoop (byteString chunk <> moreWrite) 0
-      flush = do
-        off <- atomicModifyIORef' offset (0,)
-        consume (castPtr buf, off)
-  return (write, flush)
+commandBuffer :: CStringLen -> (CStringLen -> IO ()) -> IO (Expr -> IO (), IO ())
+commandBuffer (buf, bufSize) consume = do
+  ref <- newIORef 0
+  return (write ref, flush ref)
+  where
+    write :: IORef Int -> Expr -> IO ()
+    write ref cmd = do
+      off <- readIORef ref
+      let b = runBuilder $ execPut $ Binary.put cmd
+      newOff <- writeCommand b off
+      writeIORef ref newOff
+
+    writeCommand :: BufferWriter -> Int -> IO Int
+    writeCommand bufWrite off = do
+      (written, next) <- bufWrite (buf `plusPtr` off) (bufSize - off)
+      let off' = off + written
+      case next of
+        Done -> pure off'
+        More minSize _moreWrite
+          | off == 0 ->
+            error $ "Buffer too small, encountered command that requires at \
+                    \least " <> show minSize <> " bytes"
+          | otherwise -> do
+            consume (castPtr buf, off)
+            writeRemains bufWrite 0
+        Chunk chunk moreWrite -> do
+          off1 <- writeRemains (runBuilder $ execPut $ Binary.put chunk) off
+          writeRemains moreWrite off1
+
+    writeRemains :: BufferWriter -> Int -> IO Int
+    writeRemains bufWrite off = do
+      (written, next) <- bufWrite (buf `plusPtr` off) (bufSize - off)
+      let off' = off + written
+      case next of
+        Done -> pure off'
+        More _minSize _moreWrite ->
+          error $ "Buffer too small, inscrease the buffer size"
+        Chunk chunk moreWrite -> do
+          off1 <- writeRemains (runBuilder $ execPut $ Binary.put chunk) off
+          writeRemains moreWrite off1
+
+    flush :: IORef Int -> IO ()
+    flush ref = do
+      off <- atomicModifyIORef' ref (0,)
+      consume (castPtr buf, off)
 
 newInternalEnv :: Int -> (CStringLen -> IO ()) -> IO (InternalEnv, CStringLen)
 newInternalEnv bufSize consume = do
   buf <- mallocBytes bufSize
   hte_state <- newIORef emptyState
-  (write, flush) <- withBuffer (buf, bufSize) consume
+  (write, flush) <- commandBuffer (buf, bufSize) consume
   hte_prompt_tag <- newPromptTag
   hte_continuations <- newIORef Map.empty
   let bufResult = (castPtr buf, bufSize)
