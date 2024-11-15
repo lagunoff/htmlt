@@ -12,7 +12,6 @@ import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Data.Binary qualified as Binary
 import Data.Binary.Put (execPut)
-import Data.ByteString.Builder ( Builder, byteString )
 import Data.ByteString.Builder.Extra (runBuilder, Next (..), BufferWriter)
 import Data.Functor.Const
 import Data.IORef
@@ -20,37 +19,34 @@ import Data.List qualified as List
 import Data.Map qualified as Map
 import Data.Text (Text)
 import Data.Tuple (swap)
-import Data.Word
 import Foreign.C.String (CStringLen)
 import Foreign.Marshal.Alloc (mallocBytes)
 import Foreign.Ptr
 import GHC.Exts
 import Unsafe.Coerce
-import Data.ByteString.Unsafe
-import Data.ByteString (ByteString)
 
-newEvent :: ClickM (Event a)
+newEvent :: JSM (Event a)
 newEvent = state \s ->
   (Event (EventId s.next_id), s {next_id = s.next_id + 1})
 
-mapEvent :: (a -> b) -> Event a -> ClickM (Event b)
+mapEvent :: (a -> b) -> Event a -> JSM (Event b)
 mapEvent f ea = do
   eb <- newEvent
   subscribeEvent ea $ triggerEvent eb . f
   return eb
 
-mapMaybeEvent :: (a -> Maybe b) -> Event a -> ClickM (Event b)
+mapMaybeEvent :: (a -> Maybe b) -> Event a -> JSM (Event b)
 mapMaybeEvent f ea = do
   eb <- newEvent
   subscribeEvent ea $ mapM_ (triggerEvent eb) . f
   return eb
 
-subscribeEvent :: forall a. Event a -> (a -> ClickM ()) -> ClickM ()
+subscribeEvent :: forall a. Event a -> (a -> JSM ()) -> JSM ()
 subscribeEvent (Event eid) k = reactive_ g where
   newSub scope = SubscriptionSimple scope (coerce eid) (k . unsafeCoerce)
   g scope s = s {subscriptions = newSub scope : s.subscriptions}
 
-subscribe :: forall a. DynVal a -> (a -> ClickM ()) -> ClickM ()
+subscribe :: forall a. Dynamic a -> (a -> JSM ()) -> JSM ()
 subscribe (ConstVal _) _ = return ()
 subscribe (FromVar (SourceVar srcid _)) k = reactive_ g where
   newSub scope = SubscriptionSimple scope (coerce srcid) (k . unsafeCoerce)
@@ -89,7 +85,7 @@ triggerEventOp event pload =
     eventEq :: forall a b. Event a -> Event b -> Bool
     eventEq (Event a) (Event b) = a == b
 
-    notify :: [Subscription Any] -> ClickM ()
+    notify :: [Subscription Any] -> JSM ()
     notify [] = return ()
     notify (SubscriptionSimple {ss_event_id, ss_callback} : xs)
       | ss_event_id `eventEq` event = ss_callback (unsafeCoerce pload) >> notify xs
@@ -97,58 +93,58 @@ triggerEventOp event pload =
     notify (SubscriptionAccum {sa_event_id, sa_callback, sa_accum_ref} : xs)
       | sa_event_id `eventEq` event = notifyAcc sa_callback sa_accum_ref >> notify xs
       | otherwise = notify xs
-    notifyAcc :: forall b. (Any -> b -> ClickM b) -> IORef b ->  ClickM ()
+    notifyAcc :: forall b. (Any -> b -> JSM b) -> IORef b ->  JSM ()
     notifyAcc k ref = do
       acc <- liftIO $ readIORef ref
       acc' <- k (unsafeCoerce pload) acc
       liftIO $ writeIORef ref acc'
-    defer :: Event a -> ClickM () -> InternalState -> InternalState
+    defer :: Event a -> JSM () -> InternalState -> InternalState
     defer k act s = s
       {transaction_queue = Map.insert k.unEvent act s.transaction_queue}
 
-triggerEvent :: Event a -> a -> ClickM ()
+triggerEvent :: Event a -> a -> JSM ()
 triggerEvent e a = modify $ triggerEventOp e a
 {-# INLINE triggerEvent #-}
 
-reactive :: (ScopeId -> InternalState -> (InternalState, a)) -> ClickM a
-reactive f = ClickM \e -> atomicModifyIORef' e.hte_state $ f e.hte_scope
+reactive :: (ScopeId -> InternalState -> (InternalState, a)) -> JSM a
+reactive f = JSM \e -> atomicModifyIORef' e.hte_state $ f e.hte_scope
 {-# INLINE reactive #-}
 
-reactive_ :: (ScopeId -> InternalState -> InternalState) -> ClickM ()
+reactive_ :: (ScopeId -> InternalState -> InternalState) -> JSM ()
 reactive_ f = reactive \scope s -> (f scope s, ())
 {-# INLINE reactive_ #-}
 
 -- | Loop until transaction_queue is empty.
 --
--- Makes possible to implement @Applicative DynVal@ without invoking
+-- Makes possible to implement @Applicative Dynamic@ without invoking
 -- subscribers redundantly when multiple events are fired in the same
 -- transition
-trampoline :: ClickM a -> ClickM a
+trampoline :: JSM a -> JSM a
 trampoline act = loop0 act where
-  loop0 :: ClickM a -> ClickM a
+  loop0 :: JSM a -> JSM a
   loop0 before = do
     r <- before
     mcont <- popQueue
     forM_ mcont loop1
     return r
-  loop1 :: ClickM () -> ClickM ()
+  loop1 :: JSM () -> JSM ()
   loop1 before = do
     before
     mcont <- popQueue
     forM_ mcont loop1
-  popQueue :: ClickM (Maybe (ClickM ()))
+  popQueue :: JSM (Maybe (JSM ()))
   popQueue = state \s ->
     case Map.minViewWithKey s.transaction_queue of
       Nothing -> (Nothing, s)
       Just ((_, r), newQueue) -> (Just r, s {transaction_queue = newQueue})
 
-runTransition :: InternalEnv -> ClickM () -> IO ()
+runTransition :: InternalEnv -> JSM () -> IO ()
 runTransition e c =
   prompt e.hte_prompt_tag $
-    ($ e) . unClickM . (<* syncPoint) . trampoline $ c
+    ($ e) . unJSM . (<* syncPoint) . trampoline $ c
 
-syncPoint :: ClickM ()
-syncPoint = ClickM \e -> void $ e.hte_flush
+syncPoint :: JSM ()
+syncPoint = JSM \e -> void $ e.hte_flush
 
 unsafeInsertHtml :: Text -> Expr
 unsafeInsertHtml rawHtml = Eval
@@ -166,7 +162,7 @@ unsafeInsertHtml rawHtml = Eval
    \}\
    \})" `Apply` [PeekStack 0, Str rawHtml]
 
-newScope :: ClickM ScopeId
+newScope :: JSM ScopeId
 newScope = reactive newScopeOp
 {-# INLINE newScope #-}
 
@@ -178,7 +174,7 @@ newScopeOp p s = (s', scope)
     scope = ScopeId s.next_id
 {-# INLINE newScopeOp #-}
 
-newRefId :: ClickM RefId
+newRefId :: JSM RefId
 newRefId = reactive newRefIdOp
 {-# INLINE newRefId #-}
 
@@ -186,7 +182,7 @@ newRefIdOp :: ScopeId -> InternalState -> (InternalState, RefId)
 newRefIdOp e s = (s {next_id = s.next_id + 1}, RefId e s.next_id)
 {-# INLINE newRefIdOp #-}
 
-freeScope :: Bool -> ScopeId -> ClickM ()
+freeScope :: Bool -> ScopeId -> JSM ()
 freeScope unlink s =
   reactive (const (freeScopeOp unlink s)) >>= applyFin
   where
@@ -208,11 +204,11 @@ freeScopeOp unlink scope s =
     subscriptions = List.filter chkSub s.subscriptions
 {-# INLINE freeScopeOp #-}
 
-installFinalizer :: ClickM () -> ClickM ()
+installFinalizer :: JSM () -> JSM ()
 installFinalizer = reactive_ . installFinalizerOp
 {-# INLINE installFinalizer #-}
 
-installFinalizerOp :: ClickM () -> ScopeId -> InternalState -> InternalState
+installFinalizerOp :: JSM () -> ScopeId -> InternalState -> InternalState
 installFinalizerOp k scope s =
   s {finalizers = CustomFinalizer scope k : s.finalizers}
 {-# INLINE installFinalizerOp #-}
@@ -224,7 +220,7 @@ emptyState = InternalState [] [] Map.empty 0
 -- OPERATIONS OVER DYNAMIC VARIABLES --
 ---------------------------------------
 
-readVal :: MonadIO m => DynVal a -> m a
+readVal :: MonadIO m => Dynamic a -> m a
 readVal (ConstVal a) = pure a
 readVal (FromVar var) = readVar var
 readVal (MapVal val f) = fmap f $ readVal val
@@ -236,7 +232,7 @@ readVar (SourceVar _ ref) = liftIO $ readIORef ref
 readVar (LensMap l var) = fmap (getConst . l Const) $ readVar var
 readVar (OverrideVar _ var) = readVar var
 
-newVar :: a -> ClickM (DynVar a)
+newVar :: a -> JSM (DynVar a)
 newVar a = do
   ref <- liftIO $ newIORef a
   let mkEv s = unsafeFromEventId $ EventId s.next_id
@@ -248,7 +244,7 @@ overrideVar = OverrideVar
 lensMap :: Lens' s a -> DynVar s -> DynVar a
 lensMap = LensMap
 
-modifyVar :: DynVar s -> (s -> (s, a)) -> ClickM a
+modifyVar :: DynVar s -> (s -> (s, a)) -> JSM a
 modifyVar (SourceVar varId ref) f = do
   (newVal, a) <- liftIO $ atomicModifyIORef' ref g
   triggerEvent varId newVal
@@ -259,16 +255,16 @@ modifyVar (OverrideVar ufn var) f =
   ufn (modifyVar var) f
 modifyVar (LensMap l var) f = modifyVar var (swap . l (swap . f))
 
-modifyVar_ :: DynVar s -> (s -> s) -> ClickM ()
+modifyVar_ :: DynVar s -> (s -> s) -> JSM ()
 modifyVar_ var f = modifyVar var ((,()) . f)
 
-writeVar :: DynVar s -> s -> ClickM ()
+writeVar :: DynVar s -> s -> JSM ()
 writeVar var s = modifyVar_ var $ const s
 
-forDyn :: DynVal a -> (a -> ClickM ()) -> ClickM ()
+forDyn :: Dynamic a -> (a -> JSM ()) -> JSM ()
 forDyn dval action = readVal dval >>= action >> subscribe dval action
 
-forVar :: DynVar a -> (a -> ClickM ()) -> ClickM ()
+forVar :: DynVar a -> (a -> JSM ()) -> JSM ()
 forVar = forDyn . fromVar
 
 -- | Update the value inside a DynVar without notifying
@@ -287,7 +283,7 @@ forVar = forDyn . fromVar
 --   button_ do {text "-"; on @"click" $ modifyVar_ counter pred;}
 --   button_ do {text "+"; on @"click" $ modifyVar_ counter succ;}
 -- @
-modifyVarQuiet :: DynVar s -> (s -> (s, a)) -> ClickM a
+modifyVarQuiet :: DynVar s -> (s -> (s, a)) -> JSM a
 modifyVarQuiet (SourceVar _varId ref) f = do
   liftIO $ atomicModifyIORef' ref f
 modifyVarQuiet (OverrideVar ufn var) f =
@@ -296,21 +292,21 @@ modifyVarQuiet (LensMap l var) f =
   modifyVarQuiet var (swap . l (swap . f))
 {-# INLINEABLE modifyVarQuiet #-}
 
-modifyVarQuiet_ :: DynVar s -> (s -> s) -> ClickM ()
+modifyVarQuiet_ :: DynVar s -> (s -> s) -> JSM ()
 modifyVarQuiet_ var f = modifyVarQuiet var ((,()) . f)
 {-# INLINE modifyVarQuiet_ #-}
 
-writeVarQuiet :: DynVar s -> s -> ClickM ()
+writeVarQuiet :: DynVar s -> s -> JSM ()
 writeVarQuiet var = modifyVarQuiet_ var . const
 {-# INLINE writeVarQuiet #-}
 
-enqueueExpr :: Expr -> ClickM ()
-enqueueExpr cmd = ClickM \e ->
+enqueueExpr :: Expr -> JSM ()
+enqueueExpr cmd = JSM \e ->
   e.hte_send cmd
 {-# INLINE enqueueExpr #-}
 
-evalExpr :: Expr -> ClickM Expr
-evalExpr cmd = ClickM \e -> do
+evalExpr :: Expr -> JSM Expr
+evalExpr cmd = JSM \e -> do
   e.hte_send cmd
   e.hte_flush
 {-# INLINE evalExpr #-}

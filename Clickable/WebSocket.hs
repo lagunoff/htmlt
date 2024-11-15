@@ -37,14 +37,15 @@ import Network.WebSockets
 import System.IO
 
 data ServerConfig = ServerConfig {
-  srv_html_template :: TemplateConfig -> Builder,
-  srv_docroots :: [FilePath],
-  srv_client :: WebSocketConn -> StartFlags -> ClickM (),
-  srv_connection_lost :: WebSocketConn -> IO ()
+  cfg_html_template :: TemplateConfig -> Builder,
+  cfg_docroots :: [FilePath],
+  cfg_client :: ClientConnection -> StartFlags -> JSM (),
+  cfg_connection_lost :: ClientConnection -> IO (),
+  cfg_middleware :: Middleware
 }
 
 data ServerInstance = ServerInstance {
-  sri_connection_state :: IORef (Map ConnectionId WebSocketConn)
+  sri_connection_state :: IORef (Map ConnectionId ClientConnection)
 }
 
 data TemplateConfig = TemplateConfig {
@@ -52,11 +53,11 @@ data TemplateConfig = TemplateConfig {
   tpc_websocket_addr :: Builder
 }
 
-data WebSocketConn = WebSocketConn {
+data ClientConnection = ClientConnection {
   connection :: Connection,
   internal_env :: InternalEnv,
   -- | Writing to the Chan sends a command to the browser to execute
-  command_chan :: Chan (ClickM ()),
+  command_chan :: Chan (JSM ()),
   connection_id :: ConnectionId
 }
 
@@ -77,7 +78,7 @@ waiApp cfg self req respond = route $ pathInfo req
       [("Content-Type", "text/html")] template
     route ["dev.sock"] = websocketsOr
       defaultConnectionOptions (websocketApp cfg self) fallbackApp req respond
-    route _ = staticApp' cfg.srv_docroots fallbackApp req respond
+    route _ = staticApp' cfg.cfg_docroots fallbackApp req respond
 
     staticApp' :: [FilePath] -> Middleware
     staticApp' [] next = next
@@ -85,7 +86,7 @@ waiApp cfg self req respond = route $ pathInfo req
       staticApp (defaultFileServerSettings docroot)
         {ss404Handler = Just (staticApp' docroots next)}
 
-    template = cfg.srv_html_template TemplateConfig {
+    template = cfg.cfg_html_template TemplateConfig {
       tpc_jsrts = jsrts,
       tpc_websocket_addr = "/dev.sock"
     }
@@ -103,10 +104,10 @@ websocketApp cfg self p =
     acceptConn = mdo
       conn <- acceptRequest p
       newConn conn
-    dropConn (conn::WebSocketConn) = do
+    dropConn (conn::ClientConnection) = do
       modifyIORef' self.sri_connection_state $ Map.delete conn.connection_id
-      cfg.srv_connection_lost conn
-    loop (conn::WebSocketConn) = do
+      cfg.cfg_connection_lost conn
+    loop (conn::ClientConnection) = do
       raceResult <- race
         (try @ConnectionException (receiveData conn.connection))
         (readChan conn.command_chan)
@@ -121,10 +122,10 @@ websocketApp cfg self p =
           reader conn $ Left jsAction
           loop conn
 
-    reader :: WebSocketConn -> Either (ClickM ()) ClientMsg -> IO ()
+    reader :: ClientConnection -> Either (JSM ()) ClientMsg -> IO ()
     reader conn (Right (StartMsg flags)) =
       void $ runTransition conn.internal_env
-        $ cfg.srv_client conn flags
+        $ cfg.cfg_client conn flags
     reader conn (Right (ResumeMsg contId pload)) =
       prompt conn.internal_env.hte_prompt_tag do
         awatingThread <- atomicModifyIORef' conn.internal_env.hte_continuations $
@@ -142,7 +143,7 @@ websocketApp cfg self p =
         bs <- unsafePackCStringLen (castPtr ptr, len)
         sendDataMessage connection $ Network.WebSockets.Binary $ BSL.fromStrict bs
       atomicModifyIORef' self.sri_connection_state \m ->
-        let conn = WebSocketConn {
+        let conn = ClientConnection {
               internal_env,
               connection,
               command_chan,
@@ -163,13 +164,14 @@ tryPorts set app = do
         tryPorts (Warp.setPort (Warp.getPort set + 1) set) app
       | otherwise -> throwIO e
 
-runDefault :: ClickM () -> IO ()
+runDefault :: JSM () -> IO ()
 runDefault client = runConfig
   ServerConfig {
-    srv_html_template = defaultTemplate,
-    srv_docroots = [],
-    srv_client = const $ const client,
-    srv_connection_lost = const $ pure ()
+    cfg_html_template = defaultTemplate,
+    cfg_docroots = [],
+    cfg_client = const $ const client,
+    cfg_connection_lost = const $ pure (),
+    cfg_middleware = Prelude.id
   }
 
 runConfig :: ServerConfig -> IO ()
@@ -178,7 +180,7 @@ runConfig = runConfig' Warp.defaultSettings
 runConfig' :: Warp.Settings -> ServerConfig -> IO ()
 runConfig' set cfg = do
   self <- newServer
-  tryPorts set $ waiApp cfg self
+  tryPorts set $ cfg.cfg_middleware $ waiApp cfg self
 
 defaultTemplate :: TemplateConfig -> Builder
 defaultTemplate cfg =

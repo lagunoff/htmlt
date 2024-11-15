@@ -9,7 +9,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# OPTIONS_GHC -Wall #-}
-module Clickable.Html where
+module Clickable.HTML where
 
 import Clickable.Internal
 import Clickable.Types
@@ -19,90 +19,90 @@ import Data.Text (Text)
 import GHC.Generics (Generic)
 import Unsafe.Coerce (unsafeCoerce)
 
-el :: Text -> HtmlM a -> HtmlM a
-el tagName child = HtmlM \s e -> do
+el :: Text -> HTML a -> HTML a
+el tagName child = HTML \s e -> do
   e.hte_send $ PushStack $ CreateElement tagName
-  (r, _) <- child.unHtmlM Nothing e
+  (r, _) <- child.unHTML Nothing e
   e.hte_send PopIns
   pure (r, s)
 {-# INLINE el #-}
 
-elns :: Text -> Text -> HtmlM a -> HtmlM a
-elns ns tagName child = HtmlM \s e -> do
+elns :: Text -> Text -> HTML a -> HTML a
+elns ns tagName child = HTML \s e -> do
   e.hte_send $ PushStack $ CreateElementNS ns tagName
-  (r, _) <- child.unHtmlM s e
+  (r, _) <- child.unHTML s e
   e.hte_send PopIns
   pure (r, s)
 {-# INLINE elns #-}
 
-text :: Text -> HtmlM ()
-text content = HtmlM \s e -> do
+text :: Text -> HTML ()
+text content = HTML \s e -> do
   e.hte_send $ PushStack $ CreateTextNode content
   e.hte_send PopIns
   return ((), s)
 {-# INLINE text #-}
 
-dynText :: DynVal Text -> HtmlM ()
-dynText contentDyn = HtmlM \s e -> do
+dynText :: Dynamic Text -> HTML ()
+dynText contentDyn = HTML \s e -> do
   c <- readVal contentDyn
-  refId <- newRefId.unClickM e
+  refId <- newRefId.unJSM e
   e.hte_send $ PushStack $ CreateTextNode c
   e.hte_send $ AssignRef refId (PeekStack 0)
   e.hte_send PopIns
-  let k nval = ClickM \e' ->
+  let k nval = JSM \e' ->
         e'.hte_send $ UpdateTextNode (Ref refId) nval
-  (subscribe contentDyn k).unClickM e
+  (subscribe contentDyn k).unJSM e
   pure ((), s)
 {-# INLINEABLE dynText #-}
 
-property :: ToValue val => Text -> val -> HtmlM ()
-property k v = HtmlM \s e -> do
+property :: ToValue val => Text -> val -> HTML ()
+property k v = HTML \s e -> do
   e.hte_send $ ElementProp (PeekStack 0) k $ toValue v
   pure ((), s)
 {-# INLINE property #-}
 
-dynProp :: ToValue val => Text -> DynVal val -> HtmlM ()
-dynProp propName dynVal = HtmlM \s e -> do
-  (refId, s') <- saveStackTip.unHtmlM s e
+dynProp :: ToValue val => Text -> Dynamic val -> HTML ()
+dynProp propName dynVal = HTML \s e -> do
+  (refId, s') <- saveStackTip.unHTML s e
   initVal <- readVal dynVal
   e.hte_send $ ElementProp (PeekStack 0) propName $ toValue initVal
-  let k nval = ClickM \e' ->
+  let k nval = JSM \e' ->
         e'.hte_send $ ElementProp (Ref refId) propName $ toValue nval
-  unClickM (subscribe dynVal k) e
+  unJSM (subscribe dynVal k) e
   pure ((), s')
 {-# INLINE dynProp #-}
 
-attribute :: Text -> Text -> HtmlM ()
-attribute k v = HtmlM \s e -> do
+attribute :: Text -> Text -> HTML ()
+attribute k v = HTML \s e -> do
   e.hte_send $ ElementAttr (PeekStack 0) k v
   pure ((), s)
 {-# INLINE attribute #-}
 
-dynAttr :: Text -> DynVal Text -> HtmlM ()
-dynAttr propName dynVal = HtmlM \s e -> do
-  (refId, s') <- saveStackTip.unHtmlM s e
+dynAttr :: Text -> Dynamic Text -> HTML ()
+dynAttr propName dynVal = HTML \s e -> do
+  (refId, s') <- saveStackTip.unHTML s e
   initVal <- readVal dynVal
   e.hte_send $ ElementAttr (PeekStack 0) propName initVal
-  let k nval = ClickM \e' ->
+  let k nval = JSM \e' ->
         e'.hte_send $ ElementAttr (Ref refId) propName nval
-  unClickM (subscribe dynVal k) e
+  unJSM (subscribe dynVal k) e
   pure ((), s')
 {-# INLINE dynAttr #-}
 
-toggleClass :: Text -> DynVal Bool -> HtmlM ()
-toggleClass className dynEnable = HtmlM \s e -> do
-  (refId, s') <- saveStackTip.unHtmlM s e
+toggleClass :: Text -> Dynamic Bool -> HTML ()
+toggleClass className dynEnable = HTML \s e -> do
+  (refId, s') <- saveStackTip.unHTML s e
   v <- readVal dynEnable
-  let k enable = ClickM \e' -> e'.hte_send
+  let k enable = JSM \e' -> e'.hte_send
           if enable
             then ClassListAdd (Ref refId) className
             else ClassListRemove (Ref refId) className
-  unClickM (k v) e
-  unClickM (subscribe dynEnable k) e
+  unJSM (k v) e
+  unJSM (subscribe dynEnable k) e
   pure ((), s')
 {-# INLINE toggleClass #-}
 
-addEventListener :: FromValue a => (Event a -> Expr) -> (a -> ClickM ()) -> ClickM ()
+addEventListener :: FromValue a => (Event a -> Expr) -> (a -> JSM ()) -> JSM ()
 addEventListener connectScript k = do
   e <- reactive \scope s ->
     let k' = local (\e -> e {hte_scope = scope}) . k
@@ -116,13 +116,13 @@ addEventListener connectScript k = do
 
 class IsEventName eventName where
   type EventListenerCb eventName :: Type
-  connectEventName :: EventListenerCb eventName -> ClickM ()
+  connectEventName :: EventListenerCb eventName -> JSM ()
 
-on :: forall eventName. IsEventName eventName => EventListenerCb eventName -> HtmlM ()
-on k = liftC $ connectEventName @eventName k
+on :: forall eventName. IsEventName eventName => EventListenerCb eventName -> HTML ()
+on k = liftJSM $ connectEventName @eventName k
 
 instance IsEventName "click" where
-  type EventListenerCb "click" = ClickM ()
+  type EventListenerCb "click" = JSM ()
   connectEventName k = addEventListener
     (genericEvent defaultEventListenerOptions "click" (PeekStack 0)) (const k)
 
@@ -157,21 +157,21 @@ unsafeConnectEvent :: Expr -> UnsafeJavaScript -> Event a -> Expr
 unsafeConnectEvent target ujs (Event eid) =
   Eval ujs `Apply` [target, Lam (TriggerEvent eid (Arg 0))]
 
-attachHtml :: Expr -> HtmlM a -> ClickM a
-attachHtml rootEl contents = ClickM \e -> do
+attachHTML :: Expr -> HTML a -> JSM a
+attachHTML rootEl contents = JSM \e -> do
   e.hte_send $ PushStack rootEl
-  (r, _) <- contents.unHtmlM Nothing e
+  (r, _) <- contents.unHTML Nothing e
   e.hte_send PopStack
   pure r
 
-attachToBody :: HtmlM a -> ClickM a
-attachToBody = attachHtml $ Id "document" `Dot` "body"
+attachToBody :: HTML a -> JSM a
+attachToBody = attachHTML $ Id "document" `Dot` "body"
 
-saveStackTip :: HtmlM RefId
-saveStackTip = HtmlM \s e ->
+saveStackTip :: HTML RefId
+saveStackTip = HTML \s e ->
   case s of
     Nothing -> do
-      refId <- newRefId.unClickM e
+      refId <- newRefId.unJSM e
       e.hte_send $ AssignRef refId $ PeekStack 0
       return (refId, Just refId)
     Just saved ->
@@ -180,3 +180,42 @@ saveStackTip = HtmlM \s e ->
 blank :: Applicative m => m ()
 blank = pure ()
 {-# INLINE blank #-}
+
+data Location = Location {
+  -- | A string containing the protocol scheme of the URL, including
+  -- the final ':'
+  protocol :: Text,
+  -- | A string containing the domain of the URL.
+  hostname :: Text,
+  -- | A string containing the port number of the URL.
+  port :: Text,
+  -- | A string containing an initial '/' followed by the path of the
+  -- URL, not including the query string or fragment.
+  pathname :: Text,
+  -- | String containing a '?' followed by the parameters or
+  -- "querystring" of the URL
+  search :: Text,
+  -- | String containing a '#' followed by the fragment identifier
+  -- of the URL.
+  hash :: Text
+} deriving stock (Show, Eq, Generic)
+  deriving anyclass (FromValue, ToValue)
+
+-- https://developer.mozilla.org/en-US/docs/Web/API/Window/popstate_event
+popstateEvent :: Event Location -> Expr
+popstateEvent (Event eventId) =
+  Eval
+    "(function(target, trigger){\n\
+    \  function listener(){\n\
+    \    trigger({\n\
+    \      protocol: location.protocol,\n\
+    \      hostname: location.hostname,\n\
+    \      port: location.port,\n\
+    \      pathname: location.pathname,\n\
+    \      search: location.search,\n\
+    \      hash: location.hash\n\
+    \    });\n\
+    \  }\n\
+    \  target.addEventListener('popstate', listener);\n\
+    \  return () => target.removeEventListener('popstate', listener);\n\
+    \})" `Apply` [Id "window", Lam (TriggerEvent eventId (Arg 0))]

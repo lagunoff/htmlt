@@ -34,7 +34,7 @@ import GHC.List qualified as List
 import GHC.Types
 import GHC.Generics
 
-newtype ClickM a = ClickM {unClickM :: InternalEnv -> IO a}
+newtype JSM a = JSM {unJSM :: InternalEnv -> IO a}
   deriving (
     Functor,
     Applicative,
@@ -43,14 +43,17 @@ newtype ClickM a = ClickM {unClickM :: InternalEnv -> IO a}
     MonadReader InternalEnv
   ) via ReaderT InternalEnv IO
 
-instance MonadState InternalState ClickM where
-  state f = ClickM \e ->
+instance MonadState InternalState JSM where
+  state f = JSM \e ->
     atomicModifyIORef' e.hte_state (swap . f)
   {-# INLINE state #-}
-  get = ClickM \e -> readIORef e.hte_state
+  get = JSM \e -> readIORef e.hte_state
   {-# INLINE get #-}
-  put s = ClickM \e -> writeIORef e.hte_state s
+  put s = JSM \e -> writeIORef e.hte_state s
   {-# INLINE put #-}
+
+class MonadJSM m where
+  liftJSM :: JSM a -> m a
 
 data InternalEnv = InternalEnv {
   hte_send :: Expr -> IO (),
@@ -64,20 +67,21 @@ data InternalEnv = InternalEnv {
 data InternalState = InternalState {
   subscriptions :: [Subscription Any],
   finalizers :: [Finalizer],
-  transaction_queue :: Map EventId (ClickM ()),
+  transaction_queue :: Map EventId (JSM ()),
   next_id :: Word32
 }
 
-newtype HtmlM a = HtmlM {unHtmlM :: Maybe RefId -> InternalEnv -> IO (a, Maybe RefId)}
+newtype HTML a = HTML {unHTML :: Maybe RefId -> InternalEnv -> IO (a, Maybe RefId)}
   deriving (
     Functor,
     Applicative,
     Monad,
     MonadIO
-  ) via StateT (Maybe RefId) ClickM
+  ) via StateT (Maybe RefId) JSM
 
-liftC :: ClickM a -> HtmlM a
-liftC (ClickM a) = HtmlM \s e -> (,s) <$> a e
+instance MonadJSM HTML where
+  liftJSM (JSM a) = HTML \s e -> (,s) <$> a e
+  {-# INLINE liftJSM #-}
 
 data Expr where
   Null :: Expr
@@ -177,29 +181,29 @@ data DynVar a where
   OverrideVar :: (UpdateFn a -> UpdateFn a) -> DynVar a -> DynVar a
   LensMap :: Lens' s a -> DynVar s -> DynVar a
 
-type UpdateFn s = forall a. (s -> (s, a)) -> ClickM a
+type UpdateFn s = forall a. (s -> (s, a)) -> JSM a
 
 type Lens' s a = forall f. Functor f => (a -> f a) -> s -> f s
 
-data DynVal a where
-  ConstVal :: a -> DynVal a
-  FromVar :: DynVar a -> DynVal a
-  MapVal :: DynVal a -> (a -> b) -> DynVal b
-  SplatVal :: DynVal (a -> b) -> DynVal a -> DynVal b
-  OverrideSub :: (forall b. SubscribeFn a b -> SubscribeFn a b) -> DynVal a -> DynVal a
+data Dynamic a where
+  ConstVal :: a -> Dynamic a
+  FromVar :: DynVar a -> Dynamic a
+  MapVal :: Dynamic a -> (a -> b) -> Dynamic b
+  SplatVal :: Dynamic (a -> b) -> Dynamic a -> Dynamic b
+  OverrideSub :: (forall b. SubscribeFn a b -> SubscribeFn a b) -> Dynamic a -> Dynamic a
 
-type SubscribeFn a b = (a -> b -> ClickM b) -> ClickM ()
+type SubscribeFn a b = (a -> b -> JSM b) -> JSM ()
 
-instance Functor DynVal where
+instance Functor Dynamic where
   fmap = flip MapVal
   {-# INLINE fmap #-}
-instance Applicative DynVal where
+instance Applicative Dynamic where
   pure = ConstVal
   {-# INLINE pure #-}
   (<*>) = SplatVal
   {-# INLINE (<*>) #-}
 
-fromVar :: DynVar a -> DynVal a
+fromVar :: DynVar a -> Dynamic a
 fromVar = FromVar
 {-# INLINE fromVar #-}
 
@@ -207,19 +211,19 @@ data Subscription a
   = SubscriptionSimple {
     ss_scope :: ScopeId,
     ss_event_id :: Event a,
-    ss_callback :: a -> ClickM ()
+    ss_callback :: a -> JSM ()
   }
   | forall b. SubscriptionAccum {
     sa_resource_scope :: ScopeId,
     sa_event_id :: Event a,
-    sa_callback :: a -> b -> ClickM b,
+    sa_callback :: a -> b -> JSM b,
     sa_accum_ref :: IORef b
   }
 
 data Finalizer
   = CustomFinalizer {
     cf_resource_scope :: ScopeId,
-    cf_callback :: ClickM ()
+    cf_callback :: JSM ()
   }
   | ScopeFinalizer {
     sf_resource_scope :: ScopeId,

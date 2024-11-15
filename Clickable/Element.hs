@@ -8,7 +8,7 @@ Shortcuts for most common HTML5 elements
 -}
 module Clickable.Element where
 
-import Clickable.Html
+import Clickable.HTML
 import Clickable.Types
 import Data.Text
 
@@ -28,13 +28,13 @@ class Term arg result | result -> arg where
     -> result -- ^ Result: either an element or an attribute.
 
 -- | Given attributes, expect more child input.
-instance f ~ HtmlM a => Term [HtmlM ()] (f -> HtmlM a) where
+instance f ~ HTML a => Term [HTML ()] (f -> HTML a) where
   term name attrs = el name . (sequence_ attrs *>)
   {-# INLINE term #-}
 
 -- | Given children immediately, just use that and expect no
 -- attributes.
-instance Term (HtmlM a) (HtmlM a) where
+instance Term (HTML a) (HTML a) where
   term = el
   {-# INLINE term #-}
 
@@ -362,7 +362,7 @@ sup_ :: Term arg result => arg -> result
 sup_ = term "sup"
 {-# INLINE sup_ #-}
 
-br_ :: HtmlM ()
+br_ :: HTML ()
 br_ = el "br" blank
 {-# INLINE br_ #-}
 

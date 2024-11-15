@@ -19,7 +19,7 @@ executable clickable
      Clickable
      Clickable.Element
      Clickable.Float       
-     Clickable.Html
+     Clickable.HTML
      Clickable.Internal
      Clickable.Property
      Clickable.Types

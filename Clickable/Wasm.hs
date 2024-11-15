@@ -44,7 +44,7 @@ buf :: CStringLen
   newInternalEnv (100 * 1024) \(ptr, len) ->
     clickable_eval_buffer (castPtr ptr) len
 
-mkWasmApp :: ClickM () -> Ptr Word8 -> IO (Ptr Word8)
+mkWasmApp :: JSM () -> Ptr Word8 -> IO (Ptr Word8)
 mkWasmApp app p | p == nullPtr = do
   runTransition env app
   return $ castPtr $ fst buf
