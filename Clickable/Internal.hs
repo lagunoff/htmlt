@@ -24,10 +24,11 @@ import Foreign.Marshal.Alloc (mallocBytes)
 import Foreign.Ptr
 import GHC.Exts
 import Unsafe.Coerce
+import Data.Maybe
 
 newEvent :: JSM (Event a)
 newEvent = state \s ->
-  (Event (EventId s.next_id), s {next_id = s.next_id + 1})
+  (Event (EventId s.ist_id_supply), s {ist_id_supply = s.ist_id_supply + 1})
 
 mapEvent :: (a -> b) -> Event a -> JSM (Event b)
 mapEvent f ea = do
@@ -42,15 +43,35 @@ mapMaybeEvent f ea = do
   return eb
 
 subscribeEvent :: forall a. Event a -> (a -> JSM ()) -> JSM ()
-subscribeEvent (Event eid) k = reactive_ g where
-  newSub scope = SubscriptionSimple scope (coerce eid) (k . unsafeCoerce)
-  g scope s = s {subscriptions = newSub scope : s.subscriptions}
+subscribeEvent e k = reactive_ $ subscribeEventFn e k
+
+subscribeEventFn :: forall a. Event a -> (a -> JSM ()) -> ScopeId -> InternalState -> InternalState
+subscribeEventFn (Event eid) k scope s =
+  s {
+    ist_subscriptions = Map.alter ins eid s.ist_subscriptions
+  }
+  where
+    ins Nothing = Just [newSub]
+    ins (Just xs) = Just $ newSub : xs
+    newSub = Subscription scope (k . unsafeCoerce)
+
+subscribeOnce :: forall a. Event a -> (a -> JSM ()) -> JSM ()
+subscribeOnce e k = do
+  scope <- newScope
+  localScope scope do
+    subscribeEvent e \pload -> do
+      k pload
+      destroyScope scope
 
 subscribe :: forall a. Dynamic a -> (a -> JSM ()) -> JSM ()
 subscribe (ConstVal _) _ = return ()
-subscribe (FromVar (SourceVar srcid _)) k = reactive_ g where
-  newSub scope = SubscriptionSimple scope (coerce srcid) (k . unsafeCoerce)
-  g scope s = s {subscriptions = newSub scope : s.subscriptions}
+subscribe (FromVar (SourceVar event _)) k = reactive_ g where
+  ins sub Nothing = Just [sub]
+  ins sub (Just xs) = Just $ sub : xs
+  newSub scope = Subscription scope (k . unsafeCoerce)
+  g scope s = s {
+    ist_subscriptions = Map.alter (ins (newSub scope)) event.unEvent s.ist_subscriptions
+  }
 subscribe (FromVar (OverrideVar _ var)) k =
   subscribe (FromVar var) k
 subscribe (FromVar (LensMap l var)) k =
@@ -61,60 +82,50 @@ subscribe (SplatVal fv av) k = do
   subscribe fv $ f src
   subscribe av $ g src
   where
+    ins sub Nothing = Just [sub]
+    ins sub (Just xs) = Just $ sub : xs
     h scope s = (s', coerce event) where
-      s' = s
-        { subscriptions = newsub : s.subscriptions
-        , next_id = s.next_id + 1
-        }
-      event = unsafeFromEventId $ EventId s.next_id
-      newsub = SubscriptionSimple scope event (k . unsafeCoerce)
+      s' = s {
+        ist_subscriptions = Map.alter (ins newsub) event.unEvent s.ist_subscriptions,
+        ist_id_supply = s.ist_id_supply + 1
+      }
+      event = unsafeFromEventId $ EventId s.ist_id_supply
+      newsub = Subscription scope (k . unsafeCoerce)
     f src fv' = do
-      av' <- readVal av
+      av' <- readDyn av
       triggerEvent src $ fv' av'
     g src av' = do
-      fv' <- readVal fv
+      fv' <- readDyn fv
       triggerEvent src $ fv' av'
 subscribe (OverrideSub f d) k = f subscribe' k' where
   k' a _ = k a
   subscribe' c = subscribe d \a -> c a ()
 
-triggerEventOp :: Event a -> a -> InternalState -> InternalState
-triggerEventOp event pload =
-  defer event $ gets (.subscriptions) >>= notify
-  where
-    eventEq :: forall a b. Event a -> Event b -> Bool
-    eventEq (Event a) (Event b) = a == b
-
-    notify :: [Subscription Any] -> JSM ()
-    notify [] = return ()
-    notify (SubscriptionSimple {ss_event_id, ss_callback} : xs)
-      | ss_event_id `eventEq` event = ss_callback (unsafeCoerce pload) >> notify xs
-      | otherwise = notify xs
-    notify (SubscriptionAccum {sa_event_id, sa_callback, sa_accum_ref} : xs)
-      | sa_event_id `eventEq` event = notifyAcc sa_callback sa_accum_ref >> notify xs
-      | otherwise = notify xs
-    notifyAcc :: forall b. (Any -> b -> JSM b) -> IORef b ->  JSM ()
-    notifyAcc k ref = do
-      acc <- liftIO $ readIORef ref
-      acc' <- k (unsafeCoerce pload) acc
-      liftIO $ writeIORef ref acc'
-    defer :: Event a -> JSM () -> InternalState -> InternalState
-    defer k act s = s
-      {transaction_queue = Map.insert k.unEvent act s.transaction_queue}
-
 triggerEvent :: Event a -> a -> JSM ()
-triggerEvent e a = modify $ triggerEventOp e a
+triggerEvent e a = modify $ triggerEventFn e a
 {-# INLINE triggerEvent #-}
 
+triggerEventFn :: Event a -> a -> InternalState -> InternalState
+triggerEventFn event pload =
+  defer event $ gets look >>= mapM_ notify
+  where
+    look = fromMaybe [] . Map.lookup event.unEvent . (.ist_subscriptions)
+    notify s = s.sub_callback (unsafeCoerce pload)
+
+    defer :: Event a -> JSM () -> InternalState -> InternalState
+    defer k act s = s {
+      ist_transaction_queue = Map.insert k.unEvent act s.ist_transaction_queue
+    }
+
 reactive :: (ScopeId -> InternalState -> (InternalState, a)) -> JSM a
-reactive f = JSM \e -> atomicModifyIORef' e.hte_state $ f e.hte_scope
+reactive f = JSM \e -> atomicModifyIORef' e.ien_state $ f e.ien_scope
 {-# INLINE reactive #-}
 
 reactive_ :: (ScopeId -> InternalState -> InternalState) -> JSM ()
 reactive_ f = reactive \scope s -> (f scope s, ())
 {-# INLINE reactive_ #-}
 
--- | Loop until transaction_queue is empty.
+-- | Loop until ist_transaction_queue is empty.
 --
 -- Makes possible to implement @Applicative Dynamic@ without invoking
 -- subscribers redundantly when multiple events are fired in the same
@@ -134,98 +145,121 @@ trampoline act = loop0 act where
     forM_ mcont loop1
   popQueue :: JSM (Maybe (JSM ()))
   popQueue = state \s ->
-    case Map.minViewWithKey s.transaction_queue of
+    case Map.minViewWithKey s.ist_transaction_queue of
       Nothing -> (Nothing, s)
-      Just ((_, r), newQueue) -> (Just r, s {transaction_queue = newQueue})
+      Just ((_, r), newQueue) -> (Just r, s {ist_transaction_queue = newQueue})
 
-runTransition :: InternalEnv -> JSM () -> IO ()
-runTransition e c =
-  prompt e.hte_prompt_tag $
-    ($ e) . unJSM . (<* syncPoint) . trampoline $ c
+runJSM :: InternalEnv -> JSM () -> IO ()
+runJSM e c = prompt e.ien_prompt_tag $
+  unJSM (trampoline c >> jsFlush) e
 
-syncPoint :: JSM ()
-syncPoint = JSM \e -> void $ e.hte_flush
-
-unsafeInsertHtml :: Text -> Expr
-unsafeInsertHtml rawHtml = Eval
-  "(function(parent, rawHtml){\
-   \var div = document.createElement('div');\
-   \div.innerHTML = rawHtml;\
-   \var iter = div.childNodes[0];\
-   \for (; iter; iter = div.childNodes[0]) {\
-   \  div.removeChild(iter);\
-   \  if (parent instanceof Comment) {\
-   \    parent.parentElement.insertBefore(iter, parent);\
-   \  } else{\
-   \    parent.appendChild(iter);\
-   \  }\
-   \}\
-   \})" `Apply` [PeekStack 0, Str rawHtml]
+unsafeInsertHTML :: Text -> JSExp
+unsafeInsertHTML rawHtml =
+  Eval script `Apply` [PeekStack 0, Str rawHtml]
+  where
+    script =
+      "(function(parent, rawHtml){\
+       \var div = document.createElement('div');\
+       \div.innerHTML = rawHtml;\
+       \var iter = div.childNodes[0];\
+       \for (; iter; iter = div.childNodes[0]) {\
+       \  div.removeChild(iter);\
+       \  if (parent instanceof Comment) {\
+       \    parent.parentElement.insertBefore(iter, parent);\
+       \  } else{\
+       \    parent.appendChild(iter);\
+       \  }\
+       \}\
+       \})"
 
 newScope :: JSM ScopeId
-newScope = reactive newScopeOp
+newScope = reactive newScopeFn
 {-# INLINE newScope #-}
 
-newScopeOp :: ScopeId -> InternalState -> (InternalState, ScopeId)
-newScopeOp p s = (s', scope)
-  where
-    s' = s {finalizers = fns, next_id = s.next_id + 1}
-    fns = ScopeFinalizer p scope : s.finalizers
-    scope = ScopeId s.next_id
-{-# INLINE newScopeOp #-}
+newScopeFn :: ScopeId -> InternalState -> (InternalState, ScopeId)
+newScopeFn p s = (s', new) where
+  new = ScopeId s.ist_id_supply
+  ins = Map.insert new (Resources p [] [])
+  link = Map.adjust (\r -> r {rsr_linked = new : r.rsr_linked}) p
+  s' = s {
+    ist_id_supply = s.ist_id_supply + 1,
+    ist_resources = link $ ins s.ist_resources
+  }
+{-# INLINE newScopeFn #-}
+
+localScope :: ScopeId -> JSM a -> JSM a
+localScope s = local (\e -> e {ien_scope = s})
+{-# INLINE localScope #-}
 
 newRefId :: JSM RefId
-newRefId = reactive newRefIdOp
+newRefId = reactive newRefIdFn
 {-# INLINE newRefId #-}
 
-newRefIdOp :: ScopeId -> InternalState -> (InternalState, RefId)
-newRefIdOp e s = (s {next_id = s.next_id + 1}, RefId e s.next_id)
-{-# INLINE newRefIdOp #-}
+newRefIdFn :: ScopeId -> InternalState -> (InternalState, RefId)
+newRefIdFn e s = (s {ist_id_supply = s.ist_id_supply + 1}, RefId e s.ist_id_supply)
+{-# INLINE newRefIdFn #-}
 
-freeScope :: Bool -> ScopeId -> JSM ()
-freeScope unlink s =
-  reactive (const (freeScopeOp unlink s)) >>= applyFin
-  where
-    applyFin [] = enqueueExpr $ FreeScope s
-    applyFin (ScopeFinalizer{sf_linked_scope}:xs) = freeScope True sf_linked_scope >> applyFin xs
-    applyFin (CustomFinalizer{cf_callback}:xs) = cf_callback >> applyFin xs
+freeScope :: ScopeId -> JSM ()
+freeScope s = do
+  mres <- state $ swap . freeScopeFn s
+  forM_ mres \r -> forM_ r.rsr_linked destroyScope
+  forM_ mres \r -> sequence_ r.rsr_finalizers
 {-# INLINE freeScope #-}
 
-freeScopeOp :: Bool -> ScopeId -> InternalState -> (InternalState, [Finalizer])
-freeScopeOp unlink scope s =
-  (s {subscriptions, finalizers}, scopeFns)
+freeScopeFn :: ScopeId -> InternalState -> (InternalState, Maybe Resources)
+freeScopeFn scope s = (s', resources)
   where
-    chkSub s' = subscriptionScope s' /= scope
-    chkFin True ScopeFinalizer{sf_resource_scope, sf_linked_scope} =
-      sf_resource_scope /= scope && sf_linked_scope /= scope
-    chkFin True CustomFinalizer{cf_resource_scope} = cf_resource_scope /= scope
-    chkFin False f = finalizerScope f /= scope
-    (finalizers, scopeFns) = List.partition (chkFin unlink) s.finalizers
-    subscriptions = List.filter chkSub s.subscriptions
-{-# INLINE freeScopeOp #-}
+    subs = Map.map (List.filter filterSub) s.ist_subscriptions
+    filterSub sub = sub.sub_scope /= scope
+    (resources, rsr) = Map.alterF (,Nothing) scope s.ist_resources
+    s' = s {ist_subscriptions = subs, ist_resources = rsr}
+{-# INLINE freeScopeFn #-}
+
+destroyScope :: ScopeId -> JSM ()
+destroyScope s = do
+  mres <- state $ swap . destroyScopeFn s
+  forM_ mres \r -> forM_ r.rsr_linked destroyScope
+  forM_ mres \r -> sequence_ r.rsr_finalizers
+{-# INLINE destroyScope #-}
+
+destroyScopeFn :: ScopeId -> InternalState -> (InternalState, Maybe Resources)
+destroyScopeFn scope s = (s', resources)
+  where
+    subs = Map.map (List.filter filterSub) s.ist_subscriptions
+    filterSub x = x.sub_scope /= scope
+    remove = Map.alterF (,Nothing) scope
+    unlink m = case resources of
+      Just r -> Map.adjust adj r.rsr_parent m
+      Nothing -> m
+    adj r = r {rsr_linked = List.filter (/=scope) r.rsr_linked}
+    (resources, rsr) = remove s.ist_resources
+    s' = s {ist_subscriptions = subs, ist_resources = unlink rsr}
+{-# INLINE destroyScopeFn #-}
 
 installFinalizer :: JSM () -> JSM ()
-installFinalizer = reactive_ . installFinalizerOp
+installFinalizer = reactive_ . installFinalizerFn
 {-# INLINE installFinalizer #-}
 
-installFinalizerOp :: JSM () -> ScopeId -> InternalState -> InternalState
-installFinalizerOp k scope s =
-  s {finalizers = CustomFinalizer scope k : s.finalizers}
-{-# INLINE installFinalizerOp #-}
+installFinalizerFn :: JSM () -> ScopeId -> InternalState -> InternalState
+installFinalizerFn k scope s = s {ist_resources = rsr}
+  where
+    rsr = Map.adjust ins scope s.ist_resources
+    ins r = r {rsr_finalizers = k : r.rsr_finalizers}
+{-# INLINE installFinalizerFn #-}
 
 emptyState :: InternalState
-emptyState = InternalState [] [] Map.empty 0
+emptyState = InternalState Map.empty Map.empty Map.empty 0
 
 ---------------------------------------
 -- OPERATIONS OVER DYNAMIC VARIABLES --
 ---------------------------------------
 
-readVal :: MonadIO m => Dynamic a -> m a
-readVal (ConstVal a) = pure a
-readVal (FromVar var) = readVar var
-readVal (MapVal val f) = fmap f $ readVal val
-readVal (SplatVal f a) = liftA2 ($) (readVal f) (readVal a)
-readVal (OverrideSub _ a) = readVal a
+readDyn :: MonadIO m => Dynamic a -> m a
+readDyn (ConstVal a) = pure a
+readDyn (FromVar var) = readVar var
+readDyn (MapVal val f) = fmap f $ readDyn val
+readDyn (SplatVal f a) = liftA2 ($) (readDyn f) (readDyn a)
+readDyn (OverrideSub _ a) = readDyn a
 
 readVar :: MonadIO m => DynVar a -> m a
 readVar (SourceVar _ ref) = liftIO $ readIORef ref
@@ -235,8 +269,8 @@ readVar (OverrideVar _ var) = readVar var
 newVar :: a -> JSM (DynVar a)
 newVar a = do
   ref <- liftIO $ newIORef a
-  let mkEv s = unsafeFromEventId $ EventId s.next_id
-  state \s -> (SourceVar (mkEv s) ref, s {next_id = s.next_id + 1})
+  let mkEv s = unsafeFromEventId $ EventId s.ist_id_supply
+  state \s -> (SourceVar (mkEv s) ref, s {ist_id_supply = s.ist_id_supply + 1})
 
 overrideVar :: (UpdateFn a -> UpdateFn a) -> DynVar a -> DynVar a
 overrideVar = OverrideVar
@@ -262,7 +296,7 @@ writeVar :: DynVar s -> s -> JSM ()
 writeVar var s = modifyVar_ var $ const s
 
 forDyn :: Dynamic a -> (a -> JSM ()) -> JSM ()
-forDyn dval action = readVal dval >>= action >> subscribe dval action
+forDyn dval action = readDyn dval >>= action >> subscribe dval action
 
 forVar :: DynVar a -> (a -> JSM ()) -> JSM ()
 forVar = forDyn . fromVar
@@ -300,23 +334,26 @@ writeVarQuiet :: DynVar s -> s -> JSM ()
 writeVarQuiet var = modifyVarQuiet_ var . const
 {-# INLINE writeVarQuiet #-}
 
-enqueueExpr :: Expr -> JSM ()
-enqueueExpr cmd = JSM \e ->
-  e.hte_send cmd
-{-# INLINE enqueueExpr #-}
+jsCmd :: JSExp -> JSM ()
+jsCmd cmd = JSM \e ->
+  e.ien_command cmd
+{-# INLINE jsCmd #-}
 
-evalExpr :: Expr -> JSM Expr
-evalExpr cmd = JSM \e -> do
-  e.hte_send cmd
-  e.hte_flush
-{-# INLINE evalExpr #-}
+jsEval :: JSExp -> JSM JSVal
+jsEval cmd = JSM \e -> do
+  e.ien_command cmd
+  e.ien_flush
+{-# INLINE jsEval #-}
 
-commandBuffer :: CStringLen -> (CStringLen -> IO ()) -> IO (Expr -> IO (), IO ())
+jsFlush :: JSM ()
+jsFlush = JSM \e -> void $ e.ien_flush
+
+commandBuffer :: CStringLen -> (CStringLen -> IO ()) -> IO (JSExp -> IO (), IO ())
 commandBuffer (buf, bufSize) consume = do
   ref <- newIORef 0
   return (write ref, flush ref)
   where
-    write :: IORef Int -> Expr -> IO ()
+    write :: IORef Int -> JSExp -> IO ()
     write ref cmd = do
       off <- readIORef ref
       let b = runBuilder $ execPut $ Binary.put cmd
@@ -360,24 +397,24 @@ commandBuffer (buf, bufSize) consume = do
 newInternalEnv :: Int -> (CStringLen -> IO ()) -> IO (InternalEnv, CStringLen)
 newInternalEnv bufSize consume = do
   buf <- mallocBytes bufSize
-  hte_state <- newIORef emptyState
+  ien_state <- newIORef emptyState
   (write, flush) <- commandBuffer (buf, bufSize) consume
-  hte_prompt_tag <- newPromptTag
-  hte_continuations <- newIORef Map.empty
+  ien_prompt_tag <- newPromptTag
+  ien_continuations <- newIORef Map.empty
   let bufResult = (castPtr buf, bufSize)
   pure (
     InternalEnv {
-      hte_send = write,
-      hte_flush = do
-        tid <- atomicModifyIORef' hte_state \s ->
-          (s {next_id = s.next_id + 1}, ContId s.next_id)
+      ien_command = write,
+      ien_flush = do
+        tid <- atomicModifyIORef' ien_state \s ->
+          (s {ist_id_supply = s.ist_id_supply + 1}, ContId s.ist_id_supply)
         write $ Resume tid
         flush
-        control hte_prompt_tag \c ->
-          modifyIORef' hte_continuations $ Map.insert tid c,
-      hte_state,
-      hte_scope = ScopeId 0,
-      hte_prompt_tag,
-      hte_continuations
+        control ien_prompt_tag \c ->
+          modifyIORef' ien_continuations $ Map.insert tid c,
+      ien_state,
+      ien_scope = ScopeId 0,
+      ien_prompt_tag,
+      ien_continuations
     }, bufResult
     )

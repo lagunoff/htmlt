@@ -41,9 +41,9 @@ test01 = do
       el "button" do
         text "Ask a Value"
         on @"click" do
-          t <- asks (.hte_prompt_tag)
+          t <- asks (.ien_prompt_tag)
           val <- liftIO $ control t \cont -> writeIORef ref cont
-          enqueueExpr $ Call (Id "console") "log" [val]
+          jsCmd $ Call (Id "console") "log" [val]
       el "button" do
         text "Fill the value"
         on @"click" do

@@ -13,13 +13,12 @@
 {-# OPTIONS_GHC -Wall #-}
 module Clickable.Types where
 
-import Clickable.Float
+import Clickable.Binary
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Data.Binary ( Binary )
 import Data.Bool (bool)
 import Data.ByteString (ByteString)
-import Data.ByteString.Builder ( Builder )
 import Data.IORef
 import Data.Int
 import Data.Map (Map)
@@ -44,31 +43,41 @@ newtype JSM a = JSM {unJSM :: InternalEnv -> IO a}
   ) via ReaderT InternalEnv IO
 
 instance MonadState InternalState JSM where
-  state f = JSM \e ->
-    atomicModifyIORef' e.hte_state (swap . f)
+  state f = JSM \e -> atomicModifyIORef' e.ien_state (swap . f)
   {-# INLINE state #-}
-  get = JSM \e -> readIORef e.hte_state
+  get = JSM \e -> readIORef e.ien_state
   {-# INLINE get #-}
-  put s = JSM \e -> writeIORef e.hte_state s
+  put s = JSM \e -> writeIORef e.ien_state s
   {-# INLINE put #-}
 
 class MonadJSM m where
   liftJSM :: JSM a -> m a
 
 data InternalEnv = InternalEnv {
-  hte_send :: Expr -> IO (),
-  hte_flush :: IO ValueExpr,
-  hte_state :: IORef InternalState,
-  hte_scope :: ScopeId,
-  hte_prompt_tag :: PromptTag (),
-  hte_continuations :: IORef (Map ContId (IO ValueExpr -> IO ()))
+  ien_command :: JSExp -> IO (),
+  ien_flush :: IO JSVal,
+  ien_state :: IORef InternalState,
+  ien_scope :: ScopeId,
+  ien_prompt_tag :: PromptTag (),
+  ien_continuations :: IORef (Map ContId (IO JSVal -> IO ()))
 }
 
 data InternalState = InternalState {
-  subscriptions :: [Subscription Any],
-  finalizers :: [Finalizer],
-  transaction_queue :: Map EventId (JSM ()),
-  next_id :: Word32
+  ist_subscriptions :: Map EventId [Subscription Any],
+  ist_resources :: Map ScopeId Resources,
+  ist_transaction_queue :: Map EventId (JSM ()),
+  ist_id_supply :: Word32
+}
+
+data Subscription a = Subscription {
+  sub_scope :: ScopeId,
+  sub_callback :: a -> JSM ()
+}
+
+data Resources = Resources {
+  rsr_parent :: ScopeId,
+  rsr_linked :: [ScopeId],
+  rsr_finalizers :: [JSM ()]
 }
 
 newtype HTML a = HTML {unHTML :: Maybe RefId -> InternalEnv -> IO (a, Maybe RefId)}
@@ -83,79 +92,84 @@ instance MonadJSM HTML where
   liftJSM (JSM a) = HTML \s e -> (,s) <$> a e
   {-# INLINE liftJSM #-}
 
-data Expr where
-  Null :: Expr
-  Bool :: Word8 -> Expr
-  I8 :: Int8 -> Expr
-  I16 :: Int16 -> Expr
-  I32 :: Int32 -> Expr
-  I64 :: Int64 -> Expr
-  U8 :: Word8 -> Expr
-  U16 :: Word16 -> Expr
-  U32 :: Word32 -> Expr
-  U64 :: Word64 -> Expr
-  F32 :: Float32 -> Expr
-  F64 :: Float64 -> Expr
-  Str :: Text -> Expr
-  Arr :: [Expr] -> Expr
-  Obj :: [(Text, Expr)] -> Expr -- ^ JavaScript object
-  U8Arr :: ByteString -> Expr
+data JSExp where
+  Null :: JSExp
+  Bool :: Word8 -> JSExp
+  I8 :: Int8 -> JSExp
+  I16 :: Int16 -> JSExp
+  I32 :: Int32 -> JSExp
+  I64 :: Int64 -> JSExp
+  U8 :: Word8 -> JSExp
+  U16 :: Word16 -> JSExp
+  U32 :: Word32 -> JSExp
+  U64 :: Word64 -> JSExp
+  F32 :: Float32 -> JSExp
+  F64 :: Float64 -> JSExp
+  Str :: Text -> JSExp
+  Arr :: [JSExp] -> JSExp
+  Obj :: [(Text, JSExp)] -> JSExp -- ^ JavaScript object
+  U8Arr :: ByteString -> JSExp
 
-  Dot :: Expr -> Text -> Expr
-  SetProp :: Expr -> Text -> Expr -> Expr
-  Ix :: Expr -> Word32 -> Expr
-  Id :: Text -> Expr
+  Dot :: JSExp -> Text -> JSExp
+  SetProp :: JSExp -> Text -> JSExp -> JSExp
+  Ix :: JSExp -> Word32 -> JSExp
+  Id :: Text -> JSExp
 
-  Lam :: Expr -> Expr
-  Arg :: Word8 -> Expr
-  Apply :: Expr -> [Expr] -> Expr
-  Call :: Expr -> Text -> [Expr] -> Expr
+  Lam :: JSExp -> JSExp
+  Arg :: Word8 -> JSExp
+  Apply :: JSExp -> [JSExp] -> JSExp
+  Call :: JSExp -> Text -> [JSExp] -> JSExp
 
-  AssignRef :: RefId -> Expr -> Expr
-  FreeRef :: RefId -> Expr
-  Ref :: RefId -> Expr
-  FreeScope :: ScopeId -> Expr
+  AssignRef :: RefId -> JSExp -> JSExp
+  FreeRef :: RefId -> JSExp
+  Ref :: RefId -> JSExp
+  FreeScope :: ScopeId -> JSExp
 
-  PeekStack :: Word8 -> Expr
-  PushStack :: Expr -> Expr
-  PopStack :: Expr
+  PeekStack :: Word8 -> JSExp
+  PushStack :: JSExp -> JSExp
+  PopStack :: JSExp
 
-  PopIns :: Expr
-  ElementProp :: Expr -> Text -> Expr -> Expr
-  ElementAttr :: Expr -> Text -> Text -> Expr
-  ClassListAdd :: Expr -> Text -> Expr
-  ClassListRemove :: Expr -> Text -> Expr
-  InsertBrackets :: Expr
-  ClearBrackets :: Expr -> Expr
-  DropBrackets :: Expr -> Expr
+  PopIns :: JSExp
+  ElementProp :: JSExp -> Text -> JSExp -> JSExp
+  ElementAttr :: JSExp -> Text -> Text -> JSExp
+  ClassListAdd :: JSExp -> Text -> JSExp
+  ClassListRemove :: JSExp -> Text -> JSExp
+  InsertBrackets :: JSExp
+  ClearBrackets :: JSExp -> JSExp
+  DetachBrackets :: JSExp -> JSExp
 
-  CreateElement :: Text -> Expr
-  CreateElementNS :: Text -> Text -> Expr
-  CreateTextNode :: Text -> Expr
-  UpdateTextNode :: Expr -> Text -> Expr
+  CreateElement :: Text -> JSExp
+  CreateElementNS :: Text -> Text -> JSExp
+  CreateText :: Text -> JSExp
+  UpdateText :: JSExp -> Text -> JSExp
 
-  Eval :: UnsafeJavaScript -> Expr
-  TriggerEvent :: EventId -> Expr -> Expr
-  Resume :: ContId -> Expr
+  Eval :: UnsafeJavaScript -> JSExp
+  TriggerEvent :: EventId -> JSExp -> JSExp
+  Resume :: ContId -> JSExp
 
-  deriving stock Generic
+  deriving stock (Generic, Show)
   deriving anyclass Binary
 
 data ClientMsg where
   StartMsg :: StartFlags -> ClientMsg
-  EventMsg :: EventId -> Expr -> ClientMsg
-  ResumeMsg :: ContId -> Expr -> ClientMsg
+  EventMsg :: EventId -> JSExp -> ClientMsg
+  ResumeMsg :: ContId -> JSExp -> ClientMsg
   deriving stock Generic
   deriving anyclass Binary
 
-newtype StartFlags = StartFlags {unStartFlags :: Expr}
+-- | JavaScript value, result of evaluating an 'JSExp'. Should only
+-- contain constructors up to and including 'U8Arr'. I opted for type
+-- alias rather than a datatype for easier conversion.
+type JSVal = JSExp
+
+newtype StartFlags = StartFlags {unStartFlags :: JSVal}
   deriving newtype Binary
 
 newtype ScopeId = ScopeId {unScopeId :: Word32}
-  deriving newtype (Binary, Eq)
+  deriving newtype (Binary, Eq, Ord, Show)
 
 data RefId = RefId ScopeId Word32
-  deriving stock (Generic)
+  deriving stock (Eq, Show, Generic)
   deriving anyclass (Binary)
 
 newtype EventId = EventId {unEventId :: Word32}
@@ -207,247 +221,209 @@ fromVar :: DynVar a -> Dynamic a
 fromVar = FromVar
 {-# INLINE fromVar #-}
 
-data Subscription a
-  = SubscriptionSimple {
-    ss_scope :: ScopeId,
-    ss_event_id :: Event a,
-    ss_callback :: a -> JSM ()
-  }
-  | forall b. SubscriptionAccum {
-    sa_resource_scope :: ScopeId,
-    sa_event_id :: Event a,
-    sa_callback :: a -> b -> JSM b,
-    sa_accum_ref :: IORef b
-  }
+class ToJSVal a where
+  toJSVal :: a -> JSVal
+  default toJSVal :: (Generic a, GToJSVal (Rep a)) => a -> JSVal
+  toJSVal = gToJSVal . G.from
 
-data Finalizer
-  = CustomFinalizer {
-    cf_resource_scope :: ScopeId,
-    cf_callback :: JSM ()
-  }
-  | ScopeFinalizer {
-    sf_resource_scope :: ScopeId,
-    sf_linked_scope :: ScopeId
-  }
+instance (Generic a, GToJSVal (Rep a)) => ToJSVal (Generically a) where
+  toJSVal = gToJSVal . G.from . (\(Generically x) -> x)
 
-finalizerScope :: Finalizer -> ScopeId
-finalizerScope CustomFinalizer{cf_resource_scope} = cf_resource_scope
-finalizerScope ScopeFinalizer{sf_resource_scope} = sf_resource_scope
+instance ToJSVal JSVal where toJSVal = Prelude.id
 
-subscriptionScope :: Subscription a -> ScopeId
-subscriptionScope SubscriptionSimple{ss_scope} = ss_scope
-subscriptionScope SubscriptionAccum{sa_resource_scope} = sa_resource_scope
+instance ToJSVal Bool where toJSVal = Bool . bool 0 1
 
--- | JavaScript value, result of evaluating an 'Expr'. Should only
--- contain constructors up to and including 'U8Arr'. I chose to use
--- type alias rather than a data type for easier conversion.
-type ValueExpr = Expr
+instance ToJSVal Int8 where toJSVal = I8
+instance ToJSVal Int16 where toJSVal = I16
+instance ToJSVal Int32 where toJSVal = I32
+instance ToJSVal Int64 where toJSVal = I64
 
-class ToValue a where
-  toValue :: a -> ValueExpr
-  default toValue :: (Generic a, GToValue (Rep a)) => a -> ValueExpr
-  toValue = gToValue . G.from
+instance ToJSVal Word8 where toJSVal = U8
+instance ToJSVal Word16 where toJSVal = U16
+instance ToJSVal Word32 where toJSVal = U32
+instance ToJSVal Word64 where toJSVal = U64
 
-instance (Generic a, GToValue (Rep a)) => ToValue (Generically a) where
-  toValue = gToValue . G.from . (\(Generically x) -> x)
+instance ToJSVal Float where toJSVal = F32 . Float32
+instance ToJSVal Double where toJSVal = F64 . Float64
 
-instance ToValue ValueExpr where toValue = Prelude.id
+instance ToJSVal Int where toJSVal = I64 . fromIntegral
+instance ToJSVal Word where toJSVal = U64 . fromIntegral
 
-instance ToValue Bool where toValue = Bool . bool 0 1
+instance ToJSVal Char where
+  toJSVal c = Str $ Text.cons c Text.empty
 
-instance ToValue Int8 where toValue = I8
-instance ToValue Int16 where toValue = I16
-instance ToValue Int32 where toValue = I32
-instance ToValue Int64 where toValue = I64
+instance ToJSVal Text where toJSVal = Str
 
-instance ToValue Word8 where toValue = U8
-instance ToValue Word16 where toValue = U16
-instance ToValue Word32 where toValue = U32
-instance ToValue Word64 where toValue = U64
+instance ToJSVal ByteString where toJSVal = U8Arr
 
-instance ToValue Float where toValue = F32 . Float32
-instance ToValue Double where toValue = F64 . Float64
+instance ToJSVal () where toJSVal _ = Null
 
-instance ToValue Int where toValue = I64 . fromIntegral
-instance ToValue Word where toValue = U64 . fromIntegral
+instance ToJSVal a => ToJSVal [a] where toJSVal = Arr . fmap toJSVal
 
-instance ToValue Char where
-  toValue c = Str $ Text.cons c Text.empty
+instance ToJSVal a => ToJSVal (Maybe a) where toJSVal = maybe Null toJSVal
 
-instance ToValue Text where toValue = Str
+instance (ToJSVal a, ToJSVal b) => ToJSVal (a, b) where
+  toJSVal (a, b) = toJSVal [toJSVal a, toJSVal b]
 
-instance ToValue ByteString where toValue = U8Arr
-
-instance ToValue () where toValue _ = Null
-
-instance ToValue a => ToValue [a] where toValue = Arr . fmap toValue
-
-instance ToValue a => ToValue (Maybe a) where toValue = maybe Null toValue
-
-instance (ToValue a, ToValue b) => ToValue (a, b) where
-  toValue (a, b) = toValue [toValue a, toValue b]
-
-instance (ToValue a, ToValue b, ToValue c) => ToValue (a, b, c) where
-  toValue (a, b, c) = toValue [toValue a, toValue b, toValue c]
+instance (ToJSVal a, ToJSVal b, ToJSVal c) => ToJSVal (a, b, c) where
+  toJSVal (a, b, c) = toJSVal [toJSVal a, toJSVal b, toJSVal c]
 --------------------------------------------------------------------------------
 
-class FromValue a where
-  fromValue :: ValueExpr -> Maybe a
-  default fromValue :: (Generic a, GFromValue (Rep a)) => ValueExpr -> Maybe a
-  fromValue = fmap G.to . gFromValue
+class FromJSVal a where
+  fromJSVal :: JSVal -> Maybe a
+  default fromJSVal :: (Generic a, GFromJSVal (Rep a)) => JSVal -> Maybe a
+  fromJSVal = fmap G.to . gFromJSVal
 
-instance (Generic a, GFromValue (Rep a)) => FromValue (Generically a) where
-  fromValue = fmap (Generically . G.to) . gFromValue
+instance (Generic a, GFromJSVal (Rep a)) => FromJSVal (Generically a) where
+  fromJSVal = fmap (Generically . G.to) . gFromJSVal
 
-instance FromValue ValueExpr where fromValue = pure
+instance FromJSVal JSVal where fromJSVal = pure
 
-instance FromValue Bool where
-  fromValue (Bool 0) = Just False
-  fromValue (Bool _) = Just True
-  fromValue _ = Nothing
+instance FromJSVal Bool where
+  fromJSVal (Bool 0) = Just False
+  fromJSVal (Bool _) = Just True
+  fromJSVal _ = Nothing
 
-instance FromValue Int8 where
-  fromValue (I8 j) = Just j
-  fromValue _ = Nothing
+instance FromJSVal Int8 where
+  fromJSVal (I8 j) = Just j
+  fromJSVal _ = Nothing
 
-instance FromValue Int16 where
-  fromValue (I16 j) = Just j
-  fromValue _ = Nothing
+instance FromJSVal Int16 where
+  fromJSVal (I16 j) = Just j
+  fromJSVal _ = Nothing
 
-instance FromValue Int32 where
-  fromValue = \case
-    I32 j -> Just j
-    F64 j -> Just $ floor j.unFloat64
-    _ -> Nothing
+instance FromJSVal Int32 where
+  fromJSVal (I32 j) = Just j
+  fromJSVal (F64 j) = Just $ floor j.unFloat64
+  fromJSVal _ = Nothing
 
-instance FromValue Int64 where
-  fromValue (I64 j) = Just j
-  fromValue _ = Nothing
+instance FromJSVal Int64 where
+  fromJSVal (I64 j) = Just j
+  fromJSVal _ = Nothing
 
-instance FromValue Word8 where
-  fromValue (U8 j) = Just j
-  fromValue _ = Nothing
+instance FromJSVal Word8 where
+  fromJSVal (U8 j) = Just j
+  fromJSVal _ = Nothing
 
-instance FromValue Word16 where
-  fromValue (U16 j) = Just j
-  fromValue _ = Nothing
+instance FromJSVal Word16 where
+  fromJSVal (U16 j) = Just j
+  fromJSVal _ = Nothing
 
-instance FromValue Word32 where
-  fromValue (U32 j) = Just j
-  fromValue _ = Nothing
+instance FromJSVal Word32 where
+  fromJSVal (U32 j) = Just j
+  fromJSVal _ = Nothing
 
-instance FromValue Word64 where
-  fromValue (U64 j) = Just j
-  fromValue _ = Nothing
+instance FromJSVal Word64 where
+  fromJSVal (U64 j) = Just j
+  fromJSVal _ = Nothing
 
-instance FromValue Float where
-  fromValue (F32 j) = Just j.unFloat32
-  fromValue _ = Nothing
+instance FromJSVal Float where
+  fromJSVal (F32 j) = Just j.unFloat32
+  fromJSVal _ = Nothing
 
-instance FromValue Double where
-  fromValue = \case
-    I32 j -> Just $ fromIntegral j
-    F64 (Float64 j) -> Just j
-    _ -> Nothing
+instance FromJSVal Double where
+  fromJSVal (I32 j) = Just $ fromIntegral j
+  fromJSVal (F64 (Float64 j)) = Just j
+  fromJSVal _ = Nothing
 
-instance FromValue Int where
-  fromValue (I8 j) = Just $ fromIntegral j
-  fromValue (I16 j) = Just $ fromIntegral j
-  fromValue (I32 j) = Just $ fromIntegral j
-  fromValue (I64 j) = Just $ fromIntegral j
-  fromValue (U8 j) = Just $ fromIntegral j
-  fromValue (U16 j) = Just $ fromIntegral j
-  fromValue (U32 j) = Just $ fromIntegral j
-  fromValue (U64 j) = Just $ fromIntegral j
-  fromValue _ = Nothing
+instance FromJSVal Int where
+  fromJSVal (I8 j) = Just $ fromIntegral j
+  fromJSVal (I16 j) = Just $ fromIntegral j
+  fromJSVal (I32 j) = Just $ fromIntegral j
+  fromJSVal (I64 j) = Just $ fromIntegral j
+  fromJSVal (U8 j) = Just $ fromIntegral j
+  fromJSVal (U16 j) = Just $ fromIntegral j
+  fromJSVal (U32 j) = Just $ fromIntegral j
+  fromJSVal (U64 j) = Just $ fromIntegral j
+  fromJSVal _ = Nothing
 
-instance FromValue Word where
-  fromValue (I8 j) = Just $ fromIntegral j
-  fromValue (I16 j) = Just $ fromIntegral j
-  fromValue (I32 j) = Just $ fromIntegral j
-  fromValue (I64 j) = Just $ fromIntegral j
-  fromValue (U8 j) = Just $ fromIntegral j
-  fromValue (U16 j) = Just $ fromIntegral j
-  fromValue (U32 j) = Just $ fromIntegral j
-  fromValue (U64 j) = Just $ fromIntegral j
-  fromValue _ = Nothing
+instance FromJSVal Word where
+  fromJSVal (I8 j) = Just $ fromIntegral j
+  fromJSVal (I16 j) = Just $ fromIntegral j
+  fromJSVal (I32 j) = Just $ fromIntegral j
+  fromJSVal (I64 j) = Just $ fromIntegral j
+  fromJSVal (U8 j) = Just $ fromIntegral j
+  fromJSVal (U16 j) = Just $ fromIntegral j
+  fromJSVal (U32 j) = Just $ fromIntegral j
+  fromJSVal (U64 j) = Just $ fromIntegral j
+  fromJSVal _ = Nothing
 
-instance FromValue Char where
-  fromValue = \case
+instance FromJSVal Char where
+  fromJSVal = \case
     Str a | Just (c, _) <- Text.uncons a -> Just c
-           | otherwise -> Nothing
+          | otherwise -> Nothing
     _ -> Nothing
 
-instance FromValue Text where
-  fromValue = \case Str a -> Just a; _ -> Nothing
+instance FromJSVal Text where
+  fromJSVal = \case Str a -> Just a; _ -> Nothing
 
-instance FromValue ByteString where
-  fromValue = \case U8Arr a -> Just a; _ -> Nothing
+instance FromJSVal ByteString where
+  fromJSVal = \case U8Arr a -> Just a; _ -> Nothing
 
-instance FromValue () where
-  fromValue = \case Null -> Just (); _ -> Nothing
+instance FromJSVal () where
+  fromJSVal = \case Null -> Just (); _ -> Nothing
 
-instance FromValue a => FromValue [a] where
-  fromValue = \case
-    Arr xs -> Just (mapMaybe fromValue xs)
+instance FromJSVal a => FromJSVal [a] where
+  fromJSVal = \case
+    Arr xs -> Just (mapMaybe fromJSVal xs)
     _ -> Nothing
 
-instance FromValue a => FromValue (Maybe a) where
-  fromValue = fmap Just . fromValue @a
+instance FromJSVal a => FromJSVal (Maybe a) where
+  fromJSVal = fmap Just . fromJSVal @a
 
-instance (FromValue a, FromValue b) => FromValue (a, b) where
-  fromValue j = fromValue j >>= \case
-    Just (a:b:_) -> (,) <$> fromValue a <*> fromValue b
+instance (FromJSVal a, FromJSVal b) => FromJSVal (a, b) where
+  fromJSVal j = fromJSVal j >>= \case
+    Just (a:b:_) -> (,) <$> fromJSVal a <*> fromJSVal b
     _ -> Nothing
 
-instance (FromValue a, FromValue b, FromValue c) => FromValue (a, b, c) where
-  fromValue j = fromValue j >>= \case
-    Just (a:b:c:_) -> (,,) <$> fromValue a <*> fromValue b <*> fromValue c
+instance (FromJSVal a, FromJSVal b, FromJSVal c) => FromJSVal (a, b, c) where
+  fromJSVal j = fromJSVal j >>= \case
+    Just (a:b:c:_) -> (,,) <$> fromJSVal a <*> fromJSVal b <*> fromJSVal c
     _ -> Nothing
 --------------------------------------------------------------------------------
 
-class GFromValue (f :: Type -> Type) where
-  gFromValue :: ValueExpr -> Maybe (f a)
+class GFromJSVal (f :: Type -> Type) where
+  gFromJSVal :: JSVal -> Maybe (f a)
 
-instance GFromValue f => GFromValue (M1 m c f) where
-  gFromValue = fmap M1 . gFromValue @f
+instance GFromJSVal f => GFromJSVal (M1 m c f) where
+  gFromJSVal = fmap M1 . gFromJSVal @f
 
-instance GFromValue U1 where
-  gFromValue _ = Just U1
+instance GFromJSVal U1 where
+  gFromJSVal _ = Just U1
 
-instance GFromJSObject (x :*: y) => GFromValue (x :*: y) where
-  gFromValue (Obj kvs) = gFromJSObject kvs
-  gFromValue _ = Nothing
+instance GFromJSObject (x :*: y) => GFromJSVal (x :*: y) where
+  gFromJSVal (Obj kvs) = gFromJSObject kvs
+  gFromJSVal _ = Nothing
 
-instance GFromJSSum (x :+: y) => GFromValue (x :+: y) where
-  gFromValue (Arr [Str tag, v]) = gFromJSSum tag v
-  gFromValue _ = Nothing
+instance GFromJSSum (x :+: y) => GFromJSVal (x :+: y) where
+  gFromJSVal (Arr [Str tag, v]) = gFromJSSum tag v
+  gFromJSVal _ = Nothing
 
-instance {-# OVERLAPPING #-} FromValue a => GFromValue (S1 s (Rec0 a)) where
-  gFromValue = fmap (M1 . K1) . fromValue @a
+instance {-# OVERLAPPING #-} FromJSVal a => GFromJSVal (S1 s (Rec0 a)) where
+  gFromJSVal = fmap (M1 . K1) . fromJSVal @a
 --------------------------------------------------------------------------------
 
-class GToValue (f :: Type -> Type) where
-  gToValue :: f x -> ValueExpr
+class GToJSVal (f :: Type -> Type) where
+  gToJSVal :: f x -> JSVal
 
-instance GToValue f => GToValue (M1 m c f) where
-  gToValue (M1 f) = gToValue f
+instance GToJSVal f => GToJSVal (M1 m c f) where
+  gToJSVal (M1 f) = gToJSVal f
 
-instance GToValue U1 where
-  gToValue _ = Null
+instance GToJSVal U1 where
+  gToJSVal _ = Null
 
-instance GToJSObject (x :*: y) => GToValue (x :*: y) where
-  gToValue (x :*: y) = Obj $ gToJSObject (x :*: y)
+instance GToJSObject (x :*: y) => GToJSVal (x :*: y) where
+  gToJSVal (x :*: y) = Obj $ gToJSObject (x :*: y)
 
-instance GToJSSum (x :+: y) => GToValue (x :+: y) where
-  gToValue = gToJSSum
+instance GToJSSum (x :+: y) => GToJSVal (x :+: y) where
+  gToJSVal = gToJSSum
 
-instance {-# OVERLAPPING #-} (ToValue a) => GToValue (S1 s (Rec0 a)) where
-  gToValue (M1 (K1 a)) = toValue a
+instance {-# OVERLAPPING #-} (ToJSVal a) => GToJSVal (S1 s (Rec0 a)) where
+  gToJSVal (M1 (K1 a)) = toJSVal a
 --------------------------------------------------------------------------------
 
 class GToJSObject (f :: Type -> Type) where
-  gToJSObject :: f x -> [(Text, ValueExpr)]
+  gToJSObject :: f x -> [(Text, JSVal)]
 
 instance (GToJSObject x, GToJSObject y) => GToJSObject (x :*: y) where
   gToJSObject (x :*: y) = gToJSObject x <> gToJSObject y
@@ -455,14 +431,14 @@ instance (GToJSObject x, GToJSObject y) => GToJSObject (x :*: y) where
 instance (GToJSObject f) => GToJSObject (M1 m c f) where
   gToJSObject (M1 a) = gToJSObject a
 
-instance {-# OVERLAPPING #-} (ToValue a, Selector s) => GToJSObject (S1 s (Rec0 a)) where
-  gToJSObject (M1 (K1 a)) = [(key, toValue a)]
+instance {-# OVERLAPPING #-} (ToJSVal a, Selector s) => GToJSObject (S1 s (Rec0 a)) where
+  gToJSObject (M1 (K1 a)) = [(key, toJSVal a)]
     where
       key = Text.pack $ selName (undefined :: M1 S s (Rec0 a) x)
 --------------------------------------------------------------------------------
 
 class GFromJSObject (f :: Type -> Type) where
-  gFromJSObject :: [(Text, ValueExpr)] -> Maybe (f x)
+  gFromJSObject :: [(Text, JSVal)] -> Maybe (f x)
 
 instance (GFromJSObject x, GFromJSObject y) => GFromJSObject (x :*: y) where
   gFromJSObject kvs = liftA2 (:*:) (gFromJSObject kvs) (gFromJSObject kvs)
@@ -470,14 +446,14 @@ instance (GFromJSObject x, GFromJSObject y) => GFromJSObject (x :*: y) where
 instance (GFromJSObject f) => GFromJSObject (M1 m c f) where
   gFromJSObject = fmap M1 . gFromJSObject
 
-instance {-# OVERLAPPING #-} (FromValue a, Selector s) => GFromJSObject (S1 s (Rec0 a)) where
-  gFromJSObject kvs = List.lookup key kvs >>= fmap (M1 . K1) . fromValue
+instance {-# OVERLAPPING #-} (FromJSVal a, Selector s) => GFromJSObject (S1 s (Rec0 a)) where
+  gFromJSObject kvs = List.lookup key kvs >>= fmap (M1 . K1) . fromJSVal
     where
       key = Text.pack $ selName (undefined :: M1 S s (Rec0 a) x)
 --------------------------------------------------------------------------------
 
 class GFromJSSum (f :: Type -> Type) where
-  gFromJSSum :: Text -> ValueExpr -> Maybe (f x)
+  gFromJSSum :: Text -> JSVal -> Maybe (f x)
 
 instance (GFromJSSum x, GFromJSSum y) => GFromJSSum (x :+: y) where
   gFromJSSum tag v = case gFromJSSum @x tag v of
@@ -486,12 +462,12 @@ instance (GFromJSSum x, GFromJSSum y) => GFromJSSum (x :+: y) where
       Just b -> Just $ R1 b
       Nothing -> Nothing
 
-instance FromValue a => GFromValue (K1 R a) where
-  gFromValue v = fmap K1 $ fromValue @a v
+instance FromJSVal a => GFromJSVal (K1 R a) where
+  gFromJSVal v = fmap K1 $ fromJSVal @a v
 
-instance {-# OVERLAPPING #-} (GFromValue (f a), Constructor s) => GFromJSSum (C1 s (f a)) where
+instance {-# OVERLAPPING #-} (GFromJSVal (f a), Constructor s) => GFromJSSum (C1 s (f a)) where
   gFromJSSum tag v =
-    if tag == key then fmap M1 $ gFromValue v else Nothing
+    if tag == key then fmap M1 $ gFromJSVal v else Nothing
     where
       key = Text.pack $ conName (undefined :: C1 s (f a) x)
 
@@ -503,18 +479,18 @@ instance {-# OVERLAPPING #-} Constructor s => GFromJSSum (C1 s U1) where
 --------------------------------------------------------------------------------
 
 class GToJSSum (f :: Type -> Type) where
-  gToJSSum :: f x -> ValueExpr
+  gToJSSum :: f x -> JSVal
 
 instance (GToJSSum x, GToJSSum y) => GToJSSum (x :+: y) where
   gToJSSum (L1 v) = gToJSSum v
   gToJSSum (R1 v) = gToJSSum v
 
-instance ToValue a => GToValue (K1 R a) where
-  gToValue (K1 v) = toValue @a v
+instance ToJSVal a => GToJSVal (K1 R a) where
+  gToJSVal (K1 v) = toJSVal @a v
 
-instance {-# OVERLAPPING #-} (GToValue (f a), Constructor s) => GToJSSum (C1 s (f a)) where
+instance {-# OVERLAPPING #-} (GToJSVal (f a), Constructor s) => GToJSSum (C1 s (f a)) where
   gToJSSum (M1 v) =
-    Arr [Str key, gToValue v]
+    Arr [Str key, gToJSVal v]
     where
       key = Text.pack $ conName (undefined :: C1 s (f a) x)
 
@@ -547,8 +523,6 @@ control (PromptTag t) f = IO (control0# t g)
     k l (IO n) = IO (l n)
 
 data PromptTag a = PromptTag {unPromptTag :: PromptTag# a}
-
-data SomeTag = forall a. SomeTag (PromptTag a)
 
 newPromptTag :: forall a. IO (PromptTag a)
 newPromptTag = IO \s ->

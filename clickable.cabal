@@ -18,7 +18,7 @@ executable clickable
   other-modules:
      Clickable
      Clickable.Element
-     Clickable.Float       
+     Clickable.Binary       
      Clickable.HTML
      Clickable.Internal
      Clickable.Property

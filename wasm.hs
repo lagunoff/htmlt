@@ -21,7 +21,7 @@ import Control.Monad.Reader
 
 test01 :: JSM ()
 test01 = do
-  enqueueExpr $ PushStack $ Id "document" `Dot` "body"
+  jsCmd $ PushStack $ Id "document" `Dot` "body"
   counter <- newVar 0
   el "div" do
     prop "className" (Str "container")
@@ -42,9 +42,9 @@ test01 = do
     el "button" do
       text "Ask a Value"
       on @"click" do
-        t <- asks (.hte_prompt_tag)
+        t <- asks (.ien_prompt_tag)
         val <- liftIO $ control t \cont -> writeIORef ref cont
-        enqueueExpr $ Call (Id "console") "log" $ valueToExpr val
+        jsCmd $ Call (Id "console") "log" $ valueToExpr val
     el "button" do
       text "Fill the value"
       on @"click" do

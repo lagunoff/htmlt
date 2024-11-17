@@ -6,11 +6,9 @@
 {-# LANGUAGE UnboxedTuples #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE DerivingStrategies #-}
-{-| Normal `Data.Binary.Binary` instances for floating-point numbers
-replacing the impractical and unnatural encoding in the default
-instances for `Float` and `Double`
+{-| Override `Data.Binary.Binary` instances for floating-point numbers
 -}
-module Clickable.Float where
+module Clickable.Binary where
 
 import Data.Binary
 import Data.Binary.Get

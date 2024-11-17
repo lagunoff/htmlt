@@ -77,12 +77,12 @@ export enum ExprTag {
   ClassListRemove,
   InsertBrackets,
   ClearBrackets,
-  DropBrackets,
+  DetachBrackets,
 
   CreateElement,
   CreateElementNS,
-  CreateTextNode,
-  UpdateTextNode,
+  CreateText,
+  UpdateText,
 
   Eval,
   TriggerEvent,
@@ -131,12 +131,12 @@ export type Expr =
   | [ExprTag.ClassListRemove, Expr, string[]]
   | [ExprTag.InsertBrackets]
   | [ExprTag.ClearBrackets, Expr]
-  | [ExprTag.DropBrackets, Expr]
+  | [ExprTag.DetachBrackets, Expr]
 
   | [ExprTag.CreateElement, string]
   | [ExprTag.CreateElementNS, string, string]
-  | [ExprTag.CreateTextNode, string]
-  | [ExprTag.UpdateTextNode, Expr, string]
+  | [ExprTag.CreateText, string]
+  | [ExprTag.UpdateText, Expr, string]
 
   | [ExprTag.Eval, string]
   | [ExprTag.TriggerEvent, number, Expr]
@@ -479,7 +479,7 @@ export function evalNext(self: EvalState, args: List<unknown> = null, prevRes: u
       utils.clearBrackets(node as any, false);
       return null;
     };
-    case ExprTag.DropBrackets: {
+    case ExprTag.DetachBrackets: {
       const node = evalNext(self, args, prevRes);
       utils.clearBrackets(node as any, true);
       return null;
@@ -493,11 +493,11 @@ export function evalNext(self: EvalState, args: List<unknown> = null, prevRes: u
       const ns = decodeString(self);
       return document.createElementNS(tagName, ns);
     };
-    case ExprTag.CreateTextNode: {
+    case ExprTag.CreateText: {
       const content = decodeString(self);
       return document.createTextNode(content);
     };
-    case ExprTag.UpdateTextNode: {
+    case ExprTag.UpdateText: {
       const node = evalNext(self, args, prevRes);
       const content = decodeString(self);
       (node as Text).textContent = content;
@@ -680,7 +680,7 @@ export function lookaheadNext(mem: DataView, ptr: Ptr): Ptr {
     case ExprTag.ClearBrackets: {
       return lookaheadNext(mem, ptr);
     };
-    case ExprTag.DropBrackets: {
+    case ExprTag.DetachBrackets: {
       return lookaheadNext(mem, ptr);
     };
     case ExprTag.CreateElement: {
@@ -690,10 +690,10 @@ export function lookaheadNext(mem: DataView, ptr: Ptr): Ptr {
       const newPtr0 = lookaheadString(mem, ptr);
       return lookaheadString(mem, newPtr0);
     };
-    case ExprTag.CreateTextNode: {
+    case ExprTag.CreateText: {
       return lookaheadString(mem, ptr);
     };
-    case ExprTag.UpdateTextNode: {
+    case ExprTag.UpdateText: {
       const newPtr0 = lookaheadNext(mem, ptr);
       return lookaheadString(mem, newPtr0);
     };

@@ -34,7 +34,7 @@ foreign import ccall safe
 env :: InternalEnv
 {-# NOINLINE env #-}
 
-continuations :: IORef (Map Word32 (IO ValueExpr -> IO ()))
+continuations :: IORef (Map Word32 (IO JSVal -> IO ()))
 {-# NOINLINE continuations #-}
 
 buf :: CStringLen

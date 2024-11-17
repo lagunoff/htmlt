@@ -13,11 +13,8 @@ import Clickable.Types
 import Data.Text
 
 
--- TODO: Real-world usage has demonstrated that 'dynStyles' not
--- sufficiently composable. For instance, if 'dynStyles' is used to
--- set the CSS color for an element, essentially no other CSS property
--- can be applied to this element, as they will be overwritten by
--- 'dynStyles'.
+-- TODO: 'dynStyles' lacks composability. It overwrites all CSS
+-- properties, preventing other CSS styles from being applied.
 dynStyles :: Dynamic Text -> HTML ()
 dynStyles = dynProp "style"
 {-# INLINE dynStyles #-}

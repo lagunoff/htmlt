@@ -37,15 +37,15 @@ import Network.WebSockets
 import System.IO
 
 data ServerConfig = ServerConfig {
-  cfg_html_template :: TemplateConfig -> Builder,
+  cfg_template :: TemplateConfig -> Builder,
   cfg_docroots :: [FilePath],
-  cfg_client :: ClientConnection -> StartFlags -> JSM (),
-  cfg_connection_lost :: ClientConnection -> IO (),
+  cfg_client :: DevServerConn -> StartFlags -> JSM (),
+  cfg_connection_lost :: DevServerConn -> IO (),
   cfg_middleware :: Middleware
 }
 
 data ServerInstance = ServerInstance {
-  sri_connection_state :: IORef (Map ConnectionId ClientConnection)
+  sri_dsc_websocket_state :: IORef (Map ConnectionId DevServerConn)
 }
 
 data TemplateConfig = TemplateConfig {
@@ -53,12 +53,12 @@ data TemplateConfig = TemplateConfig {
   tpc_websocket_addr :: Builder
 }
 
-data ClientConnection = ClientConnection {
-  connection :: Connection,
-  internal_env :: InternalEnv,
+data DevServerConn = DevServerConn {
+  dsc_websocket :: Connection,
+  dsc_internal_env :: InternalEnv,
   -- | Writing to the Chan sends a command to the browser to execute
-  command_chan :: Chan (JSM ()),
-  connection_id :: ConnectionId
+  dsc_command_chan :: Chan (JSM ()),
+  dsc_connection_id :: ConnectionId
 }
 
 newtype ConnectionId = ConnectionId {unConnectionId :: Int}
@@ -66,9 +66,9 @@ newtype ConnectionId = ConnectionId {unConnectionId :: Int}
 
 newServer :: IO ServerInstance
 newServer = do
-  sri_connection_state <- newIORef Map.empty
+  sri_dsc_websocket_state <- newIORef Map.empty
   pure ServerInstance {
-    sri_connection_state
+    sri_dsc_websocket_state
   }
 
 waiApp :: ServerConfig -> ServerInstance -> Application
@@ -86,7 +86,7 @@ waiApp cfg self req respond = route $ pathInfo req
       staticApp (defaultFileServerSettings docroot)
         {ss404Handler = Just (staticApp' docroots next)}
 
-    template = cfg.cfg_html_template TemplateConfig {
+    template = cfg.cfg_template TemplateConfig {
       tpc_jsrts = jsrts,
       tpc_websocket_addr = "/dev.sock"
     }
@@ -98,19 +98,19 @@ fallbackApp _ respond = respond $ responseLBS status404
 
 websocketApp :: ServerConfig -> ServerInstance -> ServerApp
 websocketApp cfg self p =
-  bracket acceptConn dropConn \connInfo ->
-    withPingThread connInfo.connection 30 (pure ()) $ loop connInfo
+  bracket acceptConn dropConn \devConn ->
+    withPingThread devConn.dsc_websocket 30 (pure ()) $ loop devConn
   where
-    acceptConn = mdo
+    acceptConn = do
       conn <- acceptRequest p
       newConn conn
-    dropConn (conn::ClientConnection) = do
-      modifyIORef' self.sri_connection_state $ Map.delete conn.connection_id
+    dropConn (conn::DevServerConn) = do
+      modifyIORef' self.sri_dsc_websocket_state $ Map.delete conn.dsc_connection_id
       cfg.cfg_connection_lost conn
-    loop (conn::ClientConnection) = do
+    loop (conn::DevServerConn) = do
       raceResult <- race
-        (try @ConnectionException (receiveData conn.connection))
-        (readChan conn.command_chan)
+        (try @ConnectionException (receiveData conn.dsc_websocket))
+        (readChan conn.dsc_command_chan)
       case raceResult of
         Left (Right (incomingBytes::ByteString)) -> do
           let jsMessage = Binary.decode . BSL.fromStrict $ incomingBytes
@@ -122,34 +122,33 @@ websocketApp cfg self p =
           reader conn $ Left jsAction
           loop conn
 
-    reader :: ClientConnection -> Either (JSM ()) ClientMsg -> IO ()
+    reader :: DevServerConn -> Either (JSM ()) ClientMsg -> IO ()
     reader conn (Right (StartMsg flags)) =
-      void $ runTransition conn.internal_env
+      void $ runJSM conn.dsc_internal_env
         $ cfg.cfg_client conn flags
     reader conn (Right (ResumeMsg contId pload)) =
-      prompt conn.internal_env.hte_prompt_tag do
-        awatingThread <- atomicModifyIORef' conn.internal_env.hte_continuations $
+      prompt conn.dsc_internal_env.ien_prompt_tag do
+        awatingThread <- atomicModifyIORef' conn.dsc_internal_env.ien_continuations $
           swap . Map.alterF (,Nothing) contId
         forM_ awatingThread \cont -> cont $ pure pload
     reader conn (Right (EventMsg eid arg)) =
-      void $ runTransition conn.internal_env
-        $ modify (triggerEventOp (unsafeFromEventId eid) arg)
+      void $ runJSM conn.dsc_internal_env $ triggerEvent (unsafeFromEventId eid) arg
     reader conn (Left a) =
-      void $ runTransition conn.internal_env a
+      void $ runJSM conn.dsc_internal_env a
 
-    newConn connection = mdo
-      command_chan <- newChan
-      (internal_env, _) <- newInternalEnv (100 * 1024) \(ptr, len) -> do
+    newConn dsc_websocket = do
+      dsc_command_chan <- newChan
+      (dsc_internal_env, _) <- newInternalEnv (100 * 1024) \(ptr, len) -> do
         bs <- unsafePackCStringLen (castPtr ptr, len)
-        sendDataMessage connection $ Network.WebSockets.Binary $ BSL.fromStrict bs
-      atomicModifyIORef' self.sri_connection_state \m ->
-        let conn = ClientConnection {
-              internal_env,
-              connection,
-              command_chan,
-              connection_id = maybe 0 (succ . fst) $ Map.lookupMax m
+        sendDataMessage dsc_websocket $ Network.WebSockets.Binary $ BSL.fromStrict bs
+      atomicModifyIORef' self.sri_dsc_websocket_state \m ->
+        let conn = DevServerConn {
+              dsc_internal_env,
+              dsc_websocket,
+              dsc_command_chan,
+              dsc_connection_id = maybe 0 (succ . fst) $ Map.lookupMax m
             }
-        in (Map.insert conn.connection_id conn m, conn)
+        in (Map.insert conn.dsc_connection_id conn m, conn)
 
 tryPorts :: Warp.Settings -> Application -> IO ()
 tryPorts set app = do
@@ -167,7 +166,7 @@ tryPorts set app = do
 runDefault :: JSM () -> IO ()
 runDefault client = runConfig
   ServerConfig {
-    cfg_html_template = defaultTemplate,
+    cfg_template = defaultTemplate,
     cfg_docroots = [],
     cfg_client = const $ const client,
     cfg_connection_lost = const $ pure (),
