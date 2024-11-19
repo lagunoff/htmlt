@@ -1,24 +1,27 @@
 import { WASI, File, OpenFile } from '@bjorn3/browser_wasi_shim';
-import { ClientMsgTag, EventId, EvalState, PersistentState, Ptr } from "./proto";
+import { ClientMsgTag, EventId, EvalState, Ptr, EvalContext } from "./proto";
 import * as proto from "./proto";
 
 let inst: WebAssembly.Instance;
 
-export function runWasm(wasmUri: string, startFlags: unknown = null) {
+export function runWasm(wasmUri: string, startFlags: unknown = null, options?: Partial<EvalContext>) {
+  const context: EvalContext = {
+    refs: options?.refs || new Map(),
+    stack: options?.stack || null,
+    triggerEvent: function() {},
+    resumeCont: function() {},
+  };
+
   const wasi = new WASI([], [], [
     new OpenFile(new File([])), // stdin
     new OpenFile(new File([])), // stdout
     new OpenFile(new File([])), // stderr
   ]);
 
-  const persistent: PersistentState = {
-    refs: new Map(),
-    stack: null,
-  };
-
   function clickable_eval_buffer(ptr: Ptr, len: number): void {
     // @ts-ignore
     const mem = new DataView(inst.exports.memory.buffer);
+    const context1 = {...context, resumeCont, triggerEvent}
 
     function triggerEvent(eventId: EventId, arg: unknown) {
       const encoderState = {mem, begin: ptr, end: ptr + len};
@@ -35,9 +38,7 @@ export function runWasm(wasmUri: string, startFlags: unknown = null) {
     };
 
     const intp: EvalState = {
-      triggerEvent,
-      resumeCont,
-      persistent,
+      context: context1,
       mem,
       isMutableMem: true,
       begin: ptr,

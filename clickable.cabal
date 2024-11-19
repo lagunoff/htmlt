@@ -19,6 +19,7 @@ executable clickable
      Clickable
      Clickable.Element
      Clickable.Binary       
+     Clickable.DOM
      Clickable.HTML
      Clickable.Internal
      Clickable.Property

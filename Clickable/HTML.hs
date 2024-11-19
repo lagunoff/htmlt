@@ -13,13 +13,10 @@ module Clickable.HTML where
 
 import Clickable.Internal
 import Clickable.Types
-import Data.Kind (Type)
-import Data.Text (Text)
-import GHC.Generics (Generic)
-import Unsafe.Coerce (unsafeCoerce)
+import Control.Monad
 import Control.Monad.Trans
 import Data.IORef
-import Control.Monad
+import Data.Text (Text)
 
 el :: Text -> HTML a -> HTML a
 el tagName child = HTML \s e -> do
@@ -104,62 +101,6 @@ toggleClass className dynEnable = HTML \s e -> do
   pure ((), s')
 {-# INLINE toggleClass #-}
 
-addEventListener :: FromJSVal a => (Event a -> JSExp) -> (a -> JSM ()) -> JSM ()
-addEventListener addScript k =
-  reactive add >>= jsCmd where
-    add scope s = (s''', cmd) where
-      k' = localScope scope . k
-      eventId = EventId s.ist_id_supply
-      (s', unsub) = newRefIdFn scope s {ist_id_supply = s.ist_id_supply + 1}
-      s'' = subscribeEventFn (unsafeFromEventId eventId)
-        (mapM_ k' . fromJSVal . unsafeCoerce) scope s'
-      s''' = installFinalizerFn (jsCmd $ Apply (Ref unsub) []) scope s''
-      cmd = AssignRef unsub $ addScript $ Event eventId
-
-class IsEventName eventName where
-  type EventListenerCb eventName :: Type
-  connectEventName :: EventListenerCb eventName -> JSM ()
-
-on :: forall eventName. IsEventName eventName => EventListenerCb eventName -> HTML ()
-on k = liftJSM $ connectEventName @eventName k
-
-instance IsEventName "click" where
-  type EventListenerCb "click" = JSM ()
-  connectEventName k = addEventListener
-    (genericEvent defaultEventListenerOptions "click" (PeekStack 0)) (const k)
-
-data EventListenerOptions = EventListenerOptions {
-  prevent_default :: Bool,
-  stop_propagation :: Bool
-} deriving stock (Generic, Show, Eq)
-
-defaultEventListenerOptions :: EventListenerOptions
-defaultEventListenerOptions = EventListenerOptions {
-  prevent_default = False,
-  stop_propagation = False
-}
-
-genericEvent :: EventListenerOptions -> Text -> JSExp -> Event () -> JSExp
-genericEvent opt eventName target (Event eid) =
-  Eval script `Apply` [target, Lam (TriggerEvent eid Null)]
-  where
-    script =
-      ("(function(target, trigger){\n\
-      \  function listener(event){\n\
-      \    " <> preventDefaultStmt <> "\n\
-      \    " <> stopPropagationStmt <> "\n\
-      \    trigger();\n\
-      \  }\n\
-      \  target.addEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
-      \  return () => target.removeEventListener('" <> UnsafeJavaScript eventName <> "', listener);\n\
-      \})")
-    preventDefaultStmt = if opt.prevent_default then "event.preventDefault();" else ""
-    stopPropagationStmt = if opt.stop_propagation then "event.stopPropagation();" else ""
-
-unsafeConnectEvent :: JSExp -> UnsafeJavaScript -> Event a -> JSExp
-unsafeConnectEvent target ujs (Event eid) =
-  Eval ujs `Apply` [target, Lam (TriggerEvent eid (Arg 0))]
-
 attachTo :: JSExp -> HTML a -> JSM a
 attachTo rootEl contents = JSM \e -> do
   e.ien_command $ PushStack rootEl
@@ -183,47 +124,6 @@ saveStackHead = HTML \s e ->
 blank :: Applicative m => m ()
 blank = pure ()
 {-# INLINE blank #-}
-
-data Location = Location {
-  -- | A string containing the protocol scheme of the URL, including
-  -- the final ':'
-  protocol :: Text,
-  -- | A string containing the domain of the URL.
-  hostname :: Text,
-  -- | A string containing the port number of the URL.
-  port :: Text,
-  -- | A string containing an initial '/' followed by the path of the
-  -- URL, not including the query string or fragment.
-  pathname :: Text,
-  -- | String containing a '?' followed by the parameters or
-  -- "querystring" of the URL
-  search :: Text,
-  -- | String containing a '#' followed by the fragment identifier
-  -- of the URL.
-  hash :: Text
-} deriving stock (Show, Eq, Generic)
-  deriving anyclass (FromJSVal, ToJSVal)
-
--- https://developer.mozilla.org/en-US/docs/Web/API/Window/popstate_event
-popstateEvent :: Event Location -> JSExp
-popstateEvent (Event eventId) =
-  Eval script `Apply` [Id "window", Lam (TriggerEvent eventId (Arg 0))]
-  where
-    script =
-      "(function(target, trigger){\n\
-      \  function listener(){\n\
-      \    trigger({\n\
-      \      protocol: location.protocol,\n\
-      \      hostname: location.hostname,\n\
-      \      port: location.port,\n\
-      \      pathname: location.pathname,\n\
-      \      search: location.search,\n\
-      \      hash: location.hash\n\
-      \    });\n\
-      \  }\n\
-      \  target.addEventListener('popstate', listener);\n\
-      \  return () => target.removeEventListener('popstate', listener);\n\
-      \})"
 
 dyn :: Dynamic (HTML ()) -> HTML ()
 dyn val = do

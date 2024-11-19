@@ -1,14 +1,16 @@
-import { ClientMsgTag, EventId, PersistentState } from "./proto";
+import { ClientMsgTag, EvalContext, EventId } from "./proto";
 import * as proto from "./proto";
 
 const outBuf = new ArrayBuffer(100 * 1024);
 const mem = new DataView(outBuf);
 
-export function runWebsocket(devSocketUri: string, startFlags: unknown = null) {
+export function runWebsocket(devSocketUri: string, startFlags: unknown = null, options?: Partial<EvalContext>) {
   const websocket = new WebSocket(devSocketUri);
-  const persistent: PersistentState = {
-    refs: new Map(),
-    stack: null,
+  const context: EvalContext = {
+    refs: options?.refs || new Map(),
+    stack: options?.stack || null,
+    triggerEvent,
+    resumeCont,
   };
 
   function triggerEvent(eventId: EventId, arg: unknown) {
@@ -33,9 +35,7 @@ export function runWebsocket(devSocketUri: string, startFlags: unknown = null) {
   websocket.onmessage = (event) => {
     convertBlobToUint8Array(event.data).then(buf => {
       proto.evalMem({
-        triggerEvent,
-        resumeCont,
-        persistent,
+        context,
         mem: new DataView(buf),
         isMutableMem: false,
         begin: 0,

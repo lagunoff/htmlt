@@ -149,27 +149,28 @@ export type RefId = number;
 export type EventId = number;
 
 export type EvalState = {
-  readonly triggerEvent: (eventId: EventId, arg: unknown) => void;
-  readonly resumeCont: (contId: number, res: unknown) => void;
-  readonly persistent: PersistentState;
+  readonly context: EvalContext;
   readonly mem: DataView;
   readonly isMutableMem: boolean;
   begin: Ptr;
   readonly end: Ptr;
 };
 
-export type PersistentState = {
+export type EvalContext = {
+  readonly triggerEvent: (eventId: EventId, arg: unknown) => void;
+  readonly resumeCont: (contId: number, res: unknown) => void;
   readonly refs: Map<ScopeId, Map<RefId, unknown>>;
   stack: List<unknown>;
 };
 
 /** Evaluate sequence of `Expr` encoded as `Data.Binary.Binary`
  * instance inside the memory given in `self.mem` */
-export function evalMem(self: EvalState): void {
+export function evalMem(self: EvalState): unknown {
   let res = null;
   for (; self.begin < self.end;) {
     res = evalNext(self, null, res);
   }
+  return res;
 }
 
 /** Evaluate next single `Expr` relative to `self.begin` pointer */
@@ -367,13 +368,13 @@ export function evalNext(self: EvalState, args: List<unknown> = null, prevRes: u
       const refId = self.mem.getUint32(self.begin + 4, false);
       self.begin += 8;
       const val = evalNext(self, args, prevRes);
-      if (self.persistent.refs.has(scopeId)) {
-        const scopeMap = self.persistent.refs.get(scopeId)!;
+      if (self.context.refs.has(scopeId)) {
+        const scopeMap = self.context.refs.get(scopeId)!;
         scopeMap.set(refId, val);
       } else {
         const scopeMap = new Map();
         scopeMap.set(refId, val);
-        self.persistent.refs.set(scopeId, scopeMap);
+        self.context.refs.set(scopeId, scopeMap);
       }
       return val;
     };
@@ -381,11 +382,11 @@ export function evalNext(self: EvalState, args: List<unknown> = null, prevRes: u
       const scopeId = self.mem.getUint32(self.begin, false);
       const refId = self.mem.getUint32(self.begin + 4, false);
       self.begin += 8;
-      const scopeMap = self.persistent.refs.get(scopeId);
+      const scopeMap = self.context.refs.get(scopeId);
       if (!scopeMap) return null;
       scopeMap.delete(refId);
       if (scopeMap.size == 0) {
-        self.persistent.refs.delete(scopeId);
+        self.context.refs.delete(scopeId);
       }
       return null;
     };
@@ -393,19 +394,19 @@ export function evalNext(self: EvalState, args: List<unknown> = null, prevRes: u
       const scopeId = self.mem.getUint32(self.begin, false);
       const refId = self.mem.getUint32(self.begin + 4, false);
       self.begin += 8;
-      return self.persistent.refs.get(scopeId)?.get(refId);
+      return self.context.refs.get(scopeId)?.get(refId);
     };
     case ExprTag.FreeScope: {
       const scopeId = self.mem.getUint32(self.begin, false);
       self.begin += 4;
-      self.persistent.refs.delete(scopeId);
+      self.context.refs.delete(scopeId);
       return null;
     };
 
     case ExprTag.PeekStack: {
       const stackIx = self.mem.getInt8(self.begin);
       self.begin += 1;
-      let iter = self.persistent.stack;
+      let iter = self.context.stack;
       let i = 0;
       while (iter) {
         if (i == stackIx) {
@@ -418,28 +419,28 @@ export function evalNext(self: EvalState, args: List<unknown> = null, prevRes: u
     };
     case ExprTag.PushStack: {
       const val = evalNext(self, args, prevRes);
-      self.persistent.stack = Cons(val, self.persistent.stack);
+      self.context.stack = Cons(val, self.context.stack);
       return val;
     };
     case ExprTag.PopStack: {
-      if (!self.persistent.stack) {
+      if (!self.context.stack) {
         throw new Error("PopStack: empty stack");
       }
-      const res = self.persistent.stack[VAL];
-      self.persistent.stack = self.persistent.stack[NEXT];
+      const res = self.context.stack[VAL];
+      self.context.stack = self.context.stack[NEXT];
       return res;
     };
 
     case ExprTag.PopIns: {
-      if (!self.persistent.stack) {
+      if (!self.context.stack) {
         throw new Error("PopIns: empty stack");
       }
-      const tip = self.persistent.stack[VAL] as Node;
-      self.persistent.stack = self.persistent.stack[NEXT];
-      if (!self.persistent.stack) {
+      const tip = self.context.stack[VAL] as Node;
+      self.context.stack = self.context.stack[NEXT];
+      if (!self.context.stack) {
         throw new Error("PopIns: empty stack");
       }
-      const parent = self.persistent.stack[VAL] as Element;
+      const parent = self.context.stack[VAL] as Element;
       utils.insert(parent, tip);
       return tip;
     };
@@ -468,10 +469,10 @@ export function evalNext(self: EvalState, args: List<unknown> = null, prevRes: u
       return el.classList.remove(className);
     };
     case ExprTag.InsertBrackets: {
-      if (!self.persistent.stack) {
+      if (!self.context.stack) {
         throw new Error("InsertBrackets: empty stack");
       }
-      const el = self.persistent.stack[VAL] as any;
+      const el = self.context.stack[VAL] as any;
       return utils.insertBrackets(el);
     };
     case ExprTag.ClearBrackets: {
@@ -511,13 +512,13 @@ export function evalNext(self: EvalState, args: List<unknown> = null, prevRes: u
       const eventId = self.mem.getUint32(self.begin, false);
       self.begin += 4;
       const pload = evalNext(self, args, prevRes);
-      self.triggerEvent(eventId, pload);
+      self.context.triggerEvent(eventId, pload);
       return null;
     };
     case ExprTag.Resume: {
       const contId = self.mem.getUint32(self.begin, false);
       self.begin += 4;
-      self.resumeCont(contId, prevRes);
+      self.context.resumeCont(contId, prevRes);
       return null;
     };
   }
@@ -743,10 +744,8 @@ export function encodeValue(self: EncoderState, val: unknown): void {
   }
   if (typeof(val) === 'string') {
     self.mem.setUint8(self.begin, ExprTag.Str);
-    const destRange = new Uint8Array(self.mem.buffer).subarray(self.begin + 9);
-    const encResult = new TextEncoder().encodeInto(val, destRange)
-    self.mem.setBigUint64(self.begin + 1, BigInt(encResult.written), false);
-    self.begin += 9 + encResult.written;
+    self.begin++;
+    encodeString(self, val);
     return;
   }
   if (typeof(val) === 'bigint') {
@@ -781,9 +780,17 @@ export function encodeValue(self: EncoderState, val: unknown): void {
   self.begin += 9;
 
   entries.forEach(([k, v]) => {
-    encodeValue(self, k);
+    encodeString(self, k);
     encodeValue(self, v);
   });
+  return;
+}
+
+function encodeString(self: EncoderState, s: string): void {
+  const destRange = new Uint8Array(self.mem.buffer).subarray(self.begin + 8);
+  const encResult = new TextEncoder().encodeInto(s, destRange)
+  self.mem.setBigUint64(self.begin, BigInt(encResult.written), false);
+  self.begin += 8 + encResult.written;
   return;
 }
 

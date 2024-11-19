@@ -92,6 +92,13 @@ instance MonadJSM HTML where
   liftJSM (JSM a) = HTML \s e -> (,s) <$> a e
   {-# INLINE liftJSM #-}
 
+instance a ~ () => IsString (HTML a) where
+  fromString t = HTML \s e -> do
+    e.ien_command $ PushStack $ CreateText $ Text.pack t
+    e.ien_command PopIns
+    return ((), s)
+  {-# INLINE fromString #-}
+
 data JSExp where
   Null :: JSExp
   Bool :: Word8 -> JSExp
