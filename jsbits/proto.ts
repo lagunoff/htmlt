@@ -62,9 +62,9 @@ export enum ExprTag {
   Call,
 
   AssignRef,
-  FreeRef,
   Ref,
   FreeScope,
+  MoveScope,
 
   PeekStack,
   PushStack,
@@ -75,9 +75,9 @@ export enum ExprTag {
   ElementAttr,
   ClassListAdd,
   ClassListRemove,
-  InsertBrackets,
-  ClearBrackets,
-  DetachBrackets,
+  InsertPlaceholder,
+  ClearPlaceholder,
+  DetachPlaceholder,
 
   CreateElement,
   CreateElementNS,
@@ -116,9 +116,9 @@ export type Expr =
   | [ExprTag.Call, Expr, string, [Expr]]
 
   | [ExprTag.AssignRef, number, number, Expr]
-  | [ExprTag.FreeRef, number, number]
-  | [ExprTag.Ref, number, number]
+  | [ExprTag.Ref, number]
   | [ExprTag.FreeScope, number]
+  | [ExprTag.MoveScope, number, number]
 
   | [ExprTag.PeekStack, number]
   | [ExprTag.PushStack, Expr]
@@ -129,9 +129,9 @@ export type Expr =
   | [ExprTag.ElementAttr, string, string]
   | [ExprTag.ClassListAdd, Expr, string[]]
   | [ExprTag.ClassListRemove, Expr, string[]]
-  | [ExprTag.InsertBrackets]
-  | [ExprTag.ClearBrackets, Expr]
-  | [ExprTag.DetachBrackets, Expr]
+  | [ExprTag.InsertPlaceholder]
+  | [ExprTag.ClearPlaceholder, Expr]
+  | [ExprTag.DetachPlaceholder, Expr]
 
   | [ExprTag.CreateElement, string]
   | [ExprTag.CreateElementNS, string, string]
@@ -159,7 +159,7 @@ export type EvalState = {
 export type EvalContext = {
   readonly triggerEvent: (eventId: EventId, arg: unknown) => void;
   readonly resumeCont: (contId: number, res: unknown) => void;
-  readonly refs: Map<ScopeId, Map<RefId, unknown>>;
+  readonly refs: RefStore;
   stack: List<unknown>;
 };
 
@@ -364,42 +364,29 @@ export function evalNext(self: EvalState, args: List<unknown> = null, prevRes: u
     };
 
     case ExprTag.AssignRef: {
-      const scopeId = self.mem.getUint32(self.begin, false);
-      const refId = self.mem.getUint32(self.begin + 4, false);
+      const scope = self.mem.getUint32(self.begin, false);
+      const ref = self.mem.getUint32(self.begin + 4, false);
       self.begin += 8;
       const val = evalNext(self, args, prevRes);
-      if (self.context.refs.has(scopeId)) {
-        const scopeMap = self.context.refs.get(scopeId)!;
-        scopeMap.set(refId, val);
-      } else {
-        const scopeMap = new Map();
-        scopeMap.set(refId, val);
-        self.context.refs.set(scopeId, scopeMap);
-      }
+      self.context.refs.assignRef(scope, ref, val);
       return val;
     };
-    case ExprTag.FreeRef: {
-      const scopeId = self.mem.getUint32(self.begin, false);
-      const refId = self.mem.getUint32(self.begin + 4, false);
-      self.begin += 8;
-      const scopeMap = self.context.refs.get(scopeId);
-      if (!scopeMap) return null;
-      scopeMap.delete(refId);
-      if (scopeMap.size == 0) {
-        self.context.refs.delete(scopeId);
-      }
-      return null;
-    };
     case ExprTag.Ref: {
-      const scopeId = self.mem.getUint32(self.begin, false);
-      const refId = self.mem.getUint32(self.begin + 4, false);
-      self.begin += 8;
-      return self.context.refs.get(scopeId)?.get(refId);
+      const ref = self.mem.getUint32(self.begin, false);
+      self.begin += 4;
+      return self.context.refs.refs.get(ref);
     };
     case ExprTag.FreeScope: {
-      const scopeId = self.mem.getUint32(self.begin, false);
+      const scope = self.mem.getUint32(self.begin, false);
       self.begin += 4;
-      self.context.refs.delete(scopeId);
+      self.context.refs.freeScope(scope);
+      return null;
+    };
+    case ExprTag.MoveScope: {
+      const src = self.mem.getUint32(self.begin, false);
+      const dest = self.mem.getUint32(self.begin + 4, false);
+      self.begin += 8;
+      self.context.refs.moveScope(src, dest);
       return null;
     };
 
@@ -468,21 +455,21 @@ export function evalNext(self: EvalState, args: List<unknown> = null, prevRes: u
       const className = decodeString(self);
       return el.classList.remove(className);
     };
-    case ExprTag.InsertBrackets: {
+    case ExprTag.InsertPlaceholder: {
       if (!self.context.stack) {
-        throw new Error("InsertBrackets: empty stack");
+        throw new Error("InsertPlaceholder: empty stack");
       }
       const el = self.context.stack[VAL] as any;
-      return utils.insertBrackets(el);
+      return utils.insertPlaceholder(el);
     };
-    case ExprTag.ClearBrackets: {
+    case ExprTag.ClearPlaceholder: {
       const node = evalNext(self, args, prevRes);
-      utils.clearBrackets(node as any, false);
+      utils.clearPlaceholder(node as any, false);
       return null;
     };
-    case ExprTag.DetachBrackets: {
+    case ExprTag.DetachPlaceholder: {
       const node = evalNext(self, args, prevRes);
-      utils.clearBrackets(node as any, true);
+      utils.clearPlaceholder(node as any, true);
       return null;
     };
     case ExprTag.CreateElement: {
@@ -634,14 +621,14 @@ export function lookaheadNext(mem: DataView, ptr: Ptr): Ptr {
     case ExprTag.AssignRef: {
       return ptr + 8;
     };
-    case ExprTag.FreeRef: {
-      return ptr + 8;
-    };
     case ExprTag.Ref: {
-      return ptr + 8;
+      return ptr + 4;
     };
     case ExprTag.FreeScope: {
       return ptr + 4;
+    };
+    case ExprTag.MoveScope: {
+      return ptr + 8;
     };
 
     case ExprTag.PeekStack: {
@@ -675,13 +662,13 @@ export function lookaheadNext(mem: DataView, ptr: Ptr): Ptr {
       const newPtr0 = lookaheadNext(mem, ptr);
       return lookaheadString(mem, newPtr0);
     };
-    case ExprTag.InsertBrackets: {
+    case ExprTag.InsertPlaceholder: {
       return ptr;
     };
-    case ExprTag.ClearBrackets: {
+    case ExprTag.ClearPlaceholder: {
       return lookaheadNext(mem, ptr);
     };
-    case ExprTag.DetachBrackets: {
+    case ExprTag.DetachPlaceholder: {
       return lookaheadNext(mem, ptr);
     };
     case ExprTag.CreateElement: {
@@ -873,31 +860,31 @@ namespace utils {
     element.removeEventListener(eventName, listener);
   }
 
-  export function insertBrackets(builder: Element|Comment): Comment {
-    const begin = document.createComment('ContentBrackets {{');
-    const end = document.createComment('}}');
+  export function insertPlaceholder(builder: Element|Comment): Comment {
+    const begin = document.createComment('Placeholder {{{');
+    const end = document.createComment('}}}');
     insert(builder, begin);
     insert(builder, end);
     return end;
   }
 
-  export function clearBrackets(bracket: Comment|Element, detach: boolean): void {
-    if (bracket instanceof Comment) {
+  export function clearPlaceholder(placeholder: Comment|Element, detach: boolean): void {
+    if (placeholder instanceof Comment) {
       let nestedCounter = 0;
       for (;;){
-        if (!bracket.previousSibling ||
-          (nestedCounter == 0 && isOpenBracket(bracket.previousSibling))
+        if (!placeholder.previousSibling ||
+          (nestedCounter == 0 && isOpenPlaceholder(placeholder.previousSibling))
           ) break;
-        if (isClosingBracket(bracket.previousSibling)) nestedCounter++;
-        else if (isOpenBracket(bracket.previousSibling)) nestedCounter--;
-        bracket.previousSibling!.parentNode!.removeChild(bracket.previousSibling!);
+        if (isClosingPlaceholder(placeholder.previousSibling)) nestedCounter++;
+        else if (isOpenPlaceholder(placeholder.previousSibling)) nestedCounter--;
+        placeholder.previousSibling!.parentNode!.removeChild(placeholder.previousSibling!);
       }
       if (detach) {
-        bracket.previousSibling!.parentNode!.removeChild(bracket.previousSibling!);
-        bracket.parentNode!.removeChild(bracket);
+        placeholder.previousSibling!.parentNode!.removeChild(placeholder.previousSibling!);
+        placeholder.parentNode!.removeChild(placeholder);
       }
     } else {
-      bracket.innerHTML = '';
+      placeholder.innerHTML = '';
     }
   }
 
@@ -908,17 +895,47 @@ namespace utils {
     return builder;
   }
 
-  function isOpenBracket(node: Node): boolean {
-    if (node instanceof Comment && node.textContent == 'ContentBrackets {{') {
+  function isOpenPlaceholder(node: Node): boolean {
+    if (node instanceof Comment && node.textContent == 'Placeholder {{{') {
       return true;
     }
     return false;
   }
 
-  function isClosingBracket(node: Node): boolean {
-    if (node instanceof Comment && node.textContent == '}}') {
+  function isClosingPlaceholder(node: Node): boolean {
+    if (node instanceof Comment && node.textContent == '}}}') {
       return true;
     }
     return false;
   }
 };
+
+export class RefStore {
+  constructor(
+    public scopes = new Map<ScopeId, Set<RefId>>,
+    public refs = new Map<RefId, unknown>,
+  ) {}
+
+  assignRef(scope: ScopeId, refId: RefId, value: unknown) {
+    const refs0 = this.scopes.get(scope);
+    const refs1 = refs0 || new Set();
+    if (!refs0) this.scopes.set(scope, refs1);
+    refs1.add(refId);
+    this.refs.set(refId, value);
+  }
+
+  moveScope(src: ScopeId, dest: ScopeId) {
+    const srcRefs = this.scopes.get(src);
+    const destRefs = this.scopes.get(dest);
+    if (!srcRefs || !destRefs) return;
+    srcRefs.forEach(s => destRefs.add(s));
+    this.scopes.delete(src);
+  }
+
+  freeScope(scope: ScopeId) {
+    const refs = this.scopes.get(scope);
+    if (!refs) return;
+    refs.forEach(s => this.refs.delete(s));
+    this.scopes.delete(scope);
+  }
+}

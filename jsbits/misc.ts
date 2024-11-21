@@ -4,7 +4,7 @@ import * as proto from "./proto";
 
 export function evalUint8Array(command: Uint8Array, options?: Partial<EvalContext>): unknown {
   const context: EvalContext = {
-    refs: options?.refs || new Map(),
+    refs: options?.refs || new proto.RefStore(),
     stack: options?.stack || null,
     triggerEvent: options?.triggerEvent || function() {},
     resumeCont: options?.resumeCont || function() {},

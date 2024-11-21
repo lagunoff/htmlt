@@ -32,7 +32,7 @@ defaultListenerOptions = ListenerOptions {
 }
 
 addEventListener :: FromJSVal a => (Event a -> JSExp) -> (a -> JSM ()) -> JSM ()
-addEventListener addScript k =
+addEventListener script k =
   reactive add >>= jsCmd where
     add scope s = (s''', cmd) where
       k' = localScope scope . k
@@ -41,7 +41,7 @@ addEventListener addScript k =
       s'' = subscribeEventFn (unsafeFromEventId eventId)
         (mapM_ k' . fromJSVal . unsafeCoerce) scope s'
       s''' = installFinalizerFn (jsCmd $ Apply (Ref unsub) []) scope s''
-      cmd = AssignRef unsub $ addScript $ Event eventId
+      cmd = AssignRef scope unsub $ script $ Event eventId
 
 class EventName eventName where
   type EventListenerCb eventName :: Type

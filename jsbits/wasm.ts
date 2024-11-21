@@ -6,7 +6,7 @@ let inst: WebAssembly.Instance;
 
 export function runWasm(wasmUri: string, startFlags: unknown = null, options?: Partial<EvalContext>) {
   const context: EvalContext = {
-    refs: options?.refs || new Map(),
+    refs: options?.refs || new proto.RefStore(),
     stack: options?.stack || null,
     triggerEvent: function() {},
     resumeCont: function() {},

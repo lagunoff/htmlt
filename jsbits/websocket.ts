@@ -7,7 +7,7 @@ const mem = new DataView(outBuf);
 export function runWebsocket(devSocketUri: string, startFlags: unknown = null, options?: Partial<EvalContext>) {
   const websocket = new WebSocket(devSocketUri);
   const context: EvalContext = {
-    refs: options?.refs || new Map(),
+    refs: options?.refs || new proto.RefStore(),
     stack: options?.stack || null,
     triggerEvent,
     resumeCont,

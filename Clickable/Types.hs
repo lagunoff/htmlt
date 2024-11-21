@@ -127,10 +127,10 @@ data JSExp where
   Apply :: JSExp -> [JSExp] -> JSExp
   Call :: JSExp -> Text -> [JSExp] -> JSExp
 
-  AssignRef :: RefId -> JSExp -> JSExp
-  FreeRef :: RefId -> JSExp
+  AssignRef :: ScopeId -> RefId -> JSExp -> JSExp
   Ref :: RefId -> JSExp
   FreeScope :: ScopeId -> JSExp
+  MoveScope :: ScopeId -> ScopeId -> JSExp
 
   PeekStack :: Word8 -> JSExp
   PushStack :: JSExp -> JSExp
@@ -141,9 +141,9 @@ data JSExp where
   ElementAttr :: JSExp -> Text -> Text -> JSExp
   ClassListAdd :: JSExp -> Text -> JSExp
   ClassListRemove :: JSExp -> Text -> JSExp
-  InsertBrackets :: JSExp
-  ClearBrackets :: JSExp -> JSExp
-  DetachBrackets :: JSExp -> JSExp
+  InsertPlaceholder :: JSExp
+  ClearPlaceholder :: JSExp -> JSExp
+  DetachPlaceholder :: JSExp -> JSExp
 
   CreateElement :: Text -> JSExp
   CreateElementNS :: Text -> Text -> JSExp
@@ -175,9 +175,8 @@ newtype StartFlags = StartFlags {unStartFlags :: JSVal}
 newtype ScopeId = ScopeId {unScopeId :: Word32}
   deriving newtype (Binary, Eq, Ord, Show)
 
-data RefId = RefId ScopeId Word32
-  deriving stock (Eq, Show, Generic)
-  deriving anyclass (Binary)
+newtype RefId = RefId {unRefId :: Word32}
+  deriving newtype (Binary, Eq, Ord, Show)
 
 newtype EventId = EventId {unEventId :: Word32}
   deriving newtype (Show, Ord, Eq, Binary)
@@ -520,13 +519,15 @@ prompt (PromptTag t) (IO m) = IO (prompt# t m)
 control :: forall a b. PromptTag a -> ((IO b -> IO a) -> IO a) -> IO b
 control (PromptTag t) f = IO (control0# t g)
   where
-    g :: ((State# RealWorld -> (# State# RealWorld, b #))
-      -> State# RealWorld -> (# State# RealWorld, a #))
-      -> State# RealWorld -> (# State# RealWorld, a #)
+    g ::
+      ((State# RealWorld -> (# State# RealWorld, b #)) ->
+        State# RealWorld -> (# State# RealWorld, a #)) ->
+      State# RealWorld -> (# State# RealWorld, a #)
     g h = let IO m = f (k h) in m
-    k :: ((State# RealWorld -> (# State# RealWorld, b #))
-      -> State# RealWorld -> (# State# RealWorld, a #))
-      -> IO b -> IO a
+    k ::
+      ((State# RealWorld -> (# State# RealWorld, b #)) ->
+        State# RealWorld -> (# State# RealWorld, a #)) ->
+      IO b -> IO a
     k l (IO n) = IO (l n)
 
 data PromptTag a = PromptTag {unPromptTag :: PromptTag# a}

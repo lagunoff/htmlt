@@ -2,18 +2,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE OverloadedRecordDot #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE BlockArguments #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DataKinds #-}
 {-# OPTIONS_GHC -Wall #-}
 module Clickable.HTML where
 
 import Clickable.Internal
 import Clickable.Types
-import Control.Monad
 import Control.Monad.Trans
 import Data.IORef
 import Data.Text (Text)
@@ -46,7 +40,7 @@ dynText contentDyn = HTML \s e -> do
   c <- readDyn contentDyn
   refId <- newRefId.unJSM e
   e.ien_command $ PushStack $ CreateText c
-  e.ien_command $ AssignRef refId (PeekStack 0)
+  e.ien_command $ AssignRef e.ien_scope refId (PeekStack 0)
   e.ien_command PopIns
   let k nval = JSM \e' ->
         e'.ien_command $ UpdateText (Ref refId) nval
@@ -116,7 +110,7 @@ saveStackHead = HTML \s e ->
   case s of
     Nothing -> do
       refId <- newRefId.unJSM e
-      e.ien_command $ AssignRef refId $ PeekStack 0
+      e.ien_command $ AssignRef e.ien_scope refId $ PeekStack 0
       return (refId, Just refId)
     Just saved ->
       pure (saved, s)
@@ -127,24 +121,23 @@ blank = pure ()
 
 dyn :: Dynamic (HTML ()) -> HTML ()
 dyn val = do
-  brackets <- liftJSM insertBrackets
   scope <- liftJSM newScope
-  initialVal <- liftJSM $ readDyn val
-  let
-    update html = do
-      liftJSM $ clearBrackets brackets
-      html
-    exec h =
-      localScope scope $ customize (Ref brackets) h
-  liftJSM $ exec $ update initialVal
+  place <- liftJSM insertPlaceholder
+  initial <- liftJSM $ readDyn val
+  liftJSM $ update scope place initial
   liftJSM $ subscribe val \newVal -> do
     freeScope scope
-    exec $ update newVal
+    update scope place newVal
+  where
+    update scope place content =
+      localScope scope do
+        clearPlaceholder place
+        execHTML (Ref place) content
 
 -- | Auxilliary datatype used in 'simpleList' implementation
-data ElemEnv a = ElemEnv {
-  brackets :: RefId,
-  state_var :: DynVar a,
+data InternalElem a = InternalElem {
+  placeholder :: RefId,
+  elem_state :: DynVar a,
   elem_scope :: ScopeId
 }
 
@@ -152,69 +145,64 @@ data ElemEnv a = ElemEnv {
 -- a` do not automatically propagate into the larger state. See
 -- `OverrideVar` and todomvc example to see one way to upstream
 -- changes into the larger state.
-simpleList ::
-  forall a. Dynamic [a] ->
-  (Int -> DynVar a -> HTML ()) ->
+simpleList :: forall a.
+  Dynamic [a] ->
+  (DynVar a -> HTML ()) ->
   HTML ()
-simpleList listDyn h = liftJSM do
-  internalStateRef <- liftIO $ newIORef ([] :: [ElemEnv a])
-  brackets <- insertBrackets
-  let
-    exec brackets' scope =
-      localScope scope . customize (Ref brackets')
-    exec1 brackets' = customize (Ref brackets')
-
-    setup :: Int -> [a] -> [ElemEnv a] -> JSM [ElemEnv a]
-    setup idx new existing = case (existing, new) of
-      ([], []) -> return []
+simpleList listDyn h = do
+  ref <- liftIO $ newIORef ([] :: [InternalElem a])
+  place <- liftJSM insertPlaceholder
+  initial <- readDyn listDyn
+  liftJSM $ execHTML (Ref place) $ liftJSM $ updateList ref initial
+  liftJSM $ subscribe listDyn $ execHTML (Ref place) . liftJSM . updateList ref
+  where
+    synchronize :: [a] -> [InternalElem a] -> JSM [InternalElem a]
+    synchronize [] [] = return []
+    synchronize (x:xs) [] = do
       -- New list is longer, append new elements
-      ([], x:xs) -> do
-        e <- newElem x
-        exec e.brackets e.elem_scope $ h idx e.state_var
-        fmap (e:) $ setup (idx + 1) xs []
+      ie <- newElem x
+      localScope ie.elem_scope $ execHTML (Ref ie.placeholder) $ h ie.elem_state
+      fmap (ie:) $ synchronize xs []
+    synchronize [] (r:rs) = do
       -- New list is shorter, delete the elements that no longer
       -- present in the new list
-      (r:rs, []) -> do
-        finalizeElems True (r:rs)
-        return []
+      mapM_ dropElem (r:rs)
+      pure []
+    synchronize (y:ys) (r:rs) = do
       -- Update existing elements along the way
-      (r:rs, y:ys) -> do
-        writeVar r.state_var y
-        fmap (r:) $ setup (idx + 1) ys rs
-    newElem :: a -> JSM (ElemEnv a)
+      writeVar r.elem_state y
+      fmap (r:) $ synchronize ys rs
+    newElem :: a -> JSM (InternalElem a)
     newElem a = do
-      elem_scope <- newScope
-      localScope elem_scope do
-        state_var <- newVar a
-        brackets' <- insertBrackets
-        return ElemEnv {elem_scope, state_var, brackets = brackets'}
-    finalizeElems :: Bool -> [ElemEnv a] -> JSM ()
-    finalizeElems remove = mapM_ \ee -> do
-      when remove $ detachBrackets ee.brackets
-      destroyScope ee.elem_scope
-    updateList :: [a] -> JSM ()
-    updateList new = do
-      eenvs <- liftIO $ readIORef internalStateRef
-      newEenvs <- setup 0 new eenvs
-      liftIO $ writeIORef internalStateRef newEenvs
-  initialVal <- readDyn listDyn
-  exec1 brackets $ liftJSM $ updateList initialVal
-  subscribe listDyn $ exec1 brackets . liftJSM . updateList
+      scope <- newScope
+      localScope scope do
+        elem_state <- newVar a
+        place' <- insertPlaceholder
+        pure InternalElem {elem_scope = scope, elem_state, placeholder = place'}
+    dropElem :: InternalElem a -> JSM ()
+    dropElem ie = do
+      destroyScope ie.elem_scope
+      detachPlaceholder ie.placeholder
+    updateList :: IORef [InternalElem a] -> [a] -> JSM ()
+    updateList ref new = do
+      ies <- liftIO $ readIORef ref
+      ies' <- synchronize new ies
+      liftIO $ writeIORef ref ies'
 
-insertBrackets :: JSM RefId
-insertBrackets = do
-  brackets <- newRefId
-  jsCmd $ AssignRef brackets InsertBrackets
-  pure brackets
+insertPlaceholder :: JSM RefId
+insertPlaceholder = JSM \e -> do
+  ref <- newRefId.unJSM e
+  e.ien_command $ AssignRef e.ien_scope ref InsertPlaceholder
+  pure ref
 
-clearBrackets :: RefId -> JSM ()
-clearBrackets rid = jsCmd $ ClearBrackets $ Ref rid
+clearPlaceholder :: RefId -> JSM ()
+clearPlaceholder rid = jsCmd $ ClearPlaceholder $ Ref rid
 
-detachBrackets :: RefId -> JSM ()
-detachBrackets rid = jsCmd $ DetachBrackets $ Ref rid
+detachPlaceholder :: RefId -> JSM ()
+detachPlaceholder rid = jsCmd $ DetachPlaceholder $ Ref rid
 
-customize :: JSExp -> HTML a -> JSM a
-customize elm action = JSM \e -> do
+execHTML :: JSExp -> HTML a -> JSM a
+execHTML elm action = JSM \e -> do
   e.ien_command $ PushStack elm
   (r, _) <- action.unHTML Nothing e
   e.ien_command PopStack

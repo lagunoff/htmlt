@@ -196,48 +196,65 @@ newRefId = reactive newRefIdFn
 {-# INLINE newRefId #-}
 
 newRefIdFn :: ScopeId -> InternalState -> (InternalState, RefId)
-newRefIdFn e s = (s {ist_id_supply = s.ist_id_supply + 1}, RefId e s.ist_id_supply)
+newRefIdFn _e s = (s {ist_id_supply = s.ist_id_supply + 1}, RefId s.ist_id_supply)
 {-# INLINE newRefIdFn #-}
 
 freeScope :: ScopeId -> JSM ()
-freeScope s = do
-  mres <- state $ swap . freeScopeFn s
-  forM_ mres \r -> forM_ r.rsr_linked destroyScope
-  forM_ mres \r -> sequence_ r.rsr_finalizers
-{-# INLINE freeScope #-}
-
-freeScopeFn :: ScopeId -> InternalState -> (InternalState, Maybe Resources)
-freeScopeFn scope s = (s', resources)
+freeScope scope = do
+  mres <- state updateState
+  forM_ mres \res -> do
+    forM_ (res.rsr_linked) destroyScope
+    sequence_ (res.rsr_finalizers)
+  jsCmd $ FreeScope scope
   where
-    subs = Map.map (List.filter filterSub) s.ist_subscriptions
-    filterSub sub = sub.sub_scope /= scope
-    (resources, rsr) = Map.alterF (,Nothing) scope s.ist_resources
-    s' = s {ist_subscriptions = subs, ist_resources = rsr}
-{-# INLINE freeScopeFn #-}
+    updateState :: InternalState -> (Maybe Resources, InternalState)
+    updateState s = (res, s')
+      where
+        subs = Map.map (filter (not . isTargetScope)) s.ist_subscriptions
+        isTargetScope sub = sub.sub_scope == scope
+        (res, rsr) = Map.alterF (, Nothing) scope s.ist_resources
+        s' = s {ist_subscriptions = subs, ist_resources = rsr}
 
 destroyScope :: ScopeId -> JSM ()
-destroyScope s = do
-  mres <- state $ swap . destroyScopeFn s
-  forM_ mres \r -> forM_ r.rsr_linked destroyScope
-  forM_ mres \r -> sequence_ r.rsr_finalizers
-{-# INLINE destroyScope #-}
-
-destroyScopeFn :: ScopeId -> InternalState -> (InternalState, Maybe Resources)
-destroyScopeFn scope s = (s', resources)
+destroyScope scope = do
+  mres <- state updateState
+  forM_ mres \res -> do
+    forM_ (res.rsr_linked) destroyScope
+    sequence_ (res.rsr_finalizers)
+  jsCmd $ FreeScope scope
   where
-    subs = Map.map (List.filter filterSub) s.ist_subscriptions
-    filterSub x = x.sub_scope /= scope
-    remove = Map.alterF (,Nothing) scope
-    unlink m = case resources of
-      Just r -> Map.adjust adj r.rsr_parent m
-      Nothing -> m
-    adj r = r {rsr_linked = List.filter (/=scope) r.rsr_linked}
-    (resources, rsr) = remove s.ist_resources
-    s' = s {ist_subscriptions = subs, ist_resources = unlink rsr}
-{-# INLINE destroyScopeFn #-}
+    updateState :: InternalState -> (Maybe Resources, InternalState)
+    updateState s = (res, s')
+      where
+        subs = Map.map (filter (not . isTargetScope)) s.ist_subscriptions
+        isTargetScope sub = sub.sub_scope == scope
+        remove = Map.alterF (,Nothing) scope
+        unlink m = case res of
+          Just r -> Map.adjust adj r.rsr_parent m
+          Nothing -> m
+        adj r = r {rsr_linked = List.filter (/=scope) r.rsr_linked}
+        (res, rsr) = remove s.ist_resources
+        s' = s {ist_subscriptions = subs, ist_resources = unlink rsr}
+
+moveScope :: ScopeId -> ScopeId -> JSM ()
+moveScope src dest = do
+  modify updateState
+  jsCmd $ MoveScope src dest
+  where
+    updateState :: InternalState -> InternalState
+    updateState s
+      | Just srcRes <- Map.lookup src s.ist_resources =
+          s {ist_resources = Map.adjust (updateRes srcRes) dest s.ist_resources}
+      | otherwise = s
+      where
+        updateRes :: Resources -> Resources -> Resources
+        updateRes src' dest' = dest' {
+          rsr_linked = src'.rsr_linked <> dest'.rsr_linked,
+          rsr_finalizers = src'.rsr_finalizers <> dest'.rsr_finalizers
+        }
 
 installFinalizer :: JSM () -> JSM ()
-installFinalizer = reactive_ . installFinalizerFn
+installFinalizer f = reactive_ $ installFinalizerFn f
 {-# INLINE installFinalizer #-}
 
 installFinalizerFn :: JSM () -> ScopeId -> InternalState -> InternalState
