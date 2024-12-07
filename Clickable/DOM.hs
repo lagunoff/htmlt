@@ -11,12 +11,12 @@
 {-# OPTIONS_GHC -Wall #-}
 module Clickable.DOM where
 
+import Clickable.Internal
+import Clickable.Types
+import Data.Int
+import Data.Kind
 import Data.Text (Text)
 import GHC.Generics (Generic)
-import Clickable.Types
-import Data.Kind
-import Data.Int
-import Clickable.Internal
 import Unsafe.Coerce
 
 

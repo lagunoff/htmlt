@@ -87,6 +87,7 @@ export enum ExprTag {
   Eval,
   TriggerEvent,
   Resume,
+  Out,
 }
 
 /** Encode `Expr` type as a union of disjoint n-tuples, keep in
@@ -140,7 +141,8 @@ export type Expr =
 
   | [ExprTag.Eval, string]
   | [ExprTag.TriggerEvent, number, Expr]
-  | [ExprTag.Resume, number]
+  | [ExprTag.Resume, number, Expr]
+  | [ExprTag.Out]
   ;
 
 export type Ptr = number;
@@ -505,8 +507,12 @@ export function evalNext(self: EvalState, args: List<unknown> = null, prevRes: u
     case ExprTag.Resume: {
       const contId = self.mem.getUint32(self.begin, false);
       self.begin += 4;
-      self.context.resumeCont(contId, prevRes);
+      const pload = evalNext(self, args, prevRes);
+      self.context.resumeCont(contId, pload);
       return null;
+    };
+    case ExprTag.Out: {
+      return prevRes;
     };
   }
 }

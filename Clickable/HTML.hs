@@ -95,15 +95,15 @@ toggleClass className dynEnable = HTML \s e -> do
   pure ((), s')
 {-# INLINE toggleClass #-}
 
-attachTo :: JSExp -> HTML a -> JSM a
-attachTo rootEl contents = JSM \e -> do
-  e.ien_command $ PushStack rootEl
-  (r, _) <- contents.unHTML Nothing e
+execHTML :: JSExp -> HTML a -> JSM a
+execHTML elm action = JSM \e -> do
+  e.ien_command $ PushStack elm
+  (r, _) <- action.unHTML Nothing e
   e.ien_command PopStack
   pure r
 
-attach :: HTML a -> JSM a
-attach = attachTo $ Id "document" `Dot` "body"
+execHTMLBody :: HTML a -> JSM a
+execHTMLBody = execHTML $ Id "document" `Dot` "body"
 
 saveStackHead :: HTML RefId
 saveStackHead = HTML \s e ->
@@ -181,8 +181,8 @@ simpleList listDyn h = do
         pure InternalElem {elem_scope = scope, elem_state, placeholder = place'}
     dropElem :: InternalElem a -> JSM ()
     dropElem ie = do
-      destroyScope ie.elem_scope
       detachPlaceholder ie.placeholder
+      destroyScope ie.elem_scope
     updateList :: IORef [InternalElem a] -> [a] -> JSM ()
     updateList ref new = do
       ies <- liftIO $ readIORef ref
@@ -200,10 +200,3 @@ clearPlaceholder rid = jsCmd $ ClearPlaceholder $ Ref rid
 
 detachPlaceholder :: RefId -> JSM ()
 detachPlaceholder rid = jsCmd $ DetachPlaceholder $ Ref rid
-
-execHTML :: JSExp -> HTML a -> JSM a
-execHTML elm action = JSM \e -> do
-  e.ien_command $ PushStack elm
-  (r, _) <- action.unHTML Nothing e
-  e.ien_command PopStack
-  pure r

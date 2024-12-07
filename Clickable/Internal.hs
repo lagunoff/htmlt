@@ -13,18 +13,21 @@ import Control.Monad.State.Strict
 import Data.Binary qualified as Binary
 import Data.Binary.Put (execPut)
 import Data.ByteString.Builder.Extra (runBuilder, Next (..), BufferWriter)
+import Data.ByteString.Unsafe (unsafeUseAsCStringLen)
 import Data.Functor.Const
 import Data.IORef
 import Data.List qualified as List
 import Data.Map qualified as Map
+import Data.Maybe
 import Data.Text (Text)
 import Data.Tuple (swap)
 import Foreign.C.String (CStringLen)
+import Foreign.Marshal (copyBytes)
 import Foreign.Marshal.Alloc (mallocBytes)
 import Foreign.Ptr
 import GHC.Exts
+import GHC.Stack
 import Unsafe.Coerce
-import Data.Maybe
 
 newEvent :: JSM (Event a)
 newEvent = state \s ->
@@ -359,11 +362,30 @@ jsCmd cmd = JSM \e ->
 jsEval :: JSExp -> JSM JSVal
 jsEval cmd = JSM \e -> do
   e.ien_command cmd
-  e.ien_flush
+  eid <- atomicModifyIORef' e.ien_state nextId
+  control e.ien_prompt_tag \c -> do
+    let jsc :: IO JSVal -> JSM ()
+        jsc a = JSM \_ -> c a
+        sub = Subscription e.ien_scope (unsafeCoerce jsc)
+    modifyIORef' e.ien_state \s -> s {
+      ist_subscriptions = Map.insert eid [sub] s.ist_subscriptions
+    }
+    e.ien_command $ Resume eid Out
+    e.ien_flush
+  where
+    nextId s = (s {ist_id_supply = s.ist_id_supply + 1}, EventId s.ist_id_supply)
 {-# INLINE jsEval #-}
 
 jsFlush :: JSM ()
 jsFlush = JSM \e -> void $ e.ien_flush
+{-# INLINE jsFlush #-}
+
+jsUnsafe :: (HasCallStack, FromJSVal a) => UnsafeJavaScript -> JSM a
+jsUnsafe ujs = do
+  j <- jsEval (Eval ujs)
+  case fromJSVal j of
+    Just a -> pure a
+    Nothing -> error "jsUnsafe: fromJSVal failed"
 
 commandBuffer :: CStringLen -> (CStringLen -> IO ()) -> IO (JSExp -> IO (), IO ())
 commandBuffer (buf, bufSize) consume = do
@@ -380,31 +402,17 @@ commandBuffer (buf, bufSize) consume = do
     writeCommand :: BufferWriter -> Int -> IO Int
     writeCommand bufWrite off = do
       (written, next) <- bufWrite (buf `plusPtr` off) (bufSize - off)
-      let off' = off + written
-      case next of
-        Done -> pure off'
-        More minSize _moreWrite
-          | off == 0 ->
-            error $ "Buffer too small, encountered command that requires at \
-                    \least " <> show minSize <> " bytes"
-          | otherwise -> do
-            consume (castPtr buf, off)
-            writeRemains bufWrite 0
-        Chunk chunk moreWrite -> do
-          off1 <- writeRemains (runBuilder $ execPut $ Binary.put chunk) off
-          writeRemains moreWrite off1
+      writeNext next $ off + written
 
-    writeRemains :: BufferWriter -> Int -> IO Int
-    writeRemains bufWrite off = do
-      (written, next) <- bufWrite (buf `plusPtr` off) (bufSize - off)
-      let off' = off + written
-      case next of
-        Done -> pure off'
-        More _minSize _moreWrite ->
-          error $ "Buffer too small, inscrease the buffer size"
-        Chunk chunk moreWrite -> do
-          off1 <- writeRemains (runBuilder $ execPut $ Binary.put chunk) off
-          writeRemains moreWrite off1
+    writeNext :: Next -> Int -> IO Int
+    writeNext Done off = pure off
+    writeNext (More minSize _) _off =
+      error $ "Buffer too small, encountered command that requires at \
+              \least " <> show minSize <> " bytes"
+    writeNext (Chunk chunk more) off =
+      unsafeUseAsCStringLen chunk \(zs, len) -> do
+        copyBytes (buf `plusPtr` off) zs len
+        writeCommand more (off + len)
 
     flush :: IORef Int -> IO ()
     flush ref = do
@@ -414,24 +422,18 @@ commandBuffer (buf, bufSize) consume = do
 newInternalEnv :: Int -> (CStringLen -> IO ()) -> IO (InternalEnv, CStringLen)
 newInternalEnv bufSize consume = do
   buf <- mallocBytes bufSize
-  ien_state <- newIORef emptyState
-  (write, flush) <- commandBuffer (buf, bufSize) consume
-  ien_prompt_tag <- newPromptTag
-  ien_continuations <- newIORef Map.empty
-  let bufResult = (castPtr buf, bufSize)
-  pure (
-    InternalEnv {
-      ien_command = write,
-      ien_flush = do
-        tid <- atomicModifyIORef' ien_state \s ->
-          (s {ist_id_supply = s.ist_id_supply + 1}, ContId s.ist_id_supply)
-        write $ Resume tid
-        flush
-        control ien_prompt_tag \c ->
-          modifyIORef' ien_continuations $ Map.insert tid c,
-      ien_state,
-      ien_scope = ScopeId 0,
-      ien_prompt_tag,
-      ien_continuations
-    }, bufResult
-    )
+  let strLen = (castPtr buf, bufSize)
+  ienv <- mkEnv buf
+  pure (ienv, strLen)
+  where
+    mkEnv buf = do
+      ien_prompt_tag <- newPromptTag
+      ien_state <- newIORef emptyState
+      (write, flush) <- commandBuffer (buf, bufSize) consume
+      pure InternalEnv {
+          ien_command = write,
+          ien_flush = flush,
+          ien_state,
+          ien_scope = ScopeId 0,
+          ien_prompt_tag
+        }

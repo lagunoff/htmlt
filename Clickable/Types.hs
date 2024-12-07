@@ -32,6 +32,7 @@ import GHC.Generics qualified as G
 import GHC.List qualified as List
 import GHC.Types
 import GHC.Generics
+import Control.Monad.Fix
 
 newtype JSM a = JSM {unJSM :: InternalEnv -> IO a}
   deriving (
@@ -39,7 +40,8 @@ newtype JSM a = JSM {unJSM :: InternalEnv -> IO a}
     Applicative,
     Monad,
     MonadIO,
-    MonadReader InternalEnv
+    MonadReader InternalEnv,
+    MonadFix
   ) via ReaderT InternalEnv IO
 
 instance MonadState InternalState JSM where
@@ -55,11 +57,10 @@ class MonadJSM m where
 
 data InternalEnv = InternalEnv {
   ien_command :: JSExp -> IO (),
-  ien_flush :: IO JSVal,
+  ien_flush :: IO (),
   ien_state :: IORef InternalState,
   ien_scope :: ScopeId,
-  ien_prompt_tag :: PromptTag (),
-  ien_continuations :: IORef (Map ContId (IO JSVal -> IO ()))
+  ien_prompt_tag :: PromptTag ()
 }
 
 data InternalState = InternalState {
@@ -85,7 +86,8 @@ newtype HTML a = HTML {unHTML :: Maybe RefId -> InternalEnv -> IO (a, Maybe RefI
     Functor,
     Applicative,
     Monad,
-    MonadIO
+    MonadIO,
+    MonadFix
   ) via StateT (Maybe RefId) JSM
 
 instance MonadJSM HTML where
@@ -152,7 +154,8 @@ data JSExp where
 
   Eval :: UnsafeJavaScript -> JSExp
   TriggerEvent :: EventId -> JSExp -> JSExp
-  Resume :: ContId -> JSExp
+  Resume :: EventId -> JSExp -> JSExp
+  Out :: JSExp
 
   deriving stock (Generic, Show)
   deriving anyclass Binary
@@ -160,8 +163,8 @@ data JSExp where
 data ClientMsg where
   StartMsg :: StartFlags -> ClientMsg
   EventMsg :: EventId -> JSExp -> ClientMsg
-  ResumeMsg :: ContId -> JSExp -> ClientMsg
-  deriving stock Generic
+  ResumeMsg :: EventId -> JSExp -> ClientMsg
+  deriving stock (Generic, Show)
   deriving anyclass Binary
 
 -- | JavaScript value, result of evaluating an 'JSExp'. Should only
@@ -170,7 +173,7 @@ data ClientMsg where
 type JSVal = JSExp
 
 newtype StartFlags = StartFlags {unStartFlags :: JSVal}
-  deriving newtype Binary
+  deriving newtype (Binary, Show)
 
 newtype ScopeId = ScopeId {unScopeId :: Word32}
   deriving newtype (Binary, Eq, Ord, Show)
@@ -179,9 +182,6 @@ newtype RefId = RefId {unRefId :: Word32}
   deriving newtype (Binary, Eq, Ord, Show)
 
 newtype EventId = EventId {unEventId :: Word32}
-  deriving newtype (Show, Ord, Eq, Binary)
-
-newtype ContId = ContId {unContId :: Word32}
   deriving newtype (Show, Ord, Eq, Binary)
 
 newtype UnsafeJavaScript = UnsafeJavaScript {unUnsafeJavaScript :: Text}

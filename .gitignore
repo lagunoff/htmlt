@@ -5,3 +5,4 @@ shell.nix
 doc
 dist-newstyle
 node_modules
+build
