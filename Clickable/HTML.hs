@@ -4,6 +4,8 @@
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE BlockArguments #-}
 {-# OPTIONS_GHC -Wall #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DerivingStrategies #-}
 module Clickable.HTML where
 
 import Clickable.Internal
@@ -11,6 +13,8 @@ import Clickable.Types
 import Control.Monad.Trans
 import Data.IORef
 import Data.Text (Text)
+import Control.Monad
+import Data.Coerce
 
 el :: Text -> HTML a -> HTML a
 el tagName child = HTML \s e -> do
@@ -188,6 +192,77 @@ simpleList listDyn h = do
       ies <- liftIO $ readIORef ref
       ies' <- synchronize new ies
       liftIO $ writeIORef ref ies'
+
+newtype ListKey = ListKey {unListKey :: ScopeId}
+  deriving newtype (Show, Eq, Ord)
+
+dynamicList :: forall a.
+  Dynamic [(ListKey, a)] ->
+  (ListKey -> a -> HTML ()) ->
+  HTML ()
+dynamicList listDyn h = do
+  place <- liftJSM insertPlaceholder
+  initial <- readDyn listDyn
+  liftJSM $ execHTML (Ref place) $ liftJSM $ updateList [] initial
+  liftJSM $ subscribe listDyn $ execHTML (Ref place) . liftJSM . updateList undefined
+  where
+    synchronize :: [(ListKey, a)] -> [(ListKey, a)] -> JSM ()
+    synchronize [] [] = pure ()
+    synchronize [] (n:ns) = do
+      -- New list is longer, append new elements
+      insertElem n Nothing
+      let refId = coerce $ fst n
+          scopeId = unListKey $ fst n
+      localScope scopeId $ execHTML (Ref refId) $ uncurry h n
+      synchronize [] ns
+    synchronize (o:os) [] = do
+      -- New list is shorter, delete the elements that no longer
+      -- present in the new list
+      mapM_ dropElem (o:os)
+    synchronize (o:os) (n:ns)
+      | fst n /= fst o =
+        case lookupOldPosition (fst n) (o:os) of
+          Just (zs, xs) -> do
+            forM_ zs dropElem
+            synchronize xs (n:ns)
+          Nothing -> do
+            insertElem n $ Just o
+            synchronize (o:os) ns
+      | otherwise =
+        synchronize os ns
+
+    insertElem :: (ListKey, a) -> Maybe (ListKey, a) -> JSM ()
+    insertElem lie Nothing = do
+      let refId = coerce $ fst lie
+          scopeId = unListKey $ fst lie
+      bindScope scopeId
+      localScope scopeId do
+        jsCmd $ AssignRef scopeId refId InsertPlaceholder
+    insertElem lie (Just (key, _)) = do
+      let refId = coerce $ fst lie
+          scopeId = unListKey $ fst lie
+      bindScope scopeId
+      localScope scopeId do
+        jsCmd $ AssignRef scopeId refId $ InsertPlaceholderBefore $ Ref (coerce key)
+    dropElem :: (ListKey, a) -> JSM ()
+    dropElem ie = do
+      let refId = coerce $ fst ie
+          scopeId = unListKey $ fst ie
+      detachPlaceholder refId
+      destroyScope scopeId
+    updateList :: [(ListKey, a)] -> [(ListKey, a)] -> JSM ()
+    updateList old new = do
+      synchronize new old
+    lookupOldPosition :: ListKey -> [(ListKey, a)] -> Maybe ([(ListKey, a)], [(ListKey, a)])
+    lookupOldPosition k = go [] where
+      go :: [(ListKey, a)] -> [(ListKey, a)] -> Maybe ([(ListKey, a)], [(ListKey, a)])
+      go _ [] = Nothing
+      go acc ((kx,x):xs)
+        | k == kx = Just (acc, (kx,x):xs)
+        | otherwise = go ((kx,x):acc) xs
+
+allocListKey :: JSM ListKey
+allocListKey = fmap (ListKey . ScopeId) nextId
 
 insertPlaceholder :: JSM RefId
 insertPlaceholder = JSM \e -> do

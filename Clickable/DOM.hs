@@ -45,42 +45,42 @@ addEventListener script k =
 
 class EventName eventName where
   type EventListenerCb eventName :: Type
-  connectEventName :: EventListenerCb eventName -> JSM ()
+  connectEventName :: JSExp -> EventListenerCb eventName -> JSM ()
 
 instance EventName "click" where
   type EventListenerCb "click" = JSM ()
-  connectEventName k = addEventListener
-    (genericEvent defaultListenerOptions "click" (PeekStack 0)) (const k)
+  connectEventName t k = addEventListener
+    (genericEvent defaultListenerOptions "click" t) (const k)
 
 instance EventName "mousedown" where
   type EventListenerCb "mousedown" = JSM ()
-  connectEventName k = addEventListener
-    (genericEvent defaultListenerOptions "mousedown" (PeekStack 0)) (const k)
+  connectEventName t k = addEventListener
+    (genericEvent defaultListenerOptions "mousedown" t) (const k)
 
 instance EventName "mouseup" where
   type EventListenerCb "mouseup" = JSM ()
-  connectEventName k = addEventListener
-    (genericEvent defaultListenerOptions "mouseup" (PeekStack 0)) (const k)
+  connectEventName t k = addEventListener
+    (genericEvent defaultListenerOptions "mouseup" t) (const k)
 
 instance EventName "mouseenter" where
   type EventListenerCb "mouseenter" = JSM ()
-  connectEventName k = addEventListener
-    (genericEvent defaultListenerOptions "mouseenter" (PeekStack 0)) (const k)
+  connectEventName t k = addEventListener
+    (genericEvent defaultListenerOptions "mouseenter" t) (const k)
 
 instance EventName "mouseleave" where
   type EventListenerCb "mouseleave" = JSM ()
-  connectEventName k = addEventListener
-    (genericEvent defaultListenerOptions "mouseleave" (PeekStack 0)) (const k)
+  connectEventName t k = addEventListener
+    (genericEvent defaultListenerOptions "mouseleave" t) (const k)
 
 instance EventName "dblclick" where
   type EventListenerCb "dblclick" = JSM ()
-  connectEventName k = addEventListener
-    (genericEvent defaultListenerOptions "dblclick" (PeekStack 0)) (const k)
+  connectEventName t k = addEventListener
+    (genericEvent defaultListenerOptions "dblclick" t) (const k)
 
 instance EventName "submit" where
   type EventListenerCb "submit" = JSM ()
-  connectEventName k =
-    addEventListener (genericEvent opt "submit" (PeekStack 0)) (const k)
+  connectEventName t k =
+    addEventListener (genericEvent opt "submit" t) (const k)
     where
       opt = ListenerOptions {
         prevent_default = True,
@@ -89,48 +89,48 @@ instance EventName "submit" where
 
 instance EventName "input" where
   type EventListenerCb "input" = Text -> JSM ()
-  connectEventName = addEventListener (inputEvent "input")
+  connectEventName t = addEventListener (inputEvent t "input")
 
 instance EventName "keydown" where
   type EventListenerCb "keydown" = Int32 -> JSM ()
-  connectEventName = addEventListener (keyboardEvent "keydown")
+  connectEventName t = addEventListener (keyboardEvent t "keydown")
 
 instance EventName "keyup" where
   type EventListenerCb "keyup" = Int32 -> JSM ()
-  connectEventName = addEventListener (keyboardEvent "keyup")
+  connectEventName t = addEventListener (keyboardEvent t "keyup")
 
 instance EventName "focus" where
   type EventListenerCb "focus" = JSM ()
-  connectEventName k = addEventListener
-    (genericEvent defaultListenerOptions "focus" (PeekStack 0)) (const k)
+  connectEventName t k = addEventListener
+    (genericEvent defaultListenerOptions "focus" t) (const k)
 
 instance EventName "blur" where
   type EventListenerCb "blur" = JSM ()
-  connectEventName k = addEventListener
-    (genericEvent defaultListenerOptions "blur" (PeekStack 0)) (const k)
+  connectEventName t k = addEventListener
+    (genericEvent defaultListenerOptions "blur" t) (const k)
 
 instance EventName "input/blur" where
   type EventListenerCb "input/blur" = Text -> JSM ()
-  connectEventName = addEventListener (inputEvent "blur")
+  connectEventName t = addEventListener (inputEvent t "blur")
 
 instance EventName "input/focus" where
   type EventListenerCb "input/focus" = Text -> JSM ()
-  connectEventName = addEventListener (inputEvent "focus")
+  connectEventName t = addEventListener (inputEvent t "focus")
 
 instance EventName "checkbox/change" where
   type EventListenerCb "checkbox/change" = Bool -> JSM ()
-  connectEventName = addEventListener checkboxChangeEvent
+  connectEventName t = addEventListener (checkboxChangeEvent t)
 
 instance EventName "select/change" where
   type EventListenerCb "select/change" = Text -> JSM ()
-  connectEventName = addEventListener selectChangeEvent
+  connectEventName t = addEventListener (selectChangeEvent t)
 
 instance EventName "mousewheel" where
   type EventListenerCb "mousewheel" = MouseWheel -> JSM ()
-  connectEventName = addEventListener mouseWheelEvent
+  connectEventName t = addEventListener (mouseWheelEvent t)
 
 on :: forall eventName. EventName eventName => EventListenerCb eventName -> HTML ()
-on k = liftJSM $ connectEventName @eventName k
+on k = liftJSM $ connectEventName @eventName (PeekStack 0) k
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/click_event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/focus_event
@@ -155,9 +155,9 @@ genericEvent opt eventName target (Event eventId) =
     stopPropagationStmt = if opt.stop_propagation then "event.stopPropagation();" else ""
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/input_event
-inputEvent :: Text -> Event Text -> JSExp
-inputEvent eventName (Event eventId) =
-  Eval script `Apply` [PeekStack 0, Lam (TriggerEvent eventId (Arg 0))]
+inputEvent :: JSExp -> Text -> Event Text -> JSExp
+inputEvent target eventName (Event eventId) =
+  Eval script `Apply` [target, Lam (TriggerEvent eventId (Arg 0))]
   where
     script =
       "(function(target, trigger){\n\
@@ -170,9 +170,9 @@ inputEvent eventName (Event eventId) =
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/keydown_event
 -- https://developer.mozilla.org/en-US/docs/Web/API/Element/keyup_event
-keyboardEvent :: Text -> Event Int32 -> JSExp
-keyboardEvent eventName (Event eventId) =
-  Eval script `Apply` [PeekStack 0, Lam (TriggerEvent eventId (Arg 0))]
+keyboardEvent :: JSExp -> Text -> Event Int32 -> JSExp
+keyboardEvent target eventName (Event eventId) =
+  Eval script `Apply` [target, Lam (TriggerEvent eventId (Arg 0))]
   where
     script =
       "(function(target, trigger){\n\
@@ -184,9 +184,9 @@ keyboardEvent eventName (Event eventId) =
       \})"
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/change_event
-checkboxChangeEvent :: Event Bool -> JSExp
-checkboxChangeEvent (Event eventId) =
-  Eval script `Apply` [PeekStack 0, Lam (TriggerEvent eventId (Arg 0))]
+checkboxChangeEvent :: JSExp -> Event Bool -> JSExp
+checkboxChangeEvent target (Event eventId) =
+  Eval script `Apply` [target, Lam (TriggerEvent eventId (Arg 0))]
   where
     script =
       "(function(target, trigger){\n\
@@ -198,9 +198,9 @@ checkboxChangeEvent (Event eventId) =
       \})"
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/change_event
-selectChangeEvent :: Event Text -> JSExp
-selectChangeEvent (Event eventId) =
-  Eval script `Apply` [PeekStack 0, Lam (TriggerEvent eventId (Arg 0))]
+selectChangeEvent :: JSExp -> Event Text -> JSExp
+selectChangeEvent target (Event eventId) =
+  Eval script `Apply` [target, Lam (TriggerEvent eventId (Arg 0))]
   where
     script =
       "(function(target, trigger){\n\
@@ -225,9 +225,9 @@ data MouseWheel = MouseWheel {
   deriving anyclass (FromJSVal, ToJSVal)
 
 -- https://developer.mozilla.org/en-US/docs/Web/API/WheelEvent
-mouseWheelEvent :: Event MouseWheel -> JSExp
-mouseWheelEvent (Event eventId) =
-  Eval script `Apply` [PeekStack 0, Lam (TriggerEvent eventId (Arg 0))]
+mouseWheelEvent :: JSExp -> Event MouseWheel -> JSExp
+mouseWheelEvent target (Event eventId) =
+  Eval script `Apply` [target, Lam (TriggerEvent eventId (Arg 0))]
   where
     script =
       "(function(target, trigger){\n\

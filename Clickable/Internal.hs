@@ -28,6 +28,8 @@ import Foreign.Ptr
 import GHC.Exts
 import GHC.Stack
 import Unsafe.Coerce
+import Data.Int
+import Data.Word
 
 newEvent :: JSM (Event a)
 newEvent = state \s ->
@@ -80,6 +82,7 @@ subscribe (FromVar (OverrideVar _ var)) k =
 subscribe (FromVar (LensMap l var)) k =
   subscribe (FromVar var) (k . getConst . l Const)
 subscribe (MapVal v f) k = subscribe v (k . f)
+subscribe (MapIOVal v f) k = subscribe v (k <=< liftIO . f)
 subscribe (SplatVal fv av) k = do
   src <- reactive h
   subscribe fv $ f src
@@ -195,19 +198,23 @@ localScope s = local (\e -> e {ien_scope = s})
 {-# INLINE localScope #-}
 
 newRefId :: JSM RefId
-newRefId = reactive newRefIdFn
+newRefId = fmap RefId nextId
 {-# INLINE newRefId #-}
 
 newRefIdFn :: ScopeId -> InternalState -> (InternalState, RefId)
 newRefIdFn _e s = (s {ist_id_supply = s.ist_id_supply + 1}, RefId s.ist_id_supply)
 {-# INLINE newRefIdFn #-}
 
+nextId :: JSM Word32
+nextId = reactive \_ s -> (s {ist_id_supply = s.ist_id_supply + 1}, s.ist_id_supply)
+{-# INLINE nextId #-}
+
 freeScope :: ScopeId -> JSM ()
 freeScope scope = do
   mres <- state updateState
   forM_ mres \res -> do
     forM_ (res.rsr_linked) destroyScope
-    sequence_ (res.rsr_finalizers)
+    sequence_ res.rsr_finalizers
   jsCmd $ FreeScope scope
   where
     updateState :: InternalState -> (Maybe Resources, InternalState)
@@ -256,6 +263,16 @@ moveScope src dest = do
           rsr_finalizers = src'.rsr_finalizers <> dest'.rsr_finalizers
         }
 
+bindScope :: ScopeId -> JSM ()
+bindScope child = reactive_ updateState
+  where
+    updateState :: ScopeId -> InternalState -> InternalState
+    updateState parent s =
+      s {ist_resources = Map.adjust updateRes parent s.ist_resources}
+      where
+        updateRes :: Resources -> Resources
+        updateRes r = r {rsr_linked = child : r.rsr_linked}
+
 installFinalizer :: JSM () -> JSM ()
 installFinalizer f = reactive_ $ installFinalizerFn f
 {-# INLINE installFinalizer #-}
@@ -263,8 +280,9 @@ installFinalizer f = reactive_ $ installFinalizerFn f
 installFinalizerFn :: JSM () -> ScopeId -> InternalState -> InternalState
 installFinalizerFn k scope s = s {ist_resources = rsr}
   where
-    rsr = Map.adjust ins scope s.ist_resources
-    ins r = r {rsr_finalizers = k : r.rsr_finalizers}
+    rsr = Map.alter ins scope s.ist_resources
+    ins (Just r) = Just $ r {rsr_finalizers = k : r.rsr_finalizers}
+    ins Nothing =  Just $ Resources scope [] [k]
 {-# INLINE installFinalizerFn #-}
 
 emptyState :: InternalState
@@ -278,6 +296,7 @@ readDyn :: MonadIO m => Dynamic a -> m a
 readDyn (ConstVal a) = pure a
 readDyn (FromVar var) = readVar var
 readDyn (MapVal val f) = fmap f $ readDyn val
+readDyn (MapIOVal val f) = liftIO . f =<< readDyn val
 readDyn (SplatVal f a) = liftA2 ($) (readDyn f) (readDyn a)
 readDyn (OverrideSub _ a) = readDyn a
 
@@ -431,9 +450,9 @@ newInternalEnv bufSize consume = do
       ien_state <- newIORef emptyState
       (write, flush) <- commandBuffer (buf, bufSize) consume
       pure InternalEnv {
-          ien_command = write,
-          ien_flush = flush,
-          ien_state,
-          ien_scope = ScopeId 0,
-          ien_prompt_tag
-        }
+        ien_command = write,
+        ien_flush = flush,
+        ien_state,
+        ien_scope = ScopeId 0,
+        ien_prompt_tag
+      }

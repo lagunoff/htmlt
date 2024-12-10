@@ -140,6 +140,8 @@ websocketApp cfg self p =
       forM_ cont \c -> runJSM conn.dsc_internal_env $ c.sub_callback $ unsafeCoerce $ ((pure pload) :: IO JSVal)
     reader conn (Right (EventMsg eid arg)) =
       void $ runJSM conn.dsc_internal_env $ triggerEvent (unsafeFromEventId eid) arg
+    reader conn (Right BeforeUnloadMsg) = do
+      runJSM conn.dsc_internal_env $ freeScope conn.dsc_internal_env.ien_scope
     reader conn (Left a) =
       void $ runJSM conn.dsc_internal_env a
 

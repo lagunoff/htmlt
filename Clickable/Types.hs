@@ -14,6 +14,7 @@
 module Clickable.Types where
 
 import Clickable.Binary
+import Control.Monad.Fix
 import Control.Monad.Reader
 import Control.Monad.State.Strict
 import Data.Binary ( Binary )
@@ -28,11 +29,10 @@ import Data.Text qualified as Text
 import Data.Tuple
 import Data.Word
 import GHC.Exts
+import GHC.Generics
 import GHC.Generics qualified as G
 import GHC.List qualified as List
 import GHC.Types
-import GHC.Generics
-import Control.Monad.Fix
 
 newtype JSM a = JSM {unJSM :: InternalEnv -> IO a}
   deriving (
@@ -46,14 +46,16 @@ newtype JSM a = JSM {unJSM :: InternalEnv -> IO a}
 
 instance MonadState InternalState JSM where
   state f = JSM \e -> atomicModifyIORef' e.ien_state (swap . f)
-  {-# INLINE state #-}
   get = JSM \e -> readIORef e.ien_state
-  {-# INLINE get #-}
   put s = JSM \e -> writeIORef e.ien_state s
+  {-# INLINE state #-}
+  {-# INLINE get #-}
   {-# INLINE put #-}
 
 class MonadJSM m where
   liftJSM :: JSM a -> m a
+
+instance MonadJSM JSM where liftJSM x = x
 
 data InternalEnv = InternalEnv {
   ien_command :: JSExp -> IO (),
@@ -144,6 +146,7 @@ data JSExp where
   ClassListAdd :: JSExp -> Text -> JSExp
   ClassListRemove :: JSExp -> Text -> JSExp
   InsertPlaceholder :: JSExp
+  InsertPlaceholderBefore :: JSExp -> JSExp
   ClearPlaceholder :: JSExp -> JSExp
   DetachPlaceholder :: JSExp -> JSExp
 
@@ -164,6 +167,7 @@ data ClientMsg where
   StartMsg :: StartFlags -> ClientMsg
   EventMsg :: EventId -> JSExp -> ClientMsg
   ResumeMsg :: EventId -> JSExp -> ClientMsg
+  BeforeUnloadMsg :: ClientMsg
   deriving stock (Generic, Show)
   deriving anyclass Binary
 
@@ -209,6 +213,7 @@ data Dynamic a where
   ConstVal :: a -> Dynamic a
   FromVar :: DynVar a -> Dynamic a
   MapVal :: Dynamic a -> (a -> b) -> Dynamic b
+  MapIOVal :: Dynamic a -> (a -> IO b) -> Dynamic b
   SplatVal :: Dynamic (a -> b) -> Dynamic a -> Dynamic b
   OverrideSub :: (forall b. SubscribeFn a b -> SubscribeFn a b) -> Dynamic a -> Dynamic a
 
@@ -219,8 +224,8 @@ instance Functor Dynamic where
   {-# INLINE fmap #-}
 instance Applicative Dynamic where
   pure = ConstVal
-  {-# INLINE pure #-}
   (<*>) = SplatVal
+  {-# INLINE pure #-}
   {-# INLINE (<*>) #-}
 
 fromVar :: DynVar a -> Dynamic a
@@ -355,19 +360,22 @@ instance FromJSVal Word where
   fromJSVal _ = Nothing
 
 instance FromJSVal Char where
-  fromJSVal = \case
-    Str a | Just (c, _) <- Text.uncons a -> Just c
-          | otherwise -> Nothing
-    _ -> Nothing
+  fromJSVal (Str a)
+    | Just (c, _) <- Text.uncons a =Just c
+    | otherwise = Nothing
+  fromJSVal _ = Nothing
 
 instance FromJSVal Text where
-  fromJSVal = \case Str a -> Just a; _ -> Nothing
+  fromJSVal (Str a) = Just a
+  fromJSVal _ = Nothing
 
 instance FromJSVal ByteString where
-  fromJSVal = \case U8Arr a -> Just a; _ -> Nothing
+  fromJSVal (U8Arr a) = Just a
+  fromJSVal _ = Nothing
 
 instance FromJSVal () where
-  fromJSVal = \case Null -> Just (); _ -> Nothing
+  fromJSVal Null = Just ()
+  fromJSVal _ = Nothing
 
 instance FromJSVal a => FromJSVal [a] where
   fromJSVal = \case
@@ -375,7 +383,8 @@ instance FromJSVal a => FromJSVal [a] where
     _ -> Nothing
 
 instance FromJSVal a => FromJSVal (Maybe a) where
-  fromJSVal = fmap Just . fromJSVal @a
+  fromJSVal Null = Just Nothing
+  fromJSVal v = Just $ fromJSVal @a v
 
 instance (FromJSVal a, FromJSVal b) => FromJSVal (a, b) where
   fromJSVal j = fromJSVal j >>= \case

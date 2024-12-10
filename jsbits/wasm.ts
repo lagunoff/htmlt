@@ -89,6 +89,14 @@ export function runWasm(wasmUri: string, startFlags: unknown = null, options?: P
       proto.encodeClientMessage(encoderState, [ClientMsgTag.StartMsg, startFlags]);
       // @ts-ignore
       inst1.exports.wasm_app(buf);
+      window.addEventListener('beforeunload', () => {
+        // @ts-ignore
+        const mem = new DataView(inst1.exports.memory.buffer);
+        const encoderState = {mem, begin: buf, end: buf + (1024 * 100)};
+        proto.encodeClientMessage(encoderState, [ClientMsgTag.BeforeUnloadMsg]);
+        // @ts-ignore
+        inst1.exports.wasm_app(buf);
+      });
     });
 };
 

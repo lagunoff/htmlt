@@ -76,6 +76,7 @@ export enum ExprTag {
   ClassListAdd,
   ClassListRemove,
   InsertPlaceholder,
+  InsertPlaceholderBefore,
   ClearPlaceholder,
   DetachPlaceholder,
 
@@ -131,6 +132,7 @@ export type Expr =
   | [ExprTag.ClassListAdd, Expr, string[]]
   | [ExprTag.ClassListRemove, Expr, string[]]
   | [ExprTag.InsertPlaceholder]
+  | [ExprTag.InsertPlaceholderBefore, Expr]
   | [ExprTag.ClearPlaceholder, Expr]
   | [ExprTag.DetachPlaceholder, Expr]
 
@@ -464,6 +466,14 @@ export function evalNext(self: EvalState, args: List<unknown> = null, prevRes: u
       const el = self.context.stack[VAL] as any;
       return utils.insertPlaceholder(el);
     };
+    case ExprTag.InsertPlaceholderBefore: {
+      if (!self.context.stack) {
+        throw new Error("InsertPlaceholderBefore: empty stack");
+      }
+      const el = self.context.stack[VAL] as any;
+      const anchor = evalNext(self, args, prevRes) as Element;
+      return utils.insertPlaceholderBefore(el, anchor);
+    };
     case ExprTag.ClearPlaceholder: {
       const node = evalNext(self, args, prevRes);
       utils.clearPlaceholder(node as any, false);
@@ -671,6 +681,9 @@ export function lookaheadNext(mem: DataView, ptr: Ptr): Ptr {
     case ExprTag.InsertPlaceholder: {
       return ptr;
     };
+    case ExprTag.InsertPlaceholderBefore: {
+      return lookaheadNext(mem, ptr);
+    };
     case ExprTag.ClearPlaceholder: {
       return lookaheadNext(mem, ptr);
     };
@@ -791,12 +804,14 @@ export enum ClientMsgTag {
   StartMsg,
   EventMsg,
   ResumeMsg,
+  BeforeUnloadMsg,
 }
 
 export type ClientMsg =
   | [ClientMsgTag.StartMsg, unknown]
   | [ClientMsgTag.EventMsg, number, unknown]
   | [ClientMsgTag.ResumeMsg, number, unknown]
+  | [ClientMsgTag.BeforeUnloadMsg]
 ;
 
 export function encodeClientMessage(self: EncoderState, val: ClientMsg) {
@@ -821,6 +836,11 @@ export function encodeClientMessage(self: EncoderState, val: ClientMsg) {
       encodeValue(self, val[2]);
       return;
     }
+    case ClientMsgTag.BeforeUnloadMsg: {
+      self.mem.setUint8(self.begin, ClientMsgTag.BeforeUnloadMsg);
+      self.begin++;
+      return;
+    }
   }
 }
 
@@ -835,11 +855,20 @@ function decodeString(s: EvalState): string {
 }
 
 namespace utils {
-  export function insert(builder: Element|Comment, child: Node): void {
-    if (builder instanceof Comment) {
-      builder.parentElement!.insertBefore(child, builder);
+  export function insert(root: Element|Comment, child: Node): void {
+    if (root instanceof Comment) {
+      root.parentElement!.insertBefore(child, root);
     } else {
-      builder.appendChild(child);
+      root.appendChild(child);
+    }
+  }
+
+  export function insertBefore(root: Element|Comment, child: Node, anchor: Element|Comment): void {
+    const anchor_ = anchor instanceof Comment ? lookupOpen(anchor) : anchor;
+    if (root instanceof Comment) {
+      root.parentElement!.insertBefore(child, anchor_);
+    } else {
+      root.insertBefore(child, anchor_);
     }
   }
 
@@ -851,26 +880,34 @@ namespace utils {
     }
   }
 
-  export function attr(builder: Element|Comment, attrName: string, attrValue: string): void {
-    const element = getBuilderElement(builder);
+  export function attr(root: Element|Comment, attrName: string, attrValue: string): void {
+    const element = getBuilderElement(root);
     element.setAttribute(attrName, attrValue);
   }
 
-  export function addEventListener(builder: Element|Comment, eventName: string, listener: EventListener): void {
-    const element = getBuilderElement(builder);
+  export function addEventListener(root: Element|Comment, eventName: string, listener: EventListener): void {
+    const element = getBuilderElement(root);
     element.addEventListener(eventName, listener);
   }
 
-  export function removeEventListener(builder: Element|Comment, eventName: string, listener: EventListener): void {
-    const element = getBuilderElement(builder);
+  export function removeEventListener(root: Element|Comment, eventName: string, listener: EventListener): void {
+    const element = getBuilderElement(root);
     element.removeEventListener(eventName, listener);
   }
 
-  export function insertPlaceholder(builder: Element|Comment): Comment {
+  export function insertPlaceholder(root: Element|Comment): Comment {
     const begin = document.createComment('Placeholder {{{');
     const end = document.createComment('}}}');
-    insert(builder, begin);
-    insert(builder, end);
+    insert(root, begin);
+    insert(root, end);
+    return end;
+  }
+
+  export function insertPlaceholderBefore(root: Element|Comment, anchor: Element|Comment): Comment {
+    const begin = document.createComment('Placeholder {{{');
+    const end = document.createComment('}}}');
+    insertBefore(root, begin, anchor);
+    insertBefore(root, end, anchor);
     return end;
   }
 
@@ -894,11 +931,11 @@ namespace utils {
     }
   }
 
-  export function getBuilderElement(builder: Element|Comment): Element {
-    if (builder instanceof Comment) {
-      return builder.parentElement!;
+  export function getBuilderElement(root: Element|Comment): Element {
+    if (root instanceof Comment) {
+      return root.parentElement!;
     }
-    return builder;
+    return root;
   }
 
   function isOpenPlaceholder(node: Node): boolean {
@@ -913,6 +950,18 @@ namespace utils {
       return true;
     }
     return false;
+  }
+
+  function lookupOpen(anchor: Node): Node|null {
+    let nestedCounter = 0;
+    for (;;) {
+      if (!anchor.previousSibling ||
+        (nestedCounter == 0 && isOpenPlaceholder(anchor.previousSibling))
+      ) return anchor.previousSibling;
+      if (isClosingPlaceholder(anchor.previousSibling)) nestedCounter++;
+      else if (isOpenPlaceholder(anchor.previousSibling)) nestedCounter--;
+      anchor = anchor.previousSibling!;
+    }
   }
 };
 

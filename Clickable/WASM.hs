@@ -9,6 +9,7 @@
 {-# LANGUAGE UnboxedTuples #-}
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
 {-# OPTIONS_GHC -Wall #-}
+{-# LANGUAGE RecordWildCards #-}
 module Clickable.WASM where
 
 import Clickable.Internal
@@ -29,6 +30,7 @@ import Data.IORef
 import Control.Monad
 import Unsafe.Coerce
 import System.IO
+import Debug.Trace
 
 foreign import ccall safe
   "clickable_eval_buffer" clickable_eval_buffer :: Ptr Word8 -> Int -> IO ()
@@ -58,6 +60,8 @@ mkWasmApp app inmsg = do
     Just (ResumeMsg contId pload) -> do
       cont <- atomicModifyIORef' env.ien_state $ lookupCont $ coerce contId
       forM_ cont \c -> runJSM env $ c.sub_callback $ unsafeCoerce $ ((pure pload) :: IO JSVal)
+    Just BeforeUnloadMsg -> do
+      runJSM env $ freeScope env.ien_scope
     _ -> error "mkWasmApp: Failed to parse incomming command"
   pure $ castPtr $ fst buf
   where
@@ -72,3 +76,19 @@ loadMessage p len
   where
     loadByteString :: IO ByteString
     loadByteString = BSU.unsafePackCStringLen (castPtr p, len)
+
+data ResourcesShow = ResourcesShow {
+  rsr_parent :: ScopeId,
+  rsr_linked :: [ScopeId],
+  rsr_finalizers :: [String]
+} deriving Show
+
+instance Show Resources where
+  show = show . convert
+    where
+      convert :: Resources -> ResourcesShow
+      convert Resources{..} = ResourcesShow {
+        rsr_parent,
+        rsr_linked,
+        rsr_finalizers = map (const "<reducted>") rsr_finalizers
+      }
