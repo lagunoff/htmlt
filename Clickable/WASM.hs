@@ -47,11 +47,13 @@ buf :: CStringLen
 
 mkWasmApp :: (StartFlags -> JSM ()) -> Ptr Word8 -> IO (Ptr Word8)
 mkWasmApp _app p | p == nullPtr = do
+  putStrLn "sdlfkjns;fnsdfjn"
   hSetBuffering stdout LineBuffering
   hSetBuffering stderr LineBuffering
   return $ castPtr $ fst buf
 mkWasmApp app inmsg = do
   msg <- loadMessage inmsg $ snd buf
+  traceShowM msg
   case msg of
     Just (StartMsg flags) ->
       runJSM env $ app flags

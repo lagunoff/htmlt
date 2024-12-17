@@ -29,35 +29,55 @@ run = do
   items <- fromMaybe [] <$> readLocalStorage "todo-items"
   stateVar <- TodoList.new items
   installFinalizer do
-    s <- readVar stateVar
-    saveLocalStorage "todo-items" s.items
+    items' <- readVar stateVar.items
+    items'' <- mapM (\(_, t) -> readVar t) items'
+    saveLocalStorage "todo-items" items''
   execHTMLBody do
     el "style" $ text TodoList.styles
     TodoList.view TodoList.TodoListConfig {self = stateVar}
     liftJSM $ addEventListener popstateEvent \loc -> do
       let f = fromMaybe TodoList.All $ TodoList.parseFilter loc.loc_hash
-      modifyVar_ stateVar \s -> s {TodoList.filter = f}
+      writeVar stateVar.filter f
 
 data TodoListConfig = TodoListConfig {
-  self :: DynVar TodoListState
+  self :: TodoListInstance
 }
 
-data TodoListState = TodoListState {
-  title :: Text,
-  items :: [TodoItem.TodoItemState],
-  filter :: Filter
-} deriving (Show, Eq)
+data TodoListInstance = TodoListInstance {
+  title :: DynVar Text,
+  items :: DynVar [(ListKey, DynVar TodoItem.TodoItemState)],
+  filter :: DynVar Filter,
+  todo_counter :: DynVar Int
+}
 
 data Filter = All | Active | Completed
   deriving (Show, Eq)
 
-new :: [TodoItem.TodoItemState] -> JSM (DynVar TodoListState)
-new items =
-  newVar TodoListState {
-    title = "",
-    items = items,
-    filter = All
+new :: [TodoItem.TodoItemState] -> JSM TodoListInstance
+new savedItems = mdo
+  items <- newVar =<< mapM (mkItem todo_counter) savedItems
+  todo_counter <- newVar =<< calculateCounter =<< readVar items
+  title <- newVar ""
+  filter <- newVar All
+  -- Update counter after todo-items are deleted or inserted
+  subscribe (fromVar items) $ writeVar todo_counter <=< calculateCounter
+  pure TodoListInstance {
+    title,
+    items,
+    filter,
+    todo_counter
   }
+  where
+    mkItem ~todoCounter i = do
+      key <- allocListKey
+      var <- overrideVar (todoItemUpdated todoCounter) <$> newVar i
+      pure (key, var)
+
+calculateCounter :: [(ListKey, DynVar TodoItem.TodoItemState)] -> JSM Int
+calculateCounter =
+  foldM (\c (_, s) -> counter c <$> readVar s) 0
+  where
+    counter c s | s.completed = c | otherwise = c + 1
 
 view :: TodoListConfig -> HTML ()
 view cfg = do
@@ -71,7 +91,7 @@ view cfg = do
     headerWidget = header_ [class_ "header"] do
       h1_ (text "todos")
       input_ [class_ "new-todo", placeholder_ "What needs to be done?", autofocus_ True] do
-        dynValue $ (.title) <$> fromVar cfg.self
+        dynValue $ fromVar cfg.self.title
         on @"input" $ eval cfg . InputAction
         on @"keydown" $ eval cfg . KeydownAction
     mainWidget = section_ [class_ "main"] do
@@ -82,17 +102,18 @@ view cfg = do
         attribute "for" "toggle-all"
         text "Mark all as completed"
       ul_ [class_ "todo-list"] do
-        simpleList itemsDyn \todoRef ->
+        pure ()
+        dynamicList (fromVar cfg.self.items) \key todoVar ->
           TodoItem.view TodoItem.TodoItemConfig {
-            self = lensMap (_2) $ overrideVar (todoItemUpdated cfg) todoRef,
-            is_hidden_dyn = liftA2 isHidden (fromVar cfg.self) (fromVar todoRef),
-            ask_delete_item = eval cfg . DeleteItemAction . fst =<< readVar todoRef
+            self = todoVar,
+            is_hidden_dyn = liftA2 isHidden (fromVar cfg.self.filter) (fromVar todoVar),
+            ask_delete_item = eval cfg $ DeleteItemAction key
           }
     footerWidget = footer_ [class_ "footer"] do
       toggleClass "hidden" hiddenDyn
       span_ [class_ "todo-count"] do
-        strong_ $ dynText $ Text.pack . show <$> itemsLeftDyn
-        dynText $ pluralize " item left" " items left" <$> itemsLeftDyn
+        strong_ $ dynText $ Text.pack . show <$> fromVar cfg.self.todo_counter
+        dynText $ pluralize " item left" " items left" <$> fromVar cfg.self.todo_counter
       ul_ [class_ "filters"] do
         forM_ [All, Active, Completed] filterWidget
       button_ [class_ "clear-completed"] do
@@ -109,22 +130,13 @@ view cfg = do
     filterWidget :: Filter -> HTML ()
     filterWidget flt = li_ do
       a_ [href_ (printFilter flt)] do
-        toggleClass "selected" $ filterSelectedDyn flt
+        toggleClass "selected" $ fmap (== flt) $ fromVar cfg.self.filter
         text $ Text.pack $ show flt
     hiddenDyn =
-      Prelude.null . (.items) <$> fromVar cfg.self
-    itemsLeftDyn =
-      countItemsLeft <$> fromVar cfg.self
-    filterSelectedDyn flt =
-      (==flt) . (.filter) <$> fromVar cfg.self
-    itemsDyn :: Dynamic [(Int, TodoItem.TodoItemState)]
-    itemsDyn = (\s -> zip [0..] s.items) <$> fromVar cfg.self
-    countItemsLeft TodoListState{items} =
-      foldl (\acc TodoItem.TodoItemState{completed} ->
-        if not completed then acc + 1 else acc) 0 items
-    isHidden :: TodoListState -> (Int, TodoItem.TodoItemState) -> Bool
-    isHidden listState (_, itemState) =
-      case (listState.filter, itemState.completed) of
+      fmap List.null $ fromVar cfg.self.items
+    isHidden :: Filter -> TodoItem.TodoItemState -> Bool
+    isHidden f itemState =
+      case (f, itemState.completed) of
         (Active,    True)  -> True
         (Completed, False) -> True
         _                  -> False
@@ -134,63 +146,63 @@ data TodoListAction a where
   InputAction :: Text -> TodoListAction ()
   CommitAction :: TodoListAction ()
   KeydownAction :: Int32 -> TodoListAction ()
-  DeleteItemAction :: Int -> TodoListAction ()
+  DeleteItemAction :: ListKey -> TodoListAction ()
   ClearCompletedAction :: TodoListAction ()
 
 eval :: TodoListConfig -> TodoListAction a -> JSM a
-eval cfg (ToggleAllAction isChecked) =
-  modifyVar_ cfg.self \s -> s {
-    items = fmap (\i -> i {TodoItem.completed = isChecked}) s.items
-  }
+eval cfg (ToggleAllAction isChecked) = do
+  items <- readVar cfg.self.items
+  forM_ items \(_, s) ->
+    modifyVar_ s \i -> i {TodoItem.completed = isChecked}
+
 eval cfg (InputAction newVal) =
-  modifyVar_ cfg.self \s -> s {title = newVal}
+  writeVar cfg.self.title newVal
 eval cfg CommitAction = do
-  title <- Text.strip . (.title) <$> readVar cfg.self
+  title <- Text.strip <$> readVar cfg.self.title
   case title of
-    "" -> return ()
-    t -> modifyVar_ cfg.self \s -> s {
-      items = s.items <> [newTodo t],
-      title = ""
-    }
+    "" -> pure ()
+    t -> do
+      todo <- newTodo t
+      modifyVar_ cfg.self.items (<> [todo])
+      writeVar cfg.self.title ""
    where
-     newTodo t = TodoItem.emptyState {TodoItem.title = t}
+     newTodo t = do
+       key <- allocListKey
+       var <- fmap (overrideVar (todoItemUpdated cfg.self.todo_counter)) $
+         newVar $ TodoItem.emptyState {TodoItem.title = t}
+       pure (key, var)
 eval cfg (KeydownAction key) = case key of
   13 {- Enter -} -> eval cfg CommitAction
   _ -> return ()
-eval cfg (DeleteItemAction itemIx) =
-  modifyVar_ cfg.self \s -> s {items = deleteIx itemIx s.items}
+eval cfg (DeleteItemAction key) =
+  modifyVar_ cfg.self.items $ deleteKey key
   where
-    deleteIx :: Int -> [a] -> [a]
-    deleteIx _ []     = []
-    deleteIx i (a:as) | i == 0 = as | otherwise = a : deleteIx (i-1) as
-eval cfg ClearCompletedAction =
-  modifyVar_ cfg.self \s -> s
-    {items = (List.filter (not . TodoItem.completed)) s.items}
+    deleteKey _ []     = []
+    deleteKey k ((k', a):as)
+      | k == k' = as
+      | otherwise = (k', a) : deleteKey k as
+eval cfg ClearCompletedAction = do
+  items <- readVar cfg.self.items
+  items' <- filterM (\(_, v) -> not . (.completed) <$> readVar v) items
+  writeVar cfg.self.items items'
 
 -- | Synchronize TodoItem state with the larger state of TodoList
 -- widget.
 todoItemUpdated ::
-  TodoListConfig ->
-  UpdateFn (Int, TodoItem.TodoItemState) ->
-  UpdateFn (Int, TodoItem.TodoItemState)
-todoItemUpdated cfg next f = do
+  DynVar Int ->
+  UpdateFn TodoItem.TodoItemState ->
+  UpdateFn TodoItem.TodoItemState
+todoItemUpdated ~todoCounter next f = do
   -- Update the local TodoItemState
   ((s, s'), result) <- next g
   -- Filter out irrelevant updates
-  let needPropagateUpdate = (snd s).completed /= (snd s').completed
-  -- Update the same item in the larger TodoListState
-  if needPropagateUpdate
-    then modifyVar cfg.self $ h s'
-    else modifyVarQuiet cfg.self $ h s'
+  case (s.completed, s'.completed) of
+    (True, False) -> modifyVar_ todoCounter (+1)
+    (False, True) -> modifyVar_ todoCounter (+ (-1))
+    _ -> pure ()
   pure result
   where
     g s = let (s', a) = f s in (s', ((s, s'), a))
-    h (i, e) s = (s {items = updateIx i e s.items}, ())
-
-    updateIx :: Int -> a -> [a] -> [a]
-    updateIx 0 a (_:xs) = a : xs
-    updateIx n a (x:xs) = x : updateIx (pred n) a xs
-    updateIx _ _ [] = []
 
 pluralize :: Text -> Text -> Int -> Text
 pluralize singular _plural 0 = singular
@@ -206,13 +218,6 @@ printFilter :: Filter -> Text
 printFilter All       = "#/"
 printFilter Active    = "#/active"
 printFilter Completed = "#/completed"
-
--- TODO: rewrite without lenses
-_2 :: Lens' (a, b) b
-_2 f a = fmap (setter a) (f (getter a))
-  where
-    setter (a', _) c = (a', c)
-    getter (_, b) = b
 
 styles :: Text
 styles = "\

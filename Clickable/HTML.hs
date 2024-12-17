@@ -203,8 +203,11 @@ dynamicList :: forall a.
 dynamicList listDyn h = do
   place <- liftJSM insertPlaceholder
   initial <- readDyn listDyn
-  liftJSM $ execHTML (Ref place) $ liftJSM $ updateList [] initial
-  liftJSM $ subscribe listDyn $ execHTML (Ref place) . liftJSM . updateList undefined
+  liftJSM $ execHTML (Ref place) $ liftJSM $ synchronize [] initial
+  liftJSM $ subscribeAccum listDyn (\new old -> do
+                                       execHTML (Ref place) $ liftJSM $ synchronize old new
+                                       pure new
+                                   ) initial
   where
     synchronize :: [(ListKey, a)] -> [(ListKey, a)] -> JSM ()
     synchronize [] [] = pure ()
@@ -250,9 +253,6 @@ dynamicList listDyn h = do
           scopeId = unListKey $ fst ie
       detachPlaceholder refId
       destroyScope scopeId
-    updateList :: [(ListKey, a)] -> [(ListKey, a)] -> JSM ()
-    updateList old new = do
-      synchronize new old
     lookupOldPosition :: ListKey -> [(ListKey, a)] -> Maybe ([(ListKey, a)], [(ListKey, a)])
     lookupOldPosition k = go [] where
       go :: [(ListKey, a)] -> [(ListKey, a)] -> Maybe ([(ListKey, a)], [(ListKey, a)])

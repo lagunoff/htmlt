@@ -28,7 +28,6 @@ import Foreign.Ptr
 import GHC.Exts
 import GHC.Stack
 import Unsafe.Coerce
-import Data.Int
 import Data.Word
 
 newEvent :: JSM (Event a)
@@ -106,6 +105,14 @@ subscribe (SplatVal fv av) k = do
 subscribe (OverrideSub f d) k = f subscribe' k' where
   k' a _ = k a
   subscribe' c = subscribe d \a -> c a ()
+
+subscribeAccum :: Dynamic a -> (a -> b -> JSM b) -> b -> JSM ()
+subscribeAccum d f acc = do
+  ref <- liftIO $ newIORef acc
+  subscribe d \a -> do
+    b <- liftIO $ readIORef ref
+    b' <- f a b
+    liftIO $ writeIORef ref b'
 
 triggerEvent :: Event a -> a -> JSM ()
 triggerEvent e a = modify $ triggerEventFn e a
@@ -396,7 +403,7 @@ jsEval cmd = JSM \e -> do
 {-# INLINE jsEval #-}
 
 jsFlush :: JSM ()
-jsFlush = JSM \e -> void $ e.ien_flush
+jsFlush = void $ jsEval Null
 {-# INLINE jsFlush #-}
 
 jsUnsafe :: (HasCallStack, FromJSVal a) => UnsafeJavaScript -> JSM a

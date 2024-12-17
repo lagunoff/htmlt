@@ -7,16 +7,20 @@
 {-# OPTIONS_GHC -Wall #-}
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
 {-# LANGUAGE DataKinds #-}
-module StopWatch where
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DerivingStrategies #-}
+module HeatMap where
 
 import Clickable
 import Data.Time
 import Control.Monad.IO.Class
-import qualified Data.Text as Text
+import Data.Text qualified as Text
 import Data.Text (Text)
 import Data.Int
 import Control.Monad
 import Data.String
+import Data.Map (Map)
+import GHC.Generics (Generic)
 
 data StopWatchInstance = StopWatchInstance {
   time_var :: DynVar (Maybe UTCTime, Maybe IntervalId)
@@ -28,7 +32,7 @@ data StopWatchState = StopWatchState {
 }
 
 newtype IntervalId = IntervalId {unIntervalId :: Int32}
-  deriving (ToJSVal, FromJSVal)
+  deriving newtype (ToJSVal, FromJSVal)
 
 run :: JSM ()
 run = do
@@ -45,15 +49,10 @@ run = do
         dynText $ fmap buttonTitle $ fromVar timeVar
         on @"click" $ toggleState clockEv timeVar
     t0 <- liftIO getCurrentTime
-    month t0
+    month $ utctDay t0
   where
-    -- updateTime :: UTCTime -> Maybe (UTCTime, IntervalId) -> Maybe (UTCTime, IntervalId)
-    -- updateTime _ Nothing = Nothing
-    -- updateTime t (Just (_, i)) = Just (t, i)
-
     toggleState :: Event () -> DynVar StopWatchState -> JSM ()
     toggleState clockEv self = do
-      liftIO $ print $ "toggleState"
       s <- readVar self
       case s of
         StopWatchState Nothing Nothing -> do
@@ -76,6 +75,18 @@ run = do
     buttonTitle (StopWatchState Nothing Nothing) = "Start"
     buttonTitle (StopWatchState (Just _) (Just _)) = "Stop"
     buttonTitle (StopWatchState _ _) = "Reset"
+
+
+data HeatMapInstance = HeatMapInstance {
+  heatmap :: Map Excercise (Map Day [HMVolume]),
+  selected_day :: DynVar Day
+}
+
+newtype Excercise = Excercise {unExcercise :: Text}
+
+data HMVolume = HMScalar Double | HMDuration Double
+  deriving stock (Generic)
+  deriving anyclass (FromJSVal, ToJSVal)
 
 spaceKeyEvent :: Event () -> JSExp
 spaceKeyEvent (Event eventId) =
@@ -163,18 +174,9 @@ styles = "\
   \}\
   \"
 
--- Here is how to create a table using my library. Complete the
--- function that builds calendar layout for given month
-makeTable :: HTML ()
-makeTable = do
-  table_ [class_ "table"] do
-    tbody_ do
-      tr_ do td_ "One"; td_ "Two"; td_ "Three"
-
-month :: UTCTime -> HTML ()
-month t = do
-  let day          = utctDay t
-      (y, m, _)    = toGregorian day
+month :: Day -> HTML ()
+month day = do
+  let (y, m, _)    = toGregorian day
       firstDay      = fromGregorian y m 1
       daysInMonth   = gregorianMonthLength y m
       firstWeekDay  = dayOfWeek firstDay
