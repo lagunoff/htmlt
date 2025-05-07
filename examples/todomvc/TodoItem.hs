@@ -1,109 +1,93 @@
+{-# LANGUAGE GHC2021 #-}
+{-# LANGUAGE StrictData #-}
+{-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedRecordDot #-}
+{-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE RecursiveDo #-}
+{-# OPTIONS_GHC -Wall #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE GADTs #-}
 module TodoItem where
 
-import Control.Monad.State
+import Clickable
 import Data.Maybe
-import GHC.Generics (Generic)
-import HtmlT
-import JavaScript.Compat.Marshal
-import JavaScript.Compat.Prim
-import JavaScript.Compat.String (JSString)
-import JavaScript.Compat.String qualified as JSS
+import Data.Text (Text)
+import GHC.Int
+import GHC.Generics
 
-import "this" Utils
+import Utils
 
-data TodoItemConfig = TodoItemConfig
-  { state_ref :: DynRef TodoItemState
-  , is_hidden_dyn :: Dynamic Bool
-  , ask_delete_item :: Step ()
-  }
+data TodoItemConfig = TodoItemConfig {
+  self :: DynVar TodoItemState,
+  is_hidden_dyn :: Dynamic Bool,
+  ask_delete_item :: JSM ()
+}
 
-data TodoItemState = TodoItemState
-  { title :: JSString
-  , completed :: Bool
-  , editing :: Maybe JSString
-  } deriving stock (Show, Eq, Generic)
+data TodoItemState = TodoItemState {
+  title :: Text,
+  completed :: Bool,
+  editing :: Maybe Text
+} deriving stock (Show, Eq, Generic)
+  deriving anyclass (FromJSVal, ToJSVal)
 
 data TodoItemAction a where
-  CancelAction :: TodoItemConfig -> TodoItemAction ()
-  CommitAction :: TodoItemConfig -> TodoItemAction ()
-  InputAction :: TodoItemConfig -> JSString -> TodoItemAction ()
-  DoubleClickAction :: TodoItemConfig -> JSVal -> TodoItemAction ()
-  CheckedAction :: TodoItemConfig -> Bool -> TodoItemAction ()
-  KeydownAction :: TodoItemConfig -> Int -> TodoItemAction ()
+  CancelAction :: TodoItemAction ()
+  CommitAction :: TodoItemAction ()
+  InputAction :: Text -> TodoItemAction ()
+  DoubleClickAction :: RefId -> TodoItemAction ()
+  CheckedAction :: Bool -> TodoItemAction ()
+  KeydownAction :: Int32 -> TodoItemAction ()
 
-eval :: TodoItemAction a -> Step a
-eval = \case
-  CancelAction cfg ->
-    modifyRef cfg.state_ref \s -> s{editing=Nothing}
-  CommitAction cfg -> do
-    state <- readRef cfg.state_ref
-    case state.editing of
-      Just "" ->
-        cfg.ask_delete_item
-      Just t ->
-        modifyRef cfg.state_ref \s -> s {editing=Nothing, title = t}
-      Nothing ->
-        pure ()
-  InputAction cfg newVal ->
-    modifyRef cfg.state_ref \s -> s{editing = Just newVal}
-  DoubleClickAction cfg targetEl -> do
-    modifyRef cfg.state_ref \s -> s {editing = Just s.title}
-    liftIO $ js_todoItemInputFocus targetEl
-  CheckedAction cfg isChecked -> do
-    modifyRef cfg.state_ref \s -> s{completed = isChecked}
-  KeydownAction cfg key -> case key of
-    13 {- Enter -} -> eval (CommitAction cfg)
-    27 {- Escape -} -> eval (CancelAction cfg)
-    _ -> return ()
+emptyState :: TodoItemState
+emptyState = TodoItemState "" False Nothing
 
-html :: TodoItemConfig -> Html ()
-html cfg = li_ do
-  let
-    completedDyn = (.completed) <$> fromRef cfg.state_ref
-    editingDyn = isJust . (.editing) <$> fromRef cfg.state_ref
-    valueDyn = fromMaybe "" . (.editing) <$> fromRef cfg.state_ref
+eval :: TodoItemConfig -> TodoItemAction a -> JSM a
+eval cfg CancelAction =
+  modifyVar_ cfg.self \s -> s{editing=Nothing}
+eval cfg CommitAction = do
+  state <- readVar cfg.self
+  case state.editing of
+    Just "" ->
+      cfg.ask_delete_item
+    Just t ->
+      modifyVar_ cfg.self \s -> s {editing=Nothing, title = t}
+    Nothing ->
+      pure ()
+eval cfg (InputAction newVal) =
+  modifyVar_ cfg.self \s -> s{editing = Just newVal}
+eval cfg (DoubleClickAction inpElm) = do
+  modifyVar_ cfg.self \s -> s {editing = Just s.title}
+  assignFocus inpElm
+eval cfg (CheckedAction isChecked) =
+  modifyVar_ cfg.self \s -> s{completed = isChecked}
+eval cfg (KeydownAction key) = case key of
+  13 {- Enter -} -> eval cfg CommitAction
+  27 {- Escape -} -> eval cfg CancelAction
+  _ -> return ()
+
+view :: TodoItemConfig -> HTML ()
+view cfg = li_ mdo
+  let completedDyn = (.completed) <$> fromVar cfg.self
+      editingDyn = isJust . (.editing) <$> fromVar cfg.self
+      valueDyn = fromMaybe "" . (.editing) <$> fromVar cfg.self
   toggleClass "completed" completedDyn
   toggleClass "editing" editingDyn
   toggleClass "hidden" cfg.is_hidden_dyn
   div_ [class_ "view"] do
-    on "dblclick" $ decodeEvent (propDecoder "target") $
-      eval . DoubleClickAction cfg
+    on @"dblclick" $ eval cfg $ DoubleClickAction inp
     input_ [class_ "toggle", type_ "checkbox"] do
-      dynChecked $ (.completed) <$> fromRef cfg.state_ref
-      on "change" $ decodeEvent checkedDecoder $
-        eval . CheckedAction cfg
-    label_ $ dynText $ (.title) <$> fromRef cfg.state_ref
+      dynChecked $ (.completed) <$> fromVar cfg.self
+      on @"checkbox/change" $ eval cfg . CheckedAction
+    label_ $ dynText $ (.title) <$> fromVar cfg.self
     button_ [class_ "destroy"] do
-      on_ "click" cfg.ask_delete_item
-  input_ [class_ "edit", type_ "text"] do
+      on @"click" cfg.ask_delete_item
+  inp <- input_ [class_ "edit", type_ "text"] do
     dynValue valueDyn
-    on "input" $ decodeEvent valueDecoder $
-      eval . InputAction cfg
-    on "keydown" $ decodeEvent keyCodeDecoder $
-      eval . KeydownAction cfg
-    on_ "blur" $
-      eval (CommitAction cfg)
-
-emptyTodoItemState :: TodoItemState
-emptyTodoItemState = TodoItemState "" False Nothing
-
-instance ToJSVal TodoItemState where
-  toJSVal s = do
-    title <- toJSVal s.title
-    completed <- toJSVal s.completed
-    editing <- toJSVal s.editing
-    return $ js_buildObjectI3
-      (JSS.toJSValPure "title") title
-      (JSS.toJSValPure "completed") completed
-      (JSS.toJSValPure "editing") editing
-
-instance FromJSVal TodoItemState where
-  fromJSVal j = do
-    mtitle <- fromJSVal =<< getProp j "title"
-    mcompleted <- fromJSVal =<< getProp j "completed"
-    mediting <- fromJSVal =<< getProp j "editing"
-    return do
-      title <- mtitle
-      completed <- mcompleted
-      editing <- mediting
-      return TodoItemState {..}
+    on @"input" $ eval cfg . InputAction
+    on @"keydown" $ eval cfg . KeydownAction
+    on @"blur" $ eval cfg CommitAction
+    saveStackHead
+  return ()

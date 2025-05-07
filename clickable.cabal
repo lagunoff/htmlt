@@ -1,0 +1,49 @@
+cabal-version:      3.0
+name:               clickable
+version:            0.1.0.0
+-- synopsis:
+-- description:
+license:            MIT
+license-file:       ./LICENSE
+author:             Vladislav Lagunov
+maintainer:         vlad.lagunoff@gmail.com
+-- copyright:
+build-type:         Simple
+extra-doc-files:    CHANGELOG.md
+-- extra-source-files:
+
+executable clickable
+  main-is:          websocket.hs
+  hs-source-dirs:   ./
+  other-modules:
+    Clickable
+    Clickable.Element
+    Clickable.Binary       
+    Clickable.DOM
+    Clickable.HTML
+    Clickable.Internal
+    Clickable.Property
+    Clickable.Types
+ if !arch(wasm32)
+    other-modules:
+      Clickable.WebSocket
+ if arch(javascript)
+    other-modules:
+      Clickable.WASM
+  -- other-extensions:
+  build-depends:
+    async,
+    base,
+    base64-bytestring,
+    binary,
+    bytestring,
+    containers,
+    ghc-prim,
+    http-types,
+    mtl,
+    text,
+    wai,
+    wai-websockets,
+    warp,
+    websockets,
+                        
